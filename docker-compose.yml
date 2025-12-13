@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: ftw-db
+    environment:
+      POSTGRES_DB: filltheword
+      POSTGRES_USER: ftw_user
+      POSTGRES_PASSWORD: ftw_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - filltheword-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ftw_user -d filltheword"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Service
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ftw-api
+    environment:
+      DATABASE_URL: postgresql://ftw_user:ftw_password@db:5432/filltheword
+      TTS_SERVICE_URL: http://tts:8001
+      AUDIO_CACHE_PATH: /audio
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - audio_cache:/audio
+      - ./api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - filltheword-net
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # TTS Service
+  tts:
+    build:
+      context: ./tts
+      dockerfile: Dockerfile
+    container_name: ftw-tts
+    environment:
+      AUDIO_CACHE_PATH: /audio
+      MODELS_PATH: /models
+    ports:
+      - "8001:8001"
+    volumes:
+      - audio_cache:/audio
+      - tts_models:/models
+      - ./tts:/app
+    networks:
+      - filltheword-net
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ftw-frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_TTS_URL: http://localhost:8001
+    ports:
+      - "3007:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    networks:
+      - filltheword-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  audio_cache:
+    driver: local
+  tts_models:
+    driver: local
+
+networks:
+  filltheword-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
