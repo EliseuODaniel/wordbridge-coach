@@ -141,7 +141,16 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
   };
 
   
-  
+  // Auto-play sentence audio when card changes
+  useEffect(() => {
+    if (currentCard?.audio_sentence_url) {
+      // Auto-play sentence audio for new cards
+      audioService.playFromUrl(currentCard.audio_sentence_url).catch(error => {
+        console.log('Auto-play sentence audio failed:', error);
+      });
+    }
+  }, [currentCard?.audio_sentence_url]);
+
   // Initialize session
   useEffect(() => {
     loadNextCard();
@@ -194,6 +203,11 @@ return (
                 onSubmit={handleSubmit}
                 isSubmitting={isSubmitting}
                 placeholder="Type the missing word..."
+                feedback={feedback ? {
+                  correct: feedback.correct,
+                  correctAnswer: feedback.correct_answer
+                } : null}
+                cardId={currentCard?.card_id}
               />
 
               {/* Feedback Message - Visible when available */}
