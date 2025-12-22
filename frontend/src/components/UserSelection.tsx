@@ -308,7 +308,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected }) => {
                 </label>
                 <div className="bg-gray-700 rounded-lg p-3 border border-gray-600">
                   <div className="grid grid-cols-2 gap-2">
-                    {VOCABULARY_GOALS.map((goal, index) => (
+                    {VOCABULARY_GOALS.map((goal) => (
                       <button
                         key={goal.rank}
                         type="button"
