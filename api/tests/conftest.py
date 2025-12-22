@@ -19,7 +19,8 @@ from app.models import (
 from app.models.sentence import SourceType
 
 # Test database URL - PostgreSQL test database
-SQLALCHEMY_DATABASE_URL = "postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test"
+# Note: Inside Docker containers, use service name 'db_test' instead of 'localhost'
+SQLALCHEMY_DATABASE_URL = "postgresql://ftw_user:ftw_password@db_test:5432/filltheword_test"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
