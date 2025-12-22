@@ -16,6 +16,7 @@ class SettingsResponse(BaseModel):
     """Response model for user settings"""
     daily_new_limit: int = Field(..., ge=5, le=20, description="Daily new cards limit (5-20)")
     easiness_factor: float = Field(..., ge=1.3, le=2.5, description="SM-2 easiness factor (1.3-2.5)")
+    word_goal_rank: int = Field(..., ge=100, le=10000, description="Word frequency goal rank (100, 500, 1000, 1500, 3000, 5000, 10000)")
 
 
 class SettingsUpdate(BaseModel):
@@ -95,7 +96,8 @@ async def get_settings(
 
         return SettingsResponse(
             daily_new_limit=user.daily_new_limit,
-            easiness_factor=user.easiness_factor
+            easiness_factor=user.easiness_factor,
+            word_goal_rank=user.word_goal_rank
         )
 
     except Exception as e:
@@ -134,7 +136,8 @@ async def update_settings(
 
         return SettingsResponse(
             daily_new_limit=user.daily_new_limit,
-            easiness_factor=user.easiness_factor
+            easiness_factor=user.easiness_factor,
+            word_goal_rank=user.word_goal_rank
         )
 
     except Exception as e:

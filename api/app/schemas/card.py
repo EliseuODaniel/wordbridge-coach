@@ -15,11 +15,14 @@ class Gap(BaseModel):
 class CardResponse(BaseModel):
     """Response schema for GET /api/cards/next - EXACT match to specification"""
     card_id: str = Field(..., description="Unique card identifier")
+    word_id: str = Field(..., description="Word ID for insights")
+    word: str = Field(..., description="The word being studied")
     sentence: str = Field(..., description="Sentence with gap placeholder")
     gap: Gap = Field(..., description="Gap position information")
     sentence_translation: str = Field(..., description="Translation of complete sentence")
     grammar_hint: str = Field(..., description="Grammar hint for the word")
     memory_stage: str = Field(..., description="SM-2 memory stage")
+    is_new: bool = Field(..., description="Whether this is a new word or review")
     audio_word_url: str = Field(..., description="URL for word audio")
     audio_sentence_url: str = Field(..., description="URL for sentence audio")
     
@@ -27,6 +30,8 @@ class CardResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "card_id": "550e8400-e29b-41d4-a716-446655440000",
+                "word_id": "660e8400-e29b-41d4-a716-446655440000",
+                "word": "book",
                 "sentence": "The ___ is on the table.",
                 "gap": {"start": 4, "end": 8},
                 "sentence_translation": "O livro está na mesa.",

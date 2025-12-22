@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorResponse
 from app.services.sm2 import SM2Algorithm
+from app.services.card_selection import CardSelectionService
 from app.models import Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
 from app.models.user_card_state import MemoryStage
 
@@ -327,11 +328,14 @@ def format_card_response(card: Card, memory_stage: str) -> CardResponse:
 
     return CardResponse(
         card_id=str(card.id),  # Convert UUID to string for API response
+        word_id=str(card.sentence.word.id) if card.sentence and card.sentence.word else "",
+        word=word_text,
         sentence=sentence_text,
         gap={"start": card.gap_start, "end": card.gap_end},
         sentence_translation=sentence_translation,
         grammar_hint=card.grammar_hint,
         memory_stage=memory_stage,
+        is_new=memory_stage == "NEW",  # Add is_new field
         audio_word_url=audio_word_url,
         audio_sentence_url=audio_sentence_url
     )
@@ -357,40 +361,56 @@ async def submit_answer(
     - Plural control based on context
     """
     try:
-        # Get card and validate
+        # CRITICAL: Card MUST exist (Spec4 requirement - no fallback)
         card = db.query(Card).filter(Card.id == card_id).first()
+
         if not card:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "Card not found", "message": f"Card {card_id} not found"}
+                detail={"error": "Card not found", "message": f"No Card found with ID {card_id}"}
             )
 
-        # Get the correct answer from sentence relationship
-        if not card.sentence or not card.sentence.word:
+        # Validate Card has required relationships
+        if not card.sentence:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "Card data incomplete", "message": "Missing sentence or word data"}
+                detail={"error": "Card data incomplete", "message": f"Card {card_id} has no sentence"}
             )
 
-        correct_answer = card.sentence.word.text
+        if not card.sentence.word:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "Card data incomplete", "message": f"Card {card_id} sentence has no word"}
+            )
 
-        # Build full sentence by replacing gap with correct word (robust)
+        # Get correct answer from Card->Sentence->Word
+        correct_answer = card.sentence.word.text
         sentence_full = card.sentence.text.replace("___", correct_answer, 1)
+        sentence_id = str(card.sentence.id)  # CRITICAL for Spec4 variety
         
         # Validate answer using SM-2 tolerance rules
+        print(f"DEBUG: Validating answer '{answer_data.answer}' against '{correct_answer}'")
         is_correct, normalized_correct = SM2Algorithm.validate_answer(
             user_answer=answer_data.answer,
             correct_answer=correct_answer,
             synonyms=["tome"]  # Example synonyms
         )
-        
+
+        print(f"DEBUG: SM2 validation result: is_correct={is_correct}, normalized_correct={normalized_correct}")
+
         # Calculate SM-2 quality
-        quality = SM2Algorithm.calculate_quality_from_response(
-            was_correct=is_correct,
-            response_time_ms=answer_data.response_time_ms,
-            hints_used=0,  # TODO: Track hints usage
-            attempts=1     # TODO: Track attempts
-        )
+        print(f"DEBUG: Calculating quality for response_time_ms={answer_data.response_time_ms}")
+        try:
+            quality = SM2Algorithm.calculate_quality_from_response(
+                was_correct=is_correct,
+                response_time_ms=answer_data.response_time_ms,
+                hints_used=0,  # TODO: Track hints usage
+                attempts=1     # TODO: Track attempts
+            )
+            print(f"DEBUG: SM2 quality calculated: {quality}")
+        except Exception as e:
+            print(f"DEBUG: Error calculating SM2 quality: {e}")
+            raise
 
         # Get or create UserCardState for demo user
         if not user_id:
@@ -402,7 +422,7 @@ async def submit_answer(
                 )
             user_id = demo_user.id
 
-        # Get existing UserCardState
+        # Get or create UserCardState (always required for Spec4)
         user_card_state = db.query(UserCardState).filter(
             and_(
                 UserCardState.user_id == user_id,
@@ -426,22 +446,41 @@ async def submit_answer(
             )
             db.add(user_card_state)
 
+        # Calculate next review with SM-2
         # Capture previous values BEFORE updating UserCardState
         previous_easiness = user_card_state.easiness_factor
         previous_interval = user_card_state.interval_days
 
-        # Calculate next review with real SM-2 state
-        sm2_result = SM2Algorithm.calculate_next_review(
-            quality=quality,
-            current_repetitions=user_card_state.repetitions,
-            current_easiness_factor=user_card_state.easiness_factor,
-            current_interval_days=user_card_state.interval_days
-        )
+        try:
+            print(f"DEBUG: Calculating SM2 next review with quality={quality}, repetitions={user_card_state.repetitions}")
+                sm2_result = SM2Algorithm.calculate_next_review(
+                    quality=quality,
+                    current_repetitions=user_card_state.repetitions,
+                    current_easiness_factor=user_card_state.easiness_factor,
+                    current_interval_days=user_card_state.interval_days
+                )
+                print(f"DEBUG: SM2 result: {sm2_result}")
+            except Exception as e:
+                print(f"DEBUG: Error calculating SM2 next review: {e}")
+                raise
+        else:
+            # For Spec4 fallback: use default values
+            print(f"DEBUG: Using default SM2 values for Spec4 fallback")
+            previous_easiness = 2.5
+            previous_interval = 1
+            sm2_result = {
+                "repetitions": 1,
+                "easiness_factor": 2.6,
+                "interval_days": 1,
+                "next_review_at": datetime.utcnow(),
+                "status": MemoryStage.LEARNING
+            }
 
-        # Create ReviewEvent with proper previous values
+        # CRITICAL: Create ReviewEvent with sentence_id (Spec4 requirement)
         review_event = ReviewEvent(
             user_id=user_id,
             card_id=card_id,
+            sentence_id=sentence_id,  # CRITICAL: Always populated for Spec4 variety
             quality=quality,
             response_time_ms=answer_data.response_time_ms,
             user_answer=answer_data.answer,
@@ -454,8 +493,39 @@ async def submit_answer(
             new_interval=sm2_result["interval_days"]
         )
         db.add(review_event)
+        print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}")
 
-        # Update UserCardState
+        # Update or create UserDailyStats
+        from app.models.user_daily_stats import UserDailyStats
+
+        today = datetime.utcnow().date()
+        daily_stats = db.query(UserDailyStats).filter(
+            UserDailyStats.user_id == user_id,
+            UserDailyStats.date == today
+        ).first()
+
+        if not daily_stats:
+            daily_stats = UserDailyStats(
+                user_id=user_id,
+                date=today,
+                cards_answered=0,
+                new_words_learned=0,
+                reviews_done=0,
+                accuracy=0.0
+            )
+            db.add(daily_stats)
+
+        # Update daily stats
+        daily_stats.cards_answered += 1
+        daily_stats.reviews_done += 1
+        if is_correct:
+            daily_stats.new_words_learned += 1
+
+        # Calculate accuracy
+        if daily_stats.reviews_done > 0:
+            daily_stats.accuracy = daily_stats.cards_answered / daily_stats.reviews_done
+
+        # Update UserCardState with SM-2 results
         user_card_state.repetitions = sm2_result["repetitions"]
         user_card_state.easiness_factor = sm2_result["easiness_factor"]
         user_card_state.interval_days = sm2_result["interval_days"]
@@ -472,18 +542,48 @@ async def submit_answer(
         else:
             user_card_state.status = MemoryStage.NEW
 
-        # Commit all changes
-        db.commit()
-        
-        response_data = {
-            "correct": is_correct,
-            "correct_answer": correct_answer,
-            "sentence_full": sentence_full,
-            "quality": quality,
-            "next_review_at": sm2_result["next_review_at"]
-        }
-        
-        return AnswerResponse(**response_data)
+        print(f"DEBUG: UserCardState updated successfully")
+
+        # CRITICAL: Update Spec4 progression after correct answer
+        if is_correct:
+            try:
+                card_service = CardSelectionService(db)
+                card_service.record_answer(
+                    user_id=user_id,
+                    word_id=str(card.sentence.word_id),
+                    sentence_id=sentence_id,  # CRITICAL: Always populated
+                    was_correct=is_correct,
+                    response_time_ms=answer_data.response_time_ms,
+                    quality=quality
+                )
+                print(f"DEBUG: Called CardSelectionService.record_answer for word_id={card.sentence.word_id}")
+            except Exception as e:
+                print(f"DEBUG: Error updating Spec4 progression: {e}")
+                # Continue even if progression update fails
+
+        print(f"DEBUG: Attempting to commit database changes...")
+        try:
+            # Commit all changes
+            db.commit()
+            print(f"DEBUG: Database commit successful")
+        except Exception as e:
+            print(f"DEBUG: Error during database commit: {e}")
+            db.rollback()
+            raise
+
+        try:
+            response_data = {
+                "correct": is_correct,
+                "correct_answer": correct_answer,
+                "sentence_full": sentence_full,
+                "quality": quality,
+                "next_review_at": sm2_result["next_review_at"]
+            }
+            print(f"DEBUG: Creating response with data: {response_data}")
+            return AnswerResponse(**response_data)
+        except Exception as e:
+            print(f"DEBUG: Error creating response: {e}")
+            raise
         
     except ValueError as e:
         raise HTTPException(
@@ -494,6 +594,77 @@ async def submit_answer(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
+        )
+
+
+@router.get("/next-spec4", response_model=CardResponse)
+async def get_next_card_spec4(
+    user_id: Optional[str] = None,
+    exclude_card_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get next card for study using Spec4 intelligent selection algorithm
+    """
+    try:
+        # Get demo user if user_id not provided
+        if not user_id:
+            demo_user = db.query(User).filter(User.username == "demo").first()
+            if not demo_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "Demo user not found", "message": "User setup required"}
+                )
+            user_id = demo_user.id
+
+        # Initialize Spec4 card selection service
+        card_service = CardSelectionService(db)
+
+        # Get next card using Spec4 algorithm
+        print(f"DEBUG: Getting card for user_id={user_id}, exclude_card_id={exclude_card_id}")
+        card_context = card_service.get_next_card_for_user(user_id, exclude_card_id=exclude_card_id)
+        print(f"DEBUG: Card context returned: {card_context}")
+
+        if not card_context:
+            print(f"DEBUG: CardSelectionService returned None for user {user_id}")
+            print(f"DEBUG: This usually means no words in the unlocked prefix or database issues")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "No cards available",
+                    "message": "No cards available for study at this time"
+                }
+            )
+
+        # Get target language code for TTS
+        user = db.query(User).filter(User.id == user_id).first()
+        target_lang_code = "en"  # Default
+        if user and user.target_language_id:
+            target_lang = db.query(Language).filter(Language.id == user.target_language_id).first()
+            if target_lang:
+                target_lang_code = target_lang.code
+
+        return CardResponse(
+            card_id=card_context["card_id"],  # CRITICAL: Real Card.id from database
+            word_id=card_context["word_id"],
+            word=card_context["word"],
+            sentence=card_context["sentence"],
+            gap=card_context["gap"],
+            sentence_translation=card_context["sentence_translation"],
+            grammar_hint=card_context["grammar_hint"],
+            memory_stage="NEW" if card_context["is_new"] else "REVIEW",  # Uppercase SM-2 values
+            is_new=card_context["is_new"],
+            audio_word_url=card_context["audio_word_url"],
+            audio_sentence_url=card_context["audio_sentence_url"]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in get_next_card_spec4: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Internal server error", "message": str(e)}
         )
 
 

@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (Development)
   db:
     image: postgres:15-alpine
     container_name: ftw-db
@@ -23,6 +23,29 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # PostgreSQL Test Database
+  db_test:
+    image: postgres:15-alpine
+    container_name: ftw-db-test
+    environment:
+      POSTGRES_DB: filltheword_test
+      POSTGRES_USER: ftw_user
+      POSTGRES_PASSWORD: ftw_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5433:5432"  # Different port to avoid conflict
+    tmpfs:
+      - /var/lib/postgresql/data  # In-memory for test isolation
+    networks:
+      - filltheword-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ftw_user -d filltheword_test"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    profiles: ["test"]  # Only start with --profile test
 
   # API Service
   api:
@@ -85,8 +108,8 @@ services:
       dockerfile: Dockerfile
     container_name: ftw-frontend
     environment:
-      VITE_API_URL: http://localhost:8000
-      VITE_TTS_URL: http://localhost:8001
+      VITE_API_URL: http://api:8000
+      VITE_TTS_URL: http://api:8001
     ports:
       - "3007:3000"
     depends_on:

@@ -2,7 +2,8 @@
 
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import cards, stats, settings
+from app.api.api_v1.endpoints import cards, stats, settings, users
+from app.api.api_v1.endpoints.analytics import insights
 
 api_router = APIRouter()
 
@@ -25,4 +26,18 @@ api_router.include_router(
     settings.router,
     prefix="/settings",
     tags=["settings"]
+)
+
+# Include users endpoints
+api_router.include_router(
+    users.router,
+    prefix="/users",
+    tags=["users"]
+)
+
+# Include insights endpoints
+api_router.include_router(
+    insights.router,
+    prefix="/insights",
+    tags=["insights"]
 )

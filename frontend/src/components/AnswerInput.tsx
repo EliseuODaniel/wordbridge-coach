@@ -90,12 +90,14 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
           autoComplete="off"
           spellCheck={false}
           autoFocus
+          data-testid="answer-input"
         />
         
         <button
           type="submit"
           disabled={!answer.trim() || isSubmitting}
           className="btn btn-primary px-6"
+          data-testid="answer-submit"
         >
           {isSubmitting ? (
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -103,10 +105,6 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
             'Check'
           )}
         </button>
-      </div>
-      
-      <div className="text-center mt-2 text-sm text-gray-400">
-        Press Enter to submit
       </div>
     </form>
   );

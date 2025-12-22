@@ -7,19 +7,20 @@ echo "🎵 Downloading Piper TTS models..."
 # Create models directory
 mkdir -p /models
 
-# Model definitions (small models for MVP)
+# Model definitions (correct URLs for existing models)
 declare -A MODELS=(
     [en]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
-    [es]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlos/medium/es_ES-carlos-medium.onnx"
     [fr]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx"
-    [pt]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/edresson/medium/pt_BR-edresson-medium.onnx"
+    # Note: es and pt models don't have medium versions in v1.0.0, using low quality alternatives
+    [es]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/low/es_ES-davefx-low.onnx"
+    [pt]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/edresson/low/pt_BR-edresson-low.onnx"
 )
 
 declare -A CONFIGS=(
     [en]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
-    [es]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/carlos/medium/es_ES-carlos-medium.onnx.json"
     [fr]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json"
-    [pt]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/edresson/medium/pt_BR-edresson-medium.onnx.json"
+    [es]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/low/es_ES-davefx-low.onnx.json"
+    [pt]="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/edresson/low/pt_BR-edresson-low.onnx.json"
 )
 
 # Function to download with retry

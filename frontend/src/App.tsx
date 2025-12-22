@@ -1,11 +1,14 @@
 /** Main App Component */
 
-import React from 'react';
+import React, { useState } from 'react';
 import StudySession from './components/StudySession';
+import UserSelection from './components/UserSelection';
 import { healthApi } from './services/api';
 import './App.css';
 
 function App() {
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
   // Optional: Add API health check
   React.useEffect(() => {
     const checkHealth = async () => {
@@ -16,13 +19,21 @@ function App() {
         console.error('API health check failed:', error);
       }
     };
-    
+
     checkHealth();
   }, []);
 
+  const handleUserSelected = (userId: string) => {
+    setSelectedUserId(userId);
+  };
+
   return (
     <div className="App">
-      <StudySession />
+      {selectedUserId ? (
+        <StudySession userId={selectedUserId} />
+      ) : (
+        <UserSelection onUserSelected={handleUserSelected} />
+      )}
     </div>
   );
 }

@@ -9,15 +9,17 @@ from app.models.base import BaseModel
 
 
 class MemoryStage(enum.Enum):
-    NEW = "new"
-    LEARNING = "learning"
-    REVIEW = "review"
-    RELEARN = "relearn"
-    MATURE = "mature"
+    NEW = "NEW"
+    LEARNING = "LEARNING"
+    REVIEW = "REVIEW"
+    RELEARN = "RELEARN"
+    MATURE = "MATURE"
 
 
 class UserCardState(BaseModel):
     """Individual card state for each user with SM-2 algorithm"""
+
+    __tablename__ = "usercardstate"
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
     card_id = Column(UUID(as_uuid=True), ForeignKey("card.id"), nullable=False)

@@ -10,8 +10,11 @@ from app.models.base import BaseModel
 class ReviewEvent(BaseModel):
     """Individual review session for analytics and SM-2 adjustments"""
 
+    __tablename__ = "reviewevent"
+
     user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
     card_id = Column(UUID(as_uuid=True), ForeignKey("card.id"), nullable=False)
+    sentence_id = Column(UUID(as_uuid=True), ForeignKey("sentence.id"), nullable=True)  # Which sentence was used
     quality = Column(Integer, nullable=False)  # SM-2 quality 0-5
     response_time_ms = Column(Integer, nullable=False)
     user_answer = Column(String(200), nullable=False)

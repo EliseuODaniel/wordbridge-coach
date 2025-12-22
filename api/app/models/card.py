@@ -10,6 +10,8 @@ from app.models.base import BaseModel
 class Card(BaseModel):
     """Study card with fill-in-the-gap content"""
 
+    __tablename__ = "card"
+
     sentence_id = Column(UUID(as_uuid=True), ForeignKey("sentence.id"), nullable=False)
     deck_id = Column(UUID(as_uuid=True), ForeignKey("deck.id"), nullable=False)
     grammar_hint = Column(String(500), nullable=False)

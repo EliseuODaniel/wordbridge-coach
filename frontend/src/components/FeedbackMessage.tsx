@@ -27,7 +27,7 @@ const FeedbackMessage: React.FC<FeedbackMessageProps> = ({
   if (correct) {
     return (
       <div className="max-w-2xl mx-auto animate-fade-in">
-        <div className="rounded-xl p-6 bg-green-900/70 border border-green-700 shadow-lg">
+        <div className="rounded-xl p-6 bg-green-900/70 border border-green-700 shadow-lg" data-testid="feedback">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-2xl">✅</span>
             <h3 className="text-lg font-semibold text-green-100">
@@ -74,7 +74,7 @@ const FeedbackMessage: React.FC<FeedbackMessageProps> = ({
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-in">
-      <div className="rounded-xl p-6 bg-red-900/70 border border-red-700 shadow-lg">
+      <div className="rounded-xl p-6 bg-red-900/70 border border-red-700 shadow-lg" data-testid="feedback">
         <div className="flex items-center gap-3 mb-3">
           <span className="text-2xl">❌</span>
           <h3 className="text-lg font-semibold text-red-100">
