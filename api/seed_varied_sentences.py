@@ -5,7 +5,7 @@ Each word should have multiple different sentences for variety
 """
 
 from app.core.database import SessionLocal
-from app.models import Word, Sentence, WordSentence, Language
+from app.models import Word, Sentence, WordSentence, Language, Card, Deck
 from app.models.sentence import SourceType
 import uuid
 import random
@@ -21,6 +21,25 @@ def seed_varied_sentences():
         if not en_lang:
             print("English language not found")
             return False
+
+        # Get or create default deck for English
+        deck = db.query(Deck).filter(
+            Deck.language_id == en_lang.id,
+            Deck.is_active == True
+        ).first()
+
+        if not deck:
+            deck = Deck(
+                id=str(uuid.uuid4()),
+                name=f"Spec4 Seed {en_lang.code.upper()}",
+                language_id=en_lang.id,
+                difficulty_level=1,
+                description="Auto-generated deck for Spec4 varied sentences",
+                is_active=True
+            )
+            db.add(deck)
+            db.flush()
+            print(f"Created new deck: {deck.id}")
 
         # Common words with multiple example sentences
         word_sentences_data = [
@@ -175,11 +194,15 @@ def seed_varied_sentences():
                         gap_start = 0
                     gap_end = gap_start + len(word_text)
 
+                # Replace word with gap for the sentence
+                sentence_text_with_gap = sentence_text[:gap_start] + "___" + sentence_text[gap_end:]
+
                 sentence = Sentence(
-                    text=sentence_text,
+                    text=sentence_text_with_gap,
                     translation=translation,
                     word_id=word.id,
                     language_id=en_lang.id,
+                    type="example",  # CRITICAL: Sentence.type is required
                     source_type=SourceType.MANUAL,
                     difficulty=difficulty,
                     gap_start=gap_start,
@@ -188,6 +211,20 @@ def seed_varied_sentences():
                 )
                 db.add(sentence)
                 db.flush()  # Get the ID
+
+                # CRITICAL: Create Card for each Sentence (Spec4 requirement)
+                card = Card(
+                    id=str(uuid.uuid4()),
+                    sentence_id=sentence.id,
+                    deck_id=deck.id,
+                    grammar_hint=grammar_hint,
+                    difficulty=difficulty,
+                    gap_start=gap_start,
+                    gap_end=gap_end,
+                    is_active=True
+                )
+                db.add(card)
+                db.flush()
 
                 # Create WordSentence mapping
                 mapping = WordSentence(

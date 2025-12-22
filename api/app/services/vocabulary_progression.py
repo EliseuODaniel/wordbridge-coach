@@ -49,11 +49,12 @@ class VocabularyProgressionService:
 
         Algorithm:
         1. Get all sentence candidates for this word
-        2. Query last K=10 ReviewEvent.sentence_ids for this (user_id, word_id)
-        3. Choose:
+        2. Query usage stats: count(*) and max(created_at) per sentence_id
+        3. "Unseen" = sentences with count == 0 for this user
+        4. Choose:
            - If unseen sentences exist: random choice among them
-           - Else: least recently used (min last_used_at)
-        4. Fallback: create basic sentence + persist + create Card
+           - Else: least recently used (min max_created_at)
+        5. Fallback: create basic sentence + persist + create Card
         """
         # 1. Get all sentence candidates for this word (Sentence.word_id OR WordSentence)
         sentences_via_direct = self.db.query(Sentence).filter(
@@ -74,43 +75,50 @@ class VocabularyProgressionService:
             # Fallback: create a basic sentence if none exists
             return self._create_fallback_sentence(word_id)
 
-        # 2. Get recently used sentences for this user+word (last K=10)
+        # 2. Query usage statistics for each candidate sentence
+        # Get count(*) and max(created_at) grouped by sentence_id
         K = 10
-        recent_reviews = self.db.query(ReviewEvent.sentence_id).filter(
+        usage_stats = self.db.query(
+            ReviewEvent.sentence_id,
+            func.count(ReviewEvent.id).label('usage_count'),
+            func.max(ReviewEvent.created_at).label('last_used_at')
+        ).filter(
             and_(
                 ReviewEvent.user_id == user_id,
                 ReviewEvent.sentence_id.in_(candidate_sentence_ids),
                 ReviewEvent.sentence_id.isnot(None)
             )
-        ).order_by(desc(ReviewEvent.created_at)).limit(K).all()
+        ).group_by(ReviewEvent.sentence_id).all()
 
-        # Extract sentence_ids from recent reviews (fixed: not tuple access)
-        recent_sentence_ids = [r.sentence_id for r in recent_reviews]
+        # Build lookup dictionaries
+        sentence_counts = {stat.sentence_id: stat.usage_count for stat in usage_stats}
+        sentence_last_used = {stat.sentence_id: stat.last_used_at for stat in usage_stats}
 
-        # 3. Find sentences never seen by this user
-        unseen_sentence_ids = set(candidate_sentence_ids) - set(recent_sentence_ids)
+        # 3. Separate unseen (count == 0) from seen sentences
+        unseen_sentence_ids = [
+            sid for sid in candidate_sentence_ids
+            if sentence_counts.get(sid, 0) == 0
+        ]
 
         if unseen_sentence_ids:
             # Randomly choose from unseen sentences
             import random
-            chosen_id = random.choice(list(unseen_sentence_ids))
+            chosen_id = random.choice(unseen_sentence_ids)
             return all_sentences[chosen_id]
 
         # 4. If all sentences were seen, get the least recently used
-        # Group by sentence_id and find the one with the earliest last_review
-        from sqlalchemy import label
-        last_used_stats = self.db.query(
-            ReviewEvent.sentence_id,
-            func.max(ReviewEvent.created_at).label('last_used_at')
-        ).filter(
-            and_(
-                ReviewEvent.user_id == user_id,
-                ReviewEvent.sentence_id.in_(candidate_sentence_ids)
-            )
-        ).group_by(ReviewEvent.sentence_id).order_by('last_used_at ASC').first()
+        # Sort candidate_sentence_ids by last_used_at (ascending)
+        seen_sentences_with_last_used = [
+            (sid, sentence_last_used.get(sid))
+            for sid in candidate_sentence_ids
+            if sid in sentence_last_used
+        ]
 
-        if last_used_stats:
-            return all_sentences[last_used_stats.sentence_id]
+        if seen_sentences_with_last_used:
+            # Sort by last_used_at ascending (oldest first)
+            seen_sentences_with_last_used.sort(key=lambda x: x[1] or datetime.min)
+            chosen_id = seen_sentences_with_last_used[0][0]
+            return all_sentences[chosen_id]
 
         # Fallback: random from all candidates (shouldn't reach here normally)
         import random
