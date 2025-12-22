@@ -453,28 +453,16 @@ async def submit_answer(
 
         try:
             print(f"DEBUG: Calculating SM2 next review with quality={quality}, repetitions={user_card_state.repetitions}")
-                sm2_result = SM2Algorithm.calculate_next_review(
-                    quality=quality,
-                    current_repetitions=user_card_state.repetitions,
-                    current_easiness_factor=user_card_state.easiness_factor,
-                    current_interval_days=user_card_state.interval_days
-                )
-                print(f"DEBUG: SM2 result: {sm2_result}")
-            except Exception as e:
-                print(f"DEBUG: Error calculating SM2 next review: {e}")
-                raise
-        else:
-            # For Spec4 fallback: use default values
-            print(f"DEBUG: Using default SM2 values for Spec4 fallback")
-            previous_easiness = 2.5
-            previous_interval = 1
-            sm2_result = {
-                "repetitions": 1,
-                "easiness_factor": 2.6,
-                "interval_days": 1,
-                "next_review_at": datetime.utcnow(),
-                "status": MemoryStage.LEARNING
-            }
+            sm2_result = SM2Algorithm.calculate_next_review(
+                quality=quality,
+                current_repetitions=user_card_state.repetitions,
+                current_easiness_factor=user_card_state.easiness_factor,
+                current_interval_days=user_card_state.interval_days
+            )
+            print(f"DEBUG: SM2 result: {sm2_result}")
+        except Exception as e:
+            print(f"DEBUG: Error calculating SM2 next review: {e}")
+            raise
 
         # CRITICAL: Create ReviewEvent with sentence_id (Spec4 requirement)
         review_event = ReviewEvent(
@@ -644,6 +632,21 @@ async def get_next_card_spec4(
             if target_lang:
                 target_lang_code = target_lang.code
 
+        # Determine memory_stage from UserCardState (if exists)
+        card_state = db.query(UserCardState).filter(
+            and_(
+                UserCardState.user_id == user_id,
+                UserCardState.card_id == card_context["card_id"]
+            )
+        ).first()
+
+        if card_state:
+            # Use real SM-2 status from UserCardState
+            memory_stage = card_state.status.value  # Convert enum to string (uppercase)
+        else:
+            # No state yet, it's a new card
+            memory_stage = "NEW"
+
         return CardResponse(
             card_id=card_context["card_id"],  # CRITICAL: Real Card.id from database
             word_id=card_context["word_id"],
@@ -652,7 +655,7 @@ async def get_next_card_spec4(
             gap=card_context["gap"],
             sentence_translation=card_context["sentence_translation"],
             grammar_hint=card_context["grammar_hint"],
-            memory_stage="NEW" if card_context["is_new"] else "REVIEW",  # Uppercase SM-2 values
+            memory_stage=memory_stage,  # Real SM-2 status from UserCardState or NEW
             is_new=card_context["is_new"],
             audio_word_url=card_context["audio_word_url"],
             audio_sentence_url=card_context["audio_sentence_url"]

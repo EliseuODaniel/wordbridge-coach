@@ -303,37 +303,29 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected }) => {
 
               {/* Vocabulary Goal Selector */}
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-3">
+                <label className="block text-sm font-medium text-gray-400 mb-2">
                   My vocabulary goal:
                 </label>
-                <div className="bg-gray-700 rounded-lg p-4 border border-gray-600">
-                  <div className="flex justify-between text-xs text-gray-400 mb-2">
-                    <span>Basic</span>
-                    <span>Advanced</span>
+                <div className="bg-gray-700 rounded-lg p-3 border border-gray-600">
+                  <div className="grid grid-cols-2 gap-2">
+                    {VOCABULARY_GOALS.map((goal, index) => (
+                      <button
+                        key={goal.rank}
+                        type="button"
+                        onClick={() => setWordGoalRank(goal.rank)}
+                        className={`px-3 py-2 text-sm rounded transition-colors ${
+                          wordGoalRank === goal.rank
+                            ? 'bg-blue-600 text-white font-medium'
+                            : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        }`}
+                        disabled={loading}
+                      >
+                        {goal.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="space-y-2">
-                    <input
-                      type="range"
-                      min="100"
-                      max="10000"
-                      step="100"
-                      value={wordGoalRank}
-                      onChange={(e) => setWordGoalRank(parseInt(e.target.value))}
-                      className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
-                      style={{
-                        background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((wordGoalRank - 100) / (10000 - 100)) * 100}%, #4b5563 ${((wordGoalRank - 100) / (10000 - 100)) * 100}%, #4b5563 100%)`
-                      }}
-                      disabled={loading}
-                      data-testid="profile-goal-slider"
-                    />
-                    <div className="text-center">
-                      <span className="text-lg font-semibold text-blue-400">
-                        {VOCABULARY_GOALS.find(g => g.rank === wordGoalRank)?.label || `${wordGoalRank} words`}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500 text-center">
-                      {VOCABULARY_GOALS.find(g => g.rank === wordGoalRank)?.description}
-                    </div>
+                  <div className="mt-2 text-xs text-gray-400 text-center">
+                    {VOCABULARY_GOALS.find(g => g.rank === wordGoalRank)?.description}
                   </div>
                 </div>
               </div>
@@ -430,29 +422,30 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected }) => {
 
                 {/* Spec4: Vocabulary Goal Selector in Edit Modal */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-gray-400 mb-2">
                     My vocabulary goal:
                   </label>
-                  <input
-                    type="range"
-                    min="100"
-                    max="10000"
-                    step="100"
-                    value={editWordGoalRank}
-                    onChange={(e) => setEditWordGoalRank(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((editWordGoalRank - 100) / (10000 - 100)) * 100}%, #4b5563 ${((editWordGoalRank - 100) / (10000 - 100)) * 100}%, #4b5563 100%)`
-                    }}
-                    disabled={editLoading}
-                  />
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-sm font-semibold text-gray-100">
-                      {VOCABULARY_GOALS.find(g => g.rank === editWordGoalRank)?.label || `${editWordGoalRank} words`}
-                    </span>
-                    <span className="text-xs text-gray-400">
+                  <div className="bg-gray-700 rounded-lg p-3 border border-gray-600">
+                    <div className="grid grid-cols-2 gap-2">
+                      {VOCABULARY_GOALS.map((goal) => (
+                        <button
+                          key={goal.rank}
+                          type="button"
+                          onClick={() => setEditWordGoalRank(goal.rank)}
+                          className={`px-3 py-2 text-sm rounded transition-colors ${
+                            editWordGoalRank === goal.rank
+                              ? 'bg-blue-600 text-white font-medium'
+                              : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                          }`}
+                          disabled={editLoading}
+                        >
+                          {goal.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-xs text-gray-400 text-center">
                       {VOCABULARY_GOALS.find(g => g.rank === editWordGoalRank)?.description}
-                    </span>
+                    </div>
                   </div>
                 </div>
               </div>

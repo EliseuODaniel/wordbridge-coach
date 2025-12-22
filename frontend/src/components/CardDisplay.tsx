@@ -43,6 +43,12 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
       'relearn': 1,
       'review': 3,
       'mature': 4,
+      // Uppercase variants (Spec4 SM-2 values)
+      'NEW': 0,
+      'LEARNING': 1,
+      'RELEARN': 1,
+      'REVIEW': 3,
+      'MATURE': 4,
     };
 
     const filledDots = stageMapping[card.memory_stage] || 0;
