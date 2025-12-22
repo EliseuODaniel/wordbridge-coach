@@ -161,9 +161,22 @@ def seed_varied_sentences():
 
             # Create sentences for this word
             for sentence_text, translation, grammar_hint, difficulty in sentences_data:
-                # Check if this exact sentence already exists
+                # Replace word with gap for the sentence FIRST
+                gap_start = sentence_text.find(word_text)
+
+                if gap_start == -1:
+                    # If word not found in sentence, put it in a reasonable position
+                    gap_start = sentence_text.find("___")
+                    if gap_start == -1:
+                        gap_start = 0
+
+                # Calculate gap positions based on the GAP ("___"), not the word
+                gap_end = gap_start + 3  # "___" has 3 characters
+                sentence_text_with_gap = sentence_text[:gap_start] + "___" + sentence_text[gap_start + len(word_text):]
+
+                # Check if this exact sentence already exists (idempotency check)
                 existing_sentence = db.query(Sentence).filter(
-                    Sentence.text == sentence_text
+                    Sentence.text == sentence_text_with_gap
                 ).first()
 
                 if existing_sentence:
@@ -181,22 +194,30 @@ def seed_varied_sentences():
                         )
                         db.add(mapping)
                         updated_count += 1
+
+                    # CRITICAL: Ensure Card exists for this sentence (idempotency)
+                    existing_card = db.query(Card).filter(
+                        Card.sentence_id == existing_sentence.id
+                    ).first()
+
+                    if not existing_card:
+                        # Create Card for existing sentence
+                        card = Card(
+                            id=str(uuid.uuid4()),
+                            sentence_id=existing_sentence.id,
+                            deck_id=deck.id,
+                            grammar_hint=existing_sentence.grammar_hint or grammar_hint,
+                            difficulty=existing_sentence.difficulty or difficulty,
+                            gap_start=existing_sentence.gap_start,
+                            gap_end=existing_sentence.gap_end,
+                            is_active=True
+                        )
+                        db.add(card)
+                        updated_count += 1
+
                     continue
 
                 # Create new sentence
-                gap_start = sentence_text.find(word_text)
-                gap_end = gap_start + len(word_text)
-
-                if gap_start == -1:
-                    # If word not found in sentence, put it in a reasonable position
-                    gap_start = sentence_text.find("___")
-                    if gap_start == -1:
-                        gap_start = 0
-                    gap_end = gap_start + len(word_text)
-
-                # Replace word with gap for the sentence
-                sentence_text_with_gap = sentence_text[:gap_start] + "___" + sentence_text[gap_end:]
-
                 sentence = Sentence(
                     text=sentence_text_with_gap,
                     translation=translation,
@@ -206,7 +227,7 @@ def seed_varied_sentences():
                     source_type=SourceType.MANUAL,
                     difficulty=difficulty,
                     gap_start=gap_start,
-                    gap_end=gap_end,
+                    gap_end=gap_end,  # Correct: points to end of "___"
                     grammar_hint=grammar_hint
                 )
                 db.add(sentence)
@@ -220,7 +241,7 @@ def seed_varied_sentences():
                     grammar_hint=grammar_hint,
                     difficulty=difficulty,
                     gap_start=gap_start,
-                    gap_end=gap_end,
+                    gap_end=gap_end,  # Correct: points to end of "___"
                     is_active=True
                 )
                 db.add(card)
