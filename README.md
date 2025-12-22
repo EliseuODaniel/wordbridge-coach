@@ -74,7 +74,10 @@ A Complete Fill-in-the-Gap vocabulary learning application with spaced repetitio
 
 ### Prerequisites
 - Docker and Docker Compose installed
+  - **Docker Compose V2** (recommended): `docker compose` command
+  - **Legacy V1** (also supported): `docker-compose` command
 - Git for cloning the repository
+- For **WSL2 users**: Enable Docker Desktop WSL2 integration
 
 ### Setup and Run
 ```bash
@@ -86,12 +89,24 @@ cd filltheword
 ./scripts/quick_start.sh
 ```
 
+### WSL2 Notes
+If you're using WSL2 on Windows:
+1. Install Docker Desktop for Windows
+2. Enable **WSL2 Integration** in Docker Desktop Settings:
+   - Settings → Resources → WSL Integration
+   - Enable your WSL2 distro (e.g., Ubuntu)
+3. Verify: `docker compose version` (should work in WSL2 terminal)
+4. Frontend URL: `http://localhost:3007` (mapped from 3000 in container)
+
 ### Manual Setup
 ```bash
 # Create directories
 mkdir -p audio/{en,pt,es}/{word,sentence} tts_models
 
-# Start services
+# Start services (Docker Compose V2)
+docker compose up -d --build
+
+# OR for legacy Docker Compose V1
 docker-compose up -d --build
 
 # Wait for services to be ready
@@ -101,11 +116,11 @@ sleep 30
 docker-compose exec api python scripts/seed_data.py
 
 # Access the application
-open http://localhost:3000
+open http://localhost:3007  # Note: mapped from container port 3000
 ```
 
 ### Service URLs
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:3007 (mapped from container port 3000)
 - **API Documentation**: http://localhost:8000/docs
 - **TTS Service**: http://localhost:8001/health
 - **Database**: localhost:5432 (user: ftw_user, password: ftw_password)
