@@ -99,6 +99,14 @@ alembic/*.db
 .coverage
 .pytest_cache/
 htmlcov/
+test-results/
+api/test-results/
+
+# E2E test artifacts (Playwright)
+tests/e2e/playwright-report/
+tests/e2e/test-results/
+tests/e2e/debug-*.png
+tests/e2e/playwright/.cache/
 
 # Temporary files
 *.tmp
