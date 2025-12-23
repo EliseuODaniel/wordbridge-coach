@@ -455,6 +455,19 @@ class CardSelectionService:
             if target_lang:
                 lang_code = target_lang.code
 
+        # Build audio URLs using TTS service endpoints (via nginx proxy)
+        from urllib.parse import quote
+
+        # Word audio URL
+        word_text_encoded = quote(word.text or "")
+        audio_word_url = f"/api/tts/word/{card.id}?text={word_text_encoded}&lang={lang_code}"
+
+        # Sentence audio URL - replace ___ with actual word
+        sentence_with_gap = sentence.text or ""
+        sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
+        sentence_text_encoded = quote(sentence_with_word)
+        audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
         return {
             "card_id": str(card.id),
             "word_id": str(word.id),
@@ -469,8 +482,8 @@ class CardSelectionService:
             "grammar_hint": card.grammar_hint or "",
             "memory_stage": "NEW" if is_new else "REVIEW",
             "is_new": is_new,
-            "audio_word_url": f"/api/audio/{lang_code}/word/{word.id}.wav",
-            "audio_sentence_url": f"/api/audio/{lang_code}/sentence/{sentence.id}.wav"
+            "audio_word_url": audio_word_url,
+            "audio_sentence_url": audio_sentence_url
         }
 
     def record_answer(self, user_id: str, card_id: str, was_correct: bool,
