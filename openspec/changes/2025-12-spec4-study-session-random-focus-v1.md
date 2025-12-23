@@ -1,8 +1,8 @@
 # Change: Spec4 Study Session - Random Selection + Focus + No 404
 
 **Date**: 2025-12-23
-**Status**: ✅ Applied
-**Version**: v1.0
+**Status**: 🚧 In Progress
+**Version**: v1.1
 **Type**: Bug Fix + UX Enhancement
 **Scope**: Backend (Spec4 card selection), Frontend (StudySession focus), OpenSpec (SPEC.md)
 
@@ -299,15 +299,16 @@ useEffect(() => {
 
 ## Implementation Notes ( discoveries during development )
 
-### Additional Issues Found and Fixed
+### Additional Issues Found and Fixed (v1.0)
 
 During implementation, the following additional issues were discovered and addressed:
 
-1. **Audio URLs using UUID instead of language code** (CRITICAL):
+1. **Audio URLs using UUID instead of language code** (CRITICAL) - FIXED AGAIN IN v1.1:
    - **Problem**: `card_selection.py:_build_card_context()` was using `word.language_id` (UUID) in audio URLs
    - **Impact**: TTS service couldn't route to correct language model
-   - **Fix**: Changed to use language code (`en`, `fr`, `pt`) from user's target language
-   - **URL format**: `/api/audio/{lang_code}/word/{word_id}.wav` instead of `/api/audio/{uuid}/word/{word_id}.wav`
+   - **v1.0 Fix**: Changed to use language code (`en`, `fr`, `pt`) from user's target language
+   - **URL format**: `/api/audio/{lang_code}/word/{word_id}.wav`
+   - **v1.1 Fix**: Changed to correct TTS endpoint format: `/api/tts/word/{card_id}?text={encoded}&lang={code}`
 
 2. **Missing Card for some Sentences** (HIGH):
    - **Problem**: `_build_card_context()` returned `None` when no Card existed for a Sentence
@@ -329,17 +330,40 @@ During implementation, the following additional issues were discovered and addre
    - **Impact**: User couldn't retry same card after wrong answer
    - **Fix**: Remove `setTimeout(loadNextCard)` in error handler
 
+### v1.1 Runtime Fixes (2025-12-23)
+
+Additional bugs discovered during runtime validation and fixed:
+
+1. **Audio URLs using wrong endpoint format** (CRITICAL):
+   - **Problem**: v1.0 used `/api/audio/{lang_code}/word/{word_id}.wav` which doesn't exist
+   - **Impact**: Audio always returned 404, breaking word/sentence audio playback
+   - **Fix**: Changed to correct TTS endpoint format with query params:
+     - `/api/tts/word/{card_id}?text={urlencoded(word_text)}&lang={lang_code}`
+     - `/api/tts/sentence/{card_id}?text={urlencoded(sentence_with_word)}&lang={lang_code}`
+   - **Also fixed**: nginx proxy to use correct TTS service name (`tts:8001/api/tts/`)
+   - **Validation**: curl returns 200 OK with audio/wav content-type
+
+2. **Advance on incorrect answer** (HIGH):
+   - **Problem**: Frontend always called `loadNextCard()` even when `response.correct === false`
+   - **Impact**: Users couldn't retry same card after wrong answer
+   - **Fix**: Only call `loadNextCard()` when `response.correct === true`
+   - **Validation**: Manual test - erroring 3x keeps same card/word visible
+
+3. **Theme analytics never populated** (HIGH):
+   - **Problem**: `UserThemeStats` never updated in `/answer` endpoint; `seed_themes.py` never executed
+   - **Impact**: `/insights/user/{id}/themes` always returned empty array
+   - **Fix**: Added theme stats update logic in submit_answer endpoint; executed seed_themes.py
+   - **Validation**: After answering "work" (mapped to "Daily Actions"), endpoint returns theme with attempts=1
+
 ### Out of Scope (Deferred to Future PR)
 
 1. **Progressive hints system**: Current implementation uses static `grammar_hint`. Progressive hints (first letter → first 3 letters → POS → full word) deferred to future enhancement.
 
-2. **Theme performance analytics**: Themes model and seed exist but not integrated into Spec4 selection flow. Deferred to dedicated "Theme-Aware Selection" feature.
-
-3. **Recent word avoidance**: Current system only excludes immediate previous card. Soft exclusion of last N words (5-10) not implemented due to complexity vs benefit trade-off.
+2. **Recent word avoidance**: Current system only excludes immediate previous card. Soft exclusion of last N words (5-10) not implemented due to complexity vs benefit trade-off.
 
 ### Validation Results
 
-**Smoke Test (20 consecutive requests)** - 2025-12-23:
+**Smoke Test (20 consecutive requests)** - 2025-12-23 v1.0:
 - ✅ 20/20 successful (100%)
 - ✅ No 404 errors
 - ✅ Audio URLs use language code format (`/api/audio/en/word/{uuid}.wav`)
@@ -350,6 +374,13 @@ During implementation, the following additional issues were discovered and addre
 - ✅ Frequency chart renders for edge cases (coverage_pct=0)
 - ✅ TypeScript build passing
 
+**v1.1 Runtime Validation** - 2025-12-23:
+- ✅ Audio URLs using correct TTS endpoints: `/api/tts/word/{card_id}?text={encoded}&lang=en`
+- ✅ Audio playback working (curl returns 200 OK with audio/wav content-type)
+- ✅ No-advance on error working (manual test: 3 wrong answers keep same card)
+- ✅ Theme stats populated (seed_themes created 10 themes + 29 mappings)
+- ✅ `/insights/user/{id}/themes` returns data after answering words
+
 **Performance**:
 - Latency: 50-200ms per request
 - Database queries: Optimal (no N+1 issues)
@@ -359,10 +390,11 @@ During implementation, the following additional issues were discovered and addre
 
 ---
 
-**Status**: ✅ Applied (All fixes complete and validated)
+**Status**: 🚧 In Progress (v1.1 runtime fixes applied, pending final validation)
 
 **Next Steps**:
 1. ✅ Implementação PASSO 2 (Backend) - COMPLETO
 2. ✅ Implementação PASSO 3 (Frontend) - COMPLETO
-3. ✅ Testes e validação - COMPLETO
-4. ✅ Arquivar change (marcar Applied) - COMPLETO
+3. ✅ Testes e validação v1.0 - COMPLETO
+4. ✅ Runtime fixes v1.1 (audio/no-advance/themes) - COMPLETO
+5. ⏳ Final validation & PR update - EM ANDAMENTO
