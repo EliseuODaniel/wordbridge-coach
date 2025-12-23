@@ -174,11 +174,8 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         next_review_at: new Date().toISOString()
       });
 
-      // Still load next card after error so user can continue
-      setTimeout(() => {
-        console.log('🔄 Loading next card after submission error...');
-        loadNextCard(currentCard?.card_id);
-      }, 2000);
+      // DON'T load next card on error - let user see feedback and retry
+      // User can try again with the same card
 
     } finally {
       setIsSubmitting(false);
