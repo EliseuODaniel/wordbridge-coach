@@ -16,6 +16,7 @@ class CardResponse(BaseModel):
     """Response schema for GET /api/cards/next - EXACT match to specification"""
     card_id: str = Field(..., description="Unique card identifier")
     word_id: str = Field(..., description="Word ID for insights")
+    sentence_id: str = Field(..., description="Sentence ID for variety tracking (Spec4)")
     word: str = Field(..., description="The word being studied")
     sentence: str = Field(..., description="Sentence with gap placeholder")
     gap: Gap = Field(..., description="Gap position information")
@@ -31,6 +32,7 @@ class CardResponse(BaseModel):
             "example": {
                 "card_id": "550e8400-e29b-41d4-a716-446655440000",
                 "word_id": "660e8400-e29b-41d4-a716-446655440000",
+                "sentence_id": "770e8400-e29b-41d4-a716-446655440000",
                 "word": "book",
                 "sentence": "The ___ is on the table.",
                 "gap": {"start": 4, "end": 8},

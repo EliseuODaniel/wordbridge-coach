@@ -329,6 +329,7 @@ def format_card_response(card: Card, memory_stage: str) -> CardResponse:
     return CardResponse(
         card_id=str(card.id),  # Convert UUID to string for API response
         word_id=str(card.sentence.word.id) if card.sentence and card.sentence.word else "",
+        sentence_id=str(card.sentence_id) if card.sentence_id else "",  # Spec4: sentence variety tracking
         word=word_text,
         sentence=sentence_text,
         gap={"start": card.gap_start, "end": card.gap_end},
@@ -650,6 +651,7 @@ async def get_next_card_spec4(
         return CardResponse(
             card_id=card_context["card_id"],  # CRITICAL: Real Card.id from database
             word_id=card_context["word_id"],
+            sentence_id=card_context["sentence_id"],  # Spec4: sentence variety tracking
             word=card_context["word"],
             sentence=card_context["sentence"],
             gap=card_context["gap"],
