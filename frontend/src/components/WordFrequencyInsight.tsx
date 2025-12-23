@@ -115,7 +115,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
     for (const point of baseCurvePoints) {
       // Add current point before this base point if its rank is smaller
       if (!currentPointInserted && rank < point.rank) {
-        curvePoints.push({ rank, coverage_pct });
+        curvePoints.push({ rank, coverage_pct: coverage_pct ?? 0 });
         currentPointInserted = true;
       }
       curvePoints.push(point);
@@ -123,7 +123,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
 
     // Add current point at the end if its rank is larger than all base points
     if (!currentPointInserted) {
-      curvePoints.push({ rank, coverage_pct });
+      curvePoints.push({ rank, coverage_pct: coverage_pct ?? 0 });
     }
 
     // Ensure monotonic increase: adjust coverage_pct to be cumulative
