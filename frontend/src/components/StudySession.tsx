@@ -151,12 +151,16 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Trigger insights refresh
       setRefreshTrigger(prev => prev + 1);
 
-      // Load next card after delay, excluding current card to avoid repetition
-      // This works for both correct and incorrect answers (SM-2 algorithm handles the scheduling)
-      setTimeout(() => {
-        console.log('🔄 Loading next card after answer submission...');
-        loadNextCard(currentCard?.card_id);
-      }, 1500); // Slightly longer delay to show feedback
+      // Load next card ONLY if answer was correct
+      // If incorrect, user stays on same card to try again
+      if (response.correct) {
+        setTimeout(() => {
+          console.log('✅ Answer correct! Loading next card...');
+          loadNextCard(currentCard?.card_id);
+        }, 1500); // Slightly longer delay to show feedback
+      } else {
+        console.log('❌ Answer incorrect. User can try again with same card.');
+      }
 
     } catch (error) {
       console.error('❌ Error submitting answer:', {
