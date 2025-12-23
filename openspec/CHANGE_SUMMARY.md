@@ -3,7 +3,7 @@
 ## ✅ Aplicado: Spec4 Variedade + Progressão (2025-12-22)
 
 **Status**: ✅ Applied → Validated
-**Change Document**: `openspec/changes/2025-12-spec4-variedade-progressao-v1.md`
+**Change Document**: `openspec/changes/archived/2025-12-spec4-variedade-progressao-v1.md`
 **Escopo**: Backend (Spec4 algorithm), Frontend (Study Session), Database (Seed), Documentation (Docker)
 
 ### Resumo
@@ -102,7 +102,7 @@ Implementação completa do algoritmo **Spec4** definido em `spec4.md`, incluind
 - [x] Variedade de frases: K=10 últimas são evitadas quando há alternativas ✅
 - [x] `PATCH /users/{id}` aceita `word_goal_rank` e ajusta progress ✅
 - [x] Seed cria 3+ frases por palavra com Cards correspondentes ✅
-- [x] Testes backend passam (pytest: 9/10 Spec4 tests pass) ✅
+- [x] Testes backend passam (pytest: 10/10 Spec4 tests passing) ✅
 - [x] Docs Docker funcionam em WSL2 ✅
 
 ### Validação (FASE 3)
@@ -131,12 +131,13 @@ docker compose exec api python /app/seed_varied_sentences.py
 **Pytest**:
 ```bash
 docker compose exec api sh -c "PYTHONPATH=. pytest tests/integration/test_spec4_card_selection.py -v"
-# ✅ 9 passed, 1 failed (probabilistic ratio test)
-# ✅ All critical Spec4 functionality validated:
+# ✅ 10 passed (100%) - all Spec4 tests passing!
+# ✅ All Spec4 functionality validated:
 #    - sentence_id populated in ReviewEvent
 #    - card_id real from database
 #    - SM-2 algorithm working
 #    - Vocabulary progression functioning
+#    - 25% new / 75% review mix working correctly
 ```
 
 **Evidência 1: card_id REAL em /next-spec4**

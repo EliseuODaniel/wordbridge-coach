@@ -1,7 +1,7 @@
 # Change: Spec4 Variedade + Progressão + Integração Completa
 
 **Date**: 2025-12-22
-**Status**: 📋 Planned
+**Status**: ✅ Applied & Validated
 **Version**: v1.0
 **Type**: Major Feature Enhancement + Bug Fixes
 **Scope**: Backend (Spec4 algorithm), Frontend (Study Session), Database (Seed), Documentation (Docker)
@@ -142,7 +142,7 @@ review_event = ReviewEvent(
   - Perguntas: "Is/Are {word} {context}?"
   - Negativas: "{word} is/are not {context}."
 
-**Script: `api/scripts/seed_spec4_sentences.py`**
+**Script: `api/seed_varied_sentences.py`**
 ```python
 def create_sentences_for_word(word, count=5):
     templates = [
@@ -331,7 +331,7 @@ def downgrade():
 - [ ] Não há erros de "card not found" no POST `/answer`
 
 ### Seed/Dados
-- [ ] Script `seed_spec4_sentences.py` roda sem erros
+- [ ] Script `seed_varied_sentences.py` roda sem erros
 - [ ] Cria pelo menos 3 frases para top 200 palavras
 - [ ] Cada Sentence tem Card correspondente
 - [ ] Gap positions (start/end) estão corretos
