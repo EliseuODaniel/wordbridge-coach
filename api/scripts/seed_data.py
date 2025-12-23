@@ -19,6 +19,8 @@ from app.models import (
     Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
 )
 from app.models.user_card_state import MemoryStage
+from app.models.word_frequency import WordFrequency
+from app.models.word_theme_mapping import WordThemeMapping
 
 
 def create_languages(db: Session):
@@ -1170,6 +1172,75 @@ def cleanup_existing_data(db: Session):
     print("Cleaned up existing seed data")
 
 
+def ensure_word_frequencies(db: Session, words: list, lang_ids: dict):
+    """Ensure WordFrequency entries exist for seeded words"""
+    print("\nEnsuring WordFrequency entries...")
+
+    en_lang_id = lang_ids.get('en')
+
+    for word in words:
+        # Only process English words with frequency_rank
+        if not en_lang_id or word.language_id != en_lang_id or not word.frequency_rank:
+            continue
+
+        # Check if already exists
+        existing = db.query(WordFrequency).filter(
+            WordFrequency.word == word.lemma.lower()
+        ).first()
+
+        if existing:
+            continue
+
+        # Create WordFrequency
+        wf = WordFrequency(
+            word=word.lemma.lower(),
+            language_code='en',
+            rank=word.frequency_rank,
+            band=WordFrequency.get_band_from_rank(word.frequency_rank),
+            is_active=True
+        )
+        db.add(wf)
+
+    db.commit()
+    print(f"✅ WordFrequency entries created/verified")
+
+
+def ensure_themes_and_mappings(db: Session):
+    """Ensure themes and mappings exist (idempotent)"""
+    print("\nEnsuring themes and word-theme mappings...")
+
+    # Check if themes already exist
+    from app.models.word_theme import WordTheme
+    theme_count = db.query(WordTheme).count()
+
+    if theme_count > 0:
+        print(f"✅ Themes already exist ({theme_count} themes), skipping...")
+        return
+
+    # Import and run seed_themes logic
+    print("No themes found, running seed_themes.py...")
+
+    # Import functions from seed_themes
+    sys.path.insert(0, '/app')
+    try:
+        from seed_themes import create_basic_themes, create_word_theme_mappings
+
+        # Create themes
+        themes = create_basic_themes(db)
+
+        # Create mappings
+        create_word_theme_mappings(db)
+
+        db.commit()
+        print(f"✅ Created {len(themes)} themes and word mappings")
+
+    except ImportError as e:
+        print(f"⚠️  Could not import seed_themes: {e}")
+        print("Themes not seeded - run 'python seed_themes.py' manually if needed")
+    finally:
+        sys.path.pop(0)
+
+
 def main():
     """Main seed function"""
     import argparse
@@ -1195,6 +1266,10 @@ def main():
         demo_user = create_demo_user(db)
         user_states = create_user_card_states(db, demo_user, cards)
 
+        # Ensure WordFrequency and themes (idempotent)
+        ensure_word_frequencies(db, words, lang_ids)
+        ensure_themes_and_mappings(db)
+
         print("\n🎉 Seed data creation completed successfully!")
         print(f"📊 Summary:")
         print(f"  - Languages: {len(lang_ids)}")
@@ -1204,6 +1279,8 @@ def main():
         print(f"  - Cards: {len(cards)}")
         print(f"  - Demo User: 1")
         print(f"  - User Card States: {len(user_states)}")
+        print(f"  - WordFrequency: ensured (if ranks present)")
+        print(f"  - Themes/Mappings: ensured (idempotent)")
 
     except Exception as e:
         print(f"❌ Error during seed data creation: {e}")
