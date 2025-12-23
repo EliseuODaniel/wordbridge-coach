@@ -74,13 +74,6 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
     }
   };
 
-  // Handle Enter key
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSubmit(e as any);
-    }
-  };
-
   return (
     <form onSubmit={handleSubmit} className="max-w-md mx-auto">
       <div className="flex gap-3">
@@ -89,7 +82,6 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
           type="text"
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
-          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={isSubmitting}
           className="input flex-1 text-center text-lg"

@@ -1,6 +1,6 @@
 /** Main Study Session Component */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cardsApi } from '../services/api';
 import type { CardResponse, AnswerResponse } from '../services/api';
 import { audioService } from '../services/audio';
@@ -26,6 +26,9 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Ref to manage next card timeout and prevent "ghost timers"
+  const nextCardTimeoutRef = useRef<number | null>(null);
 
   // Load stats from API
   const loadStats = useCallback(async () => {
@@ -142,6 +145,9 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Refresh stats after answer
       loadStats();
 
+      // Log response.correct type and value for diagnosis
+      console.log('[answer] correct=', response.correct, 'type=', typeof response.correct, 'strict check:', response.correct === true);
+
       console.log('✅ Answer submitted successfully:', {
         answer,
         correct: response.correct,
@@ -151,15 +157,26 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Trigger insights refresh
       setRefreshTrigger(prev => prev + 1);
 
-      // Load next card ONLY if answer was correct
+      // Clear any existing timeout before scheduling a new one
+      if (nextCardTimeoutRef.current) {
+        console.log('[timeout] Clearing previous timeout:', nextCardTimeoutRef.current);
+        clearTimeout(nextCardTimeoutRef.current);
+        nextCardTimeoutRef.current = null;
+      }
+
+      // Load next card ONLY if answer was correct (STRICT BOOL CHECK)
       // If incorrect, user stays on same card to try again
-      if (response.correct) {
-        setTimeout(() => {
-          console.log('✅ Answer correct! Loading next card...');
+      if (response.correct === true) {
+        console.log('✅ Answer correct! Scheduling next card in 1500ms...');
+        nextCardTimeoutRef.current = window.setTimeout(() => {
+          console.log('[timeout] Executing loadNextCard');
           loadNextCard(currentCard?.card_id);
+          nextCardTimeoutRef.current = null; // Clear after execution
         }, 1500); // Slightly longer delay to show feedback
       } else {
         console.log('❌ Answer incorrect. User can try again with same card.');
+        // Explicitly ensure no timeout is scheduled for incorrect answers
+        nextCardTimeoutRef.current = null;
       }
 
     } catch (error) {
@@ -178,8 +195,12 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         next_review_at: new Date().toISOString()
       });
 
-      // DON'T load next card on error - let user see feedback and retry
-      // User can try again with the same card
+      // Clear any timeout on error to prevent "ghost timers"
+      if (nextCardTimeoutRef.current) {
+        console.log('[error] Clearing timeout due to error');
+        clearTimeout(nextCardTimeoutRef.current);
+        nextCardTimeoutRef.current = null;
+      }
 
     } finally {
       setIsSubmitting(false);
@@ -240,6 +261,12 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
     return () => {
       // Cleanup audio on unmount
       audioService.clearCache();
+      // Cleanup any pending timeout to prevent "ghost timers"
+      if (nextCardTimeoutRef.current) {
+        console.log('[unmount] Clearing pending timeout');
+        clearTimeout(nextCardTimeoutRef.current);
+        nextCardTimeoutRef.current = null;
+      }
     };
   }, [loadNextCard, loadStats, loadSettings]);
 
