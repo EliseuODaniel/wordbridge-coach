@@ -180,12 +180,16 @@ GET /api/v1/cards/next
 **Response**:
 ```json
 {
-  "card_id": "uuid",
+  "card_id": "uuid-card-real",
+  "word_id": "uuid-word",
+  "sentence_id": "uuid-sentence",
+  "word": "book",
   "sentence": "The ___ is on the table.",
   "gap": {"start": 4, "end": 7},
   "sentence_translation": "O livro está na mesa.",
   "grammar_hint": "Use the word for furniture",
-  "memory_stage": "new",
+  "memory_stage": "NEW",
+  "is_new": true,
   "audio_word_url": "http://localhost:8001/api/tts/word/{card_id}?text=book&lang=en",
   "audio_sentence_url": "http://localhost:8001/api/tts/sentence/{card_id}?text=The book is on the table.&lang=en"
 }

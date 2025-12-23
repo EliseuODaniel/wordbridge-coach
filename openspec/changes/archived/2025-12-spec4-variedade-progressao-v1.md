@@ -1,8 +1,9 @@
 # Change: Spec4 Variedade + Progressão + Integração Completa
 
 **Date**: 2025-12-22
-**Status**: ✅ Applied & Validated
+**Status**: ✅ Applied & Validated & Archived
 **Version**: v1.0
+**Location**: openspec/changes/archived/2025-12-spec4-variedade-progressao-v1.md
 **Type**: Major Feature Enhancement + Bug Fixes
 **Scope**: Backend (Spec4 algorithm), Frontend (Study Session), Database (Seed), Documentation (Docker)
 
