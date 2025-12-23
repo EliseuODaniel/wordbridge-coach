@@ -81,13 +81,15 @@ class TestSpec4CardSelection:
         from app.models import UserCardState, MemoryStage, UserFrequencyProgress
 
         # Create UserFrequencyProgress to enable review functionality
-        # Set max_contiguous_mastered_rank lower to allow new words beyond this rank
+        # CRITICAL: Match with fixture ranks (50, 100, 150 in conftest.py)
         progress = UserFrequencyProgress(
             user_id=test_user.id,
-            max_contiguous_mastered_rank=10,  # Only mastered words up to rank 10
-            word_goal_rank=200  # Goal is 200, so ranks 11-200 are available as new words
+            max_contiguous_mastered_rank=100,  # Words <=100 are "review" candidates
+            current_window_end_rank=200,  # Window extends to 200
+            word_goal_rank=200  # Goal is 200
         )
         db_session.add(progress)
+        db_session.commit()
 
         # Set some cards to review state to simulate existing progress
         review_cards = db_session.query(UserCardState).filter(
@@ -109,27 +111,28 @@ class TestSpec4CardSelection:
         new_cards = 0
         review_cards_count = 0
         total_cards = 0
+        last_card_id = None
 
-        for _ in range(20):  # Try to get 20 cards
-            response = client.get("/api/v1/cards/next-spec4",
-                                 params={"user_id": str(test_user.id)})
+        for i in range(20):  # Try to get 20 cards
+            params = {"user_id": str(test_user.id)}
+            if last_card_id:
+                params["exclude_card_id"] = last_card_id
+
+            response = client.get("/api/v1/cards/next-spec4", params=params)
 
             if response.status_code == 200:
                 card_data = response.json()
                 total_cards += 1
+                last_card_id = card_data.get("card_id")
 
                 if card_data.get("is_new"):
                     new_cards += 1
                 else:
                     review_cards_count += 1
 
-                # Submit answer to continue
-                answer_data = {
-                    "answer": "dummy",  # Answer doesn't matter for this test
-                    "response_time_ms": 1500
-                }
-                client.post(f"/api/v1/cards/{card_data['card_id']}/answer",
-                           json=answer_data, params={"user_id": str(test_user.id)})
+                # CRITICAL: Do NOT submit answer in this test
+                # Submitting answers pushes next_review_at to future,
+                # depleting the pool of due review cards
             else:
                 break
 
@@ -139,8 +142,8 @@ class TestSpec4CardSelection:
             review_percentage = (review_cards_count / total_cards) * 100
 
             # Allow some flexibility in the percentage
-            assert 15 <= new_percentage <= 35, f"New cards: {new_percentage}%"
-            assert 65 <= review_percentage <= 85, f"Review cards: {review_percentage}%"
+            assert 15 <= new_percentage <= 35, f"New cards: {new_percentage}% ({new_cards}/{total_cards})"
+            assert 65 <= review_percentage <= 85, f"Review cards: {review_percentage}% ({review_cards_count}/{total_cards})"
 
     def test_answer_submission_updates_sm2(
         self, client: TestClient, test_user, user_card_states, db_session
