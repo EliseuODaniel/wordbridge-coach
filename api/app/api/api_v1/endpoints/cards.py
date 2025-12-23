@@ -14,6 +14,8 @@ from app.services.sm2 import SM2Algorithm
 from app.services.card_selection import CardSelectionService
 from app.models import Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
 from app.models.user_card_state import MemoryStage
+from app.models.user_theme_stats import UserThemeStats
+from app.models.word_theme_mapping import WordThemeMapping
 
 router = APIRouter()
 
@@ -537,6 +539,47 @@ async def submit_answer(
             user_card_state.status = MemoryStage.NEW
 
         print(f"DEBUG: UserCardState updated successfully")
+
+        # Update UserThemeStats for all themes associated with this word
+        word_id = card.sentence.word_id
+        theme_mappings = db.query(WordThemeMapping.theme_id).filter(
+            and_(
+                WordThemeMapping.word_id == word_id,
+                WordThemeMapping.is_active == True
+            )
+        ).all()
+
+        for theme_mapping in theme_mappings:
+            theme_id = theme_mapping[0]  # Extract theme_id from tuple
+
+            # Get or create UserThemeStats
+            theme_stats = db.query(UserThemeStats).filter(
+                and_(
+                    UserThemeStats.user_id == user_id,
+                    UserThemeStats.theme_id == theme_id
+                )
+            ).first()
+
+            if not theme_stats:
+                # Create new UserThemeStats
+                theme_stats = UserThemeStats(
+                    id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    theme_id=theme_id,
+                    attempts=0,
+                    correct=0,
+                    accuracy=0.0,
+                    avg_response_time_ms=0.0
+                )
+                db.add(theme_stats)
+                db.flush()  # Flush to ensure it's persisted before updating
+
+            # Add attempt using model's method
+            theme_stats.add_attempt(
+                was_correct=is_correct,
+                response_time_ms=answer_data.response_time_ms
+            )
+            print(f"DEBUG: Updated UserThemeStats for theme_id={theme_id}, attempts={theme_stats.attempts}, accuracy={theme_stats.accuracy:.3f}")
 
         # CRITICAL: Update Spec4 progression after correct answer
         if is_correct:
