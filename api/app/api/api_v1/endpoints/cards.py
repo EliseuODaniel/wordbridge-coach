@@ -300,8 +300,15 @@ async def get_next_card(
         )
 
 
-def format_card_response(card: Card, memory_stage: str) -> CardResponse:
+def format_card_response(card: Card, memory_stage) -> CardResponse:
     """Format card data for API response"""
+
+    # Normalize memory_stage to string (handle both MemoryStage enum and string)
+    from app.models.user_card_state import MemoryStage
+    if isinstance(memory_stage, MemoryStage):
+        memory_stage_str = memory_stage.value
+    else:
+        memory_stage_str = memory_stage
 
     # Try to get sentence data, fall back to default if relationships don't work
     try:
@@ -335,8 +342,8 @@ def format_card_response(card: Card, memory_stage: str) -> CardResponse:
         gap={"start": card.gap_start, "end": card.gap_end},
         sentence_translation=sentence_translation,
         grammar_hint=card.grammar_hint,
-        memory_stage=memory_stage,
-        is_new=memory_stage == "NEW",  # Add is_new field
+        memory_stage=memory_stage_str,  # Use normalized string value
+        is_new=memory_stage_str == "NEW",  # Correct comparison with string
         audio_word_url=audio_word_url,
         audio_sentence_url=audio_sentence_url
     )
@@ -503,16 +510,14 @@ async def submit_answer(
                 accuracy=0.0
             )
             db.add(daily_stats)
+            db.flush()  # Flush to ensure it's persisted before updating
 
-        # Update daily stats
-        daily_stats.cards_answered += 1
-        daily_stats.reviews_done += 1
+        # Update daily stats using the model's method
+        daily_stats.update_accuracy(was_correct=is_correct)
+
+        # Track new words learned separately (only for correct answers)
         if is_correct:
-            daily_stats.new_words_learned += 1
-
-        # Calculate accuracy
-        if daily_stats.reviews_done > 0:
-            daily_stats.accuracy = daily_stats.cards_answered / daily_stats.reviews_done
+            daily_stats.add_new_word()
 
         # Update UserCardState with SM-2 results
         user_card_state.repetitions = sm2_result["repetitions"]
