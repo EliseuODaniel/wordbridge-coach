@@ -563,7 +563,6 @@ async def submit_answer(
             if not theme_stats:
                 # Create new UserThemeStats
                 theme_stats = UserThemeStats(
-                    id=str(uuid.uuid4()),
                     user_id=user_id,
                     theme_id=theme_id,
                     attempts=0,

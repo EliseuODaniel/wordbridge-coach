@@ -186,10 +186,26 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         data: (error as any)?.response?.data
       });
 
+      // Extract real error message from server response
+      const status = (error as any)?.response?.status || '???';
+      const errorData = (error as any)?.response?.data;
+      let errorMessage = 'Error submitting answer';
+
+      if (errorData?.detail) {
+        // FastAPI error format: {detail: {error: "...", message: "..."}}
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = errorData.detail.message || errorData.detail.error || JSON.stringify(errorData.detail);
+        }
+      } else if ((error as any)?.message) {
+        errorMessage = (error as any).message;
+      }
+
       // Show user feedback but still allow them to try again
       setFeedback({
         correct: false,
-        correct_answer: 'Check the sentence for the missing word',
+        correct_answer: `Error ${status}: ${errorMessage}`,
         sentence_full: currentCard.sentence || '',
         quality: 0,
         next_review_at: new Date().toISOString()

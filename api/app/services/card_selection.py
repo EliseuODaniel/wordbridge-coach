@@ -3,7 +3,7 @@
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 
 from app.models import (
@@ -19,6 +19,37 @@ class CardSelectionService:
     def __init__(self, db: Session):
         self.db = db
         self.progression_service = VocabularyProgressionService(db)
+
+    def _get_recent_word_ids(self, user_id: str, days: int = 7, limit: int = 50) -> set:
+        """
+        Get distinct word IDs seen by user in recent days.
+
+        Args:
+            user_id: User ID
+            days: Look back period in days (default 7)
+            limit: Maximum number of word IDs to return (default 50)
+
+        Returns:
+            Set of word IDs recently seen
+        """
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+        # Get distinct word IDs from recent review events
+        recent_words = self.db.query(
+            func.distinct(Sentence.word_id)
+        ).join(
+            ReviewEvent, ReviewEvent.card_id == Card.id
+        ).join(
+            Sentence, Card.sentence_id == Sentence.id
+        ).filter(
+            and_(
+                ReviewEvent.user_id == user_id,
+                ReviewEvent.created_at >= cutoff_date
+            )
+        ).limit(limit).all()
+
+        # Extract word IDs from tuples
+        return {word_tuple[0] for word_tuple in recent_words if word_tuple[0]}
 
     def get_next_card_for_user(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -108,22 +139,39 @@ class CardSelectionService:
             if excluded_card and excluded_card.sentence:
                 excluded_word_id = excluded_card.sentence.word_id
 
-        # Try without excluded word first
+        # Anti-repetition: get recently seen words (last 7 days, max 50)
+        recent_word_ids = self._get_recent_word_ids(user_id, days=7, limit=50)
+
+        # Build exclusions: current card + recent words
+        exclusions = set()
         if excluded_word_id:
-            words_without_excluded = query.filter(Word.id != excluded_word_id).all()
-            if words_without_excluded:
-                word = random.choice(words_without_excluded)
+            exclusions.add(excluded_word_id)
+
+        # Try without excluded/recent words first
+        words_without_recent = query.filter(
+            ~Word.id.in_(exclusions | recent_word_ids)
+        ).all()
+
+        # Use words without recent if we have enough alternatives (threshold: 10)
+        if len(words_without_recent) >= 10:
+            word = random.choice(words_without_recent)
+        else:
+            # Fallback: include recent words (but still exclude current card)
+            if excluded_word_id:
+                words_without_current = query.filter(Word.id != excluded_word_id).all()
+                if words_without_current:
+                    word = random.choice(words_without_current)
+                else:
+                    # Last resort: include current card (will show different sentence)
+                    words = query.all()
+                    if not words:
+                        return None
+                    word = random.choice(words)
             else:
-                # Fallback: include excluded word (will show different sentence via get_sentence_for_word)
                 words = query.all()
                 if not words:
                     return None
                 word = random.choice(words)
-        else:
-            words = query.all()
-            if not words:
-                return None
-            word = random.choice(words)
 
         # Get sentence (variety K=10 handled by get_sentence_for_word)
         sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)

@@ -1069,7 +1069,7 @@ def create_cards(db: Session, sentences: list, decks: list):
 
         # Get the word to find the appropriate grammar hint
         word = db.query(Word).filter(Word.id == sentence.word_id).first()
-        grammar_hint = grammar_hints.get(word.lemma, 'Preencha com a palavra correta')
+        grammar_hint = grammar_hints.get(word.lemma, f'Type the {word.part_of_speech if word.part_of_speech != "UNK" else "word"}')
 
         card = Card(
             id=uuid.uuid4(),
@@ -1248,16 +1248,167 @@ def ensure_themes_and_mappings(db: Session):
         sys.path.pop(0)
 
 
+def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
+    """
+    Create Words, Sentences, and Cards from WordFrequency data.
+
+    This creates vocabulary for the top N ranks:
+    - Ranks 1..2000: Multiple sentences (2-5 per word based on rank band)
+    - Ranks 2001..max_rank: Single placeholder sentence each
+
+    Args:
+        db: Database session
+        lang_ids: Dict of language IDs
+        max_rank: Maximum rank to create (default 10000)
+
+    Returns:
+        Tuple of (words, sentences, cards) created
+    """
+    from app.models.word_frequency import WordFrequency
+    from app.models.word import Word
+    from app.models.sentence import Sentence
+    from app.models.card import Card
+
+    print(f"Creating 10k vocabulary (top {max_rank} words)...")
+
+    # Get all WordFrequency entries for English up to max_rank
+    word_freqs = db.query(WordFrequency).filter(
+        WordFrequency.language_code == 'en',
+        WordFrequency.rank <= max_rank,
+        WordFrequency.is_active == True
+    ).order_by(WordFrequency.rank).all()
+
+    print(f"Found {len(word_freqs)} word frequencies to process")
+
+    # Sentence count per word based on rank
+    # Top 100: 5 sentences, 101-500: 3, 501-1000: 2, 1001-2000: 1, 2001+: 1 placeholder
+    def get_sentence_count(rank):
+        if rank <= 100:
+            return 5
+        elif rank <= 500:
+            return 3
+        elif rank <= 1000:
+            return 2
+        elif rank <= 2000:
+            return 1
+        else:
+            return 1  # Placeholder
+
+    created_words = []
+    created_sentences = []
+    created_cards = []
+
+    for wf in word_freqs:
+        # Check if Word already exists
+        existing_word = db.query(Word).filter(
+            Word.lemma == wf.word,
+            Word.language_id == lang_ids['en']
+        ).first()
+
+        if existing_word:
+            word = existing_word
+        else:
+            # Calculate difficulty based on band
+            # Band 1 (1-1000) = difficulty 1, Band 2 (1001-3000) = 2, etc.
+            difficulty = wf.band
+
+            # Create Word
+            word = Word(
+                id=uuid.uuid4(),
+                lemma=wf.word,
+                text=wf.word,  # For now, text = lemma (no inflections)
+                part_of_speech='UNK',  # Unknown POS from dataset
+                pronunciation='',  # Empty initially
+                frequency_rank=wf.rank,
+                difficulty=difficulty,
+                language_id=lang_ids['en'],
+                is_active=True
+            )
+            db.add(word)
+            db.flush()  # Get the ID
+            created_words.append(word)
+
+        # Determine sentence count for this word
+        sentence_count = get_sentence_count(wf.rank)
+
+        for i in range(sentence_count):
+            # Create sentence
+            # For ranks > 2000, use simple placeholder
+            if wf.rank > 2000:
+                sentence_text = f"This is ___."
+                translation = f"Esta é a palavra '{wf.word}'."
+                gap_start = 8  # "This is " = 8 chars
+                gap_end = 11    # "___" = positions 8,9,10
+            else:
+                # For ranks 1..2000, use varied templates
+                templates = [
+                    f"The ___ is here.",
+                    f"I see a ___.",
+                    f"This is my ___.",
+                    f"Where is the ___?",
+                    f"A ___ is on the table."
+                ]
+                template = templates[i % len(templates)]
+                sentence_text = template.replace("___", "___")  # Keep gap marker
+                translation = f"{template.replace('___', wf.word)}"
+
+                # Calculate gap position (___ location)
+                gap_start = template.index("___")
+                gap_end = gap_start + 3  # "___" = 3 chars
+
+            sentence = Sentence(
+                id=uuid.uuid4(),
+                text=sentence_text,
+                translation=translation,
+                word_id=word.id,
+                language_id=lang_ids['en'],
+                type='example',
+                difficulty=word.difficulty,
+                gap_start=gap_start,
+                gap_end=gap_end,
+                is_active=True
+            )
+            db.add(sentence)
+            db.flush()
+            created_sentences.append(sentence)
+
+            # Create Card
+            card = Card(
+                id=uuid.uuid4(),
+                sentence_id=sentence.id,
+                deck_id=uuid.uuid4(),  # Will be updated later
+                grammar_hint='',  # Empty for now
+                difficulty=word.difficulty,
+                gap_start=sentence.gap_start,
+                gap_end=sentence.gap_end,
+                is_active=True
+            )
+            db.add(card)
+            db.flush()
+            created_cards.append(card)
+
+        if len(created_words) % 1000 == 0:
+            print(f"  Processed {len(created_words)} words...")
+
+    db.commit()
+    print(f"✅ Created {len(created_words)} words, {len(created_sentences)} sentences, {len(created_cards)} cards")
+
+    return created_words, created_sentences, created_cards
+
+
 def main():
     """Main seed function"""
     import argparse
     parser = argparse.ArgumentParser(description='Seed FillTheWord database')
     parser.add_argument('--reset', action='store_true', help='Reset all data before seeding')
+    parser.add_argument('--full', action='store_true', help='Full seed: create 10k vocabulary from WordFrequency')
     args = parser.parse_args()
 
     print("Starting FillTheWord seed data creation...")
     if args.reset:
         print("🔄 Reset mode: cleaning existing data...")
+    if args.full:
+        print("🌟 Full mode: creating 10k vocabulary...")
 
     db = SessionLocal()
     try:
@@ -1266,15 +1417,41 @@ def main():
 
         # Create data in dependency order
         lang_ids = create_languages(db)
-        words = create_words(db, lang_ids)
-        sentences = create_sentences(db, words, lang_ids)
-        decks = create_decks(db, lang_ids)
-        cards = create_cards(db, sentences, decks)
+
+        if args.full:
+            # Full mode: Import 10k frequencies + create Words/Sentences/Cards
+            print("\n📦 Full mode: Importing 10k word frequencies...")
+            from import_en_10k_frequency import import_word_frequencies
+            import_word_frequencies(db)
+
+            print("\n📦 Full mode: Creating 10k vocabulary from WordFrequency...")
+            words, sentences, cards = create_10k_vocabulary(db, lang_ids, max_rank=10000)
+
+            # Create a default deck for all cards
+            decks = create_decks(db, lang_ids)
+
+            # Update deck_id for all cards to point to first deck
+            if decks and cards:
+                default_deck = decks[0]
+                for card in cards:
+                    card.deck_id = default_deck.id
+                db.commit()
+                print(f"✅ Updated {len(cards)} cards to use deck '{default_deck.name}'")
+        else:
+            # Normal mode: Create sample data
+            words = create_words(db, lang_ids)
+            sentences = create_sentences(db, words, lang_ids)
+            decks = create_decks(db, lang_ids)
+            cards = create_cards(db, sentences, decks)
+
+        # Always create demo user and user states
         demo_user = create_demo_user(db)
         user_states = create_user_card_states(db, demo_user, cards)
 
         # Ensure WordFrequency and themes (idempotent)
-        ensure_word_frequencies(db, words, lang_ids)
+        if not args.full:
+            # Normal mode: ensure WordFrequency from manually created words
+            ensure_word_frequencies(db, words, lang_ids)
         ensure_themes_and_mappings(db)
 
         print("\n🎉 Seed data creation completed successfully!")
@@ -1286,7 +1463,10 @@ def main():
         print(f"  - Cards: {len(cards)}")
         print(f"  - Demo User: 1")
         print(f"  - User Card States: {len(user_states)}")
-        print(f"  - WordFrequency: ensured (if ranks present)")
+        if args.full:
+            print(f"  - WordFrequency: 10,000 imported from OpenSubtitles2016")
+        else:
+            print(f"  - WordFrequency: ensured (if ranks present)")
         print(f"  - Themes/Mappings: ensured (idempotent)")
 
     except Exception as e:
