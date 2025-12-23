@@ -1,0 +1,195 @@
+/** Audio service for TTS playback */
+
+export class AudioService {
+  private audioCache = new Map<string, HTMLAudioElement>();
+  private currentAudio: HTMLAudioElement | null = null;
+
+  // Get audio URL for cached file
+  getAudioUrl(text: string, language: string, audioType: 'word' | 'sentence'): string {
+    // Generate slug from text for cache URL
+    const slug = this.generateSlug(text);
+    return `${import.meta.env.VITE_TTS_URL}/api/audio/${language}/${audioType}/${slug}.wav`;
+  }
+
+  // Generate TTS audio via API
+  async generateAudio(
+    text: string,
+    language: string,
+    audioType: 'word' | 'sentence'
+  ): Promise<string> {
+    try {
+      const cacheKey = `${language}-${audioType}-${text}`;
+
+      // Check if already cached
+      if (this.audioCache.has(cacheKey)) {
+        return cacheKey;
+      }
+
+      // Generate audio via TTS service using correct endpoints
+      const endpoint = audioType === 'word' ? 'word' : 'sentence';
+      const id = this.generateSlug(text); // Use slug as ID
+      const url = `${import.meta.env.VITE_TTS_URL}/api/tts/${endpoint}/${id}?text=${encodeURIComponent(text)}&lang=${language}`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`TTS generation failed: ${response.status} ${response.statusText}`);
+      }
+
+      // Get audio blob
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+
+      // Create audio element and cache it
+      const audio = new Audio(audioUrl);
+      this.audioCache.set(cacheKey, audio);
+
+      return cacheKey;
+
+    } catch (error) {
+      console.error('Error generating TTS audio:', error);
+      throw error;
+    }
+  }
+
+  // Play audio file
+  async playAudio(cacheKey: string): Promise<void> {
+    try {
+      // Stop any currently playing audio
+      this.stopCurrentAudio();
+
+      // Get cached audio element
+      const audio = this.audioCache.get(cacheKey);
+      if (!audio) {
+        throw new Error(`Audio not found in cache: ${cacheKey}`);
+      }
+
+      this.currentAudio = audio;
+
+      // Set up event listeners
+      audio.addEventListener('ended', () => {
+        this.currentAudio = null;
+      });
+
+      audio.addEventListener('error', (e) => {
+        console.error('Audio playback error:', e);
+        this.currentAudio = null;
+      });
+
+      // Play the audio
+      await audio.play();
+
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      this.currentAudio = null;
+      throw error;
+    }
+  }
+
+  // Play word audio
+  async playWordAudio(word: string, language = 'en'): Promise<void> {
+    try {
+      const cacheKey = await this.generateAudio(word, language, 'word');
+      await this.playAudio(cacheKey);
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+      throw error;
+    }
+  }
+
+  // Play sentence audio
+  async playSentenceAudio(sentence: string, language = 'en'): Promise<void> {
+    try {
+      const cacheKey = await this.generateAudio(sentence, language, 'sentence');
+      await this.playAudio(cacheKey);
+    } catch (error) {
+      console.error('Error playing sentence audio:', error);
+      throw error;
+    }
+  }
+
+  // Stop currently playing audio
+  stopCurrentAudio(): void {
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.currentTime = 0;
+      this.currentAudio = null;
+    }
+  }
+
+  // Generate slug from text (simplified)
+  private generateSlug(text: string): string {
+    // Simple hash for demo - in production, use proper crypto hash
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(16).substring(0, 12);
+  }
+
+  // Play audio directly from URL
+  async playFromUrl(url: string): Promise<void> {
+    try {
+      // Check if already cached by URL
+      if (this.audioCache.has(url)) {
+        const audio = this.audioCache.get(url)!;
+        this.stopCurrentAudio();
+        this.currentAudio = audio;
+        await audio.play();
+        return;
+      }
+
+      // Stop any currently playing audio
+      this.stopCurrentAudio();
+
+      // Fetch audio from URL
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+      }
+
+      // Get blob and create object URL
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+
+      // Create audio element
+      const audio = new Audio(audioUrl);
+      this.currentAudio = audio;
+
+      // Set up event listeners
+      audio.addEventListener('ended', () => {
+        this.currentAudio = null;
+      });
+
+      audio.addEventListener('error', (e) => {
+        console.error('Audio playback error:', e);
+        this.currentAudio = null;
+      });
+
+      // Cache the audio element
+      this.audioCache.set(url, audio);
+
+      // Play the audio
+      await audio.play();
+
+    } catch (error) {
+      console.error('Error playing audio from URL:', error);
+      this.currentAudio = null;
+      throw error;
+    }
+  }
+
+  // Clear audio cache
+  clearCache(): void {
+    // Stop current audio
+    this.stopCurrentAudio();
+
+    // Clear cache
+    this.audioCache.clear();
+  }
+}
+
+// Export singleton instance
+export const audioService = new AudioService();

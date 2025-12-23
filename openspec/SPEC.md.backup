@@ -1,0 +1,244 @@
+# FillTheWord - Especificação Funcional Completa
+
+## Visão Geral
+Aplicativo de aprendizado de vocabulário focado em preenchimento de lacunas com SRS SM-2, TTS local e validação inteligente de respostas.
+
+## Requisitos Funcionais
+
+### RF-01: Cartão com Lacuna
+
+**Descrição**: Sistema deve apresentar cartões com lacuna para preenchimento, incluindo tradução, dica gramatical e nível de memória.
+
+**Fluxo Principal**:
+1. Usuário solicita próximo cartão (clica "Next" ou inicia sessão)
+2. API seleciona cartão baseado em algoritmo SM-2
+3. Sistema retorna: `{id, sentence_text, gap_start, gap_end, word_id, language, difficulty, grammar_hint, translation}`
+4. Frontend exibe: "The ___ is on the table" com gap visual
+
+**Campos Obrigatórios**:
+- **sentence_text**: Texto completo com gap marcado
+- **gap_start/gap_end**: Posição da lacuna na frase (não apenas position)
+- **grammar_hint**: Dica gramatical sobre a palavra esperada
+- **translation**: Tradução da frase completa
+- **difficulty**: Nível de dificuldade (1-5)
+- **memory_level**: Nível SM-2 (new, learning, review, mature)
+
+**Algoritmo de Seleção**:
+- Prioridade 1: Cartões due para revisão (next_review_at <= now)
+- Prioridade 2: Novos cartões (limite de novos/dia)
+- Prioridade 3: Cartões em aprendizagem
+- Seleção aleatória dentro da mesma prioridade
+
+### RF-02: Validação de Resposta
+
+**Descrição**: Sistema deve validar resposta com tolerância a variações e fornecer feedback com dicas progressivas.
+
+**Fluxo Principal**:
+1. Usuário digita resposta e clica "Check"
+2. API POST `/api/cards/{id}/answer` com `{answer, response_time}`
+3. Sistema valida com múltiplas tolerâncias
+4. Retorna feedback com dicas se incorreto
+
+**Tolerância de Resposta**:
+
+1. **Case Insensitive**:
+   - "Book" = "book" = "BOOK"
+
+2. **Acentos e Caracteres Especiais**:
+   - "café" = "cafe" (remove accents)
+   - "naïve" = "naive"
+
+3. **Artigos (Opcional)**:
+   - "book" aceita "a book" ou "the book" (baseado no contexto)
+   - Detecção automática via gramática da frase
+
+4. **Plural/Singular**:
+   - "book" aceita "books" se contexto permitir plural
+   - Validação baseada em regras gramaticais
+
+5. **Sinônimos Configurados**:
+   - "color" aceita "colour" (variação britânica)
+   - "lift" aceita "elevator" (sinônimo direto)
+   - Sinônimos cadastrados por palavra
+
+**Sistema de Dicas Progressivas**:
+
+1. **Primeira Tentativa**:
+   - Resposta incorreta: "❌ Tente novamente"
+   - Mantém gap vazio
+
+2. **Segunda Tentativa**:
+   - Dica gramatical: "❌ É um substantivo singular"
+   - Mostra primeira letra: "b___"
+
+3. **Terceira Tentativa**:
+   - Dica de contexto: "❌ Algo que você lê"
+   - Mostra mais letras: "b__k"
+
+4. **Quarta Tentativa**:
+   - Resposta completa: "❌ A resposta é: book"
+   - Registra como falha no SM-2
+
+**Feedback Visual**:
+- ✅ Verde: Resposta correta
+- ❌ Vermelho: Resposta incorreta
+- 💡 Amarelo: Dica fornecida
+
+### RF-03: Áudio com Cache Local
+
+**Descrição**: Sistema deve fornecer áudio para palavras e frases com cache persistente em disco.
+
+**Funcionalidades**:
+1. **Áudio de Palavra**: Pronúncia da palavra target
+2. **Áudio de Frase**: Frase completa para contexto auditivo
+3. **Cache Inteligente**: Armazenamento persistente em disco
+4. **Geração On-Demand**: Criar áudio se não existir em cache
+
+**Estrutura de Cache**:
+```
+audio/
+├── en/
+│   ├── word/
+│   │   └── abc123.wav    # pronúncia de "book"
+│   └── sentence/
+│       └── def456.wav    # frase "The book is on the table"
+├── pt/
+│   ├── word/
+│   └── sentence/
+└── es/
+    ├── word/
+    └── sentence/
+```
+
+**API de TTS**:
+- **GET /api/tts/word/{id}**: Retorna áudio da palavra
+- **GET /api/tts/sentence/{id}**: Retorna áudio da frase
+- **GET /api/audio/{lang}/{type}/{slug}.wav**: Arquivo estático
+
+**Configuração de Vozes**:
+```yaml
+voices:
+  en: "lessac-glow_tts"      # Inglês americano claro
+  pt: "pt_br_female-glow_tts" # Português brasileiro
+  es: "es_male-glow_tts"     # Espanhol neutro
+```
+
+### RF-04: Sessão de Estudo
+
+**Descrição**: Sistema deve gerenciar sessões de estudo com contador e limite de novos cartões por dia.
+
+**Funcionalidades**:
+1. **Contador de Sessão**: Número de cartões estudados
+2. **Limite Diário**: Controla novos cartões apresentados
+3. **Progresso Visual**: Indicadores de sessão e diário
+4. **Pausa/Retomada**: Manter estado entre sessões
+
+**Regras de Sessão**:
+- **Limite de Novos**: 10 novos cartões por dia (configurável)
+- **Limite Total**: Sem limite para revisões
+- **Duração**: Sem limite de tempo
+- **Persistência**: Estado salvo automaticamente
+
+**Interface**:
+- Contador: "Cards hoje: 15 (3 novos)"
+- Limite: "Novos disponíveis: 7/10"
+- Progresso: Barra visual de conclusão
+
+**Estado da Sessão**:
+```json
+{
+  "session_id": "uuid",
+  "cards_studied": 15,
+  "new_cards_today": 3,
+  "new_cards_limit": 10,
+  "correct_answers": 12,
+  "incorrect_answers": 3,
+  "start_time": "2024-01-15T10:00:00Z",
+  "last_activity": "2024-01-15T10:45:00Z"
+}
+```
+
+### RF-05: Estatísticas Básicas
+
+**Descrição**: Sistema deve fornecer estatísticas básicas de progresso para acompanhamento do aprendizado.
+
+**Métricas Principais**:
+1. **Cards Totais**: Total de cartões disponíveis
+2. **Cards Estudados**: Cartões já vistos
+3. **Dominados**: Cartões maduros SM-2
+4. **Aprendendo**: Cartões em fase de aprendizagem
+5. **Novos**: Cartões não iniciados
+6. **Taxa de Acerto**: Percentual geral
+7. **Sequência Atual**: Dias consecutivos de estudo
+
+**Dashboard Básico**:
+- Resumo visuais com cards coloridos
+- Gráfico de progresso semanal  
+- Distribuição por nível SM-2
+- Taxa de acerto dos últimos 7 dias
+
+**Cálculos SM-2**:
+- **Novo**: repetitions = 0
+- **Aprendendo**: repetitions < 3, interval < 7 dias
+- **Revisão**: repetitions >= 3, interval >= 7 dias  
+- **Maduro**: interval >= 21 dias
+
+**Exibição**:
+- 📊 Progresso: 45% (135/300 cards)
+- 🧠 Dominados: 23 cards
+- 📚 Aprendendo: 67 cards
+- 🔥 Sequência: 5 dias
+
+### RF-06: Configuração de Revisão
+
+**Descrição**: Sistema deve permitir configuração dos parâmetros de revisão SRS e limites diários.
+
+**Configurações Disponíveis**:
+1. **Limite de Novos Cartões**: 5-20 por dia
+2. **Algoritmo SRS**: SM-2 (fixo no MVP)
+3. **Intervalo Mínimo**: 1 dia (fixo)
+4. **Fator Facilidade**: 1.3-2.5 (configurável)
+5. **Qualidade Mínima**: 3/5 para passar (fixo)
+
+**Interface de Configurações**:
+- Slider para limite diário: 10 cartões
+- Select para fator facilidade: 2.5 (default)
+- Toggle para dicas automáticas: ON
+- Botão "Resetar Progresso" (confirmação)
+
+**Parâmetros SM-2 Ajustáveis**:
+- **easiness_factor**: 1.3 a 2.5 (default: 2.5)
+- **min_interval**: 1 dia (fixo)
+- **max_interval**: 180 dias (configurável)
+- **graduating_interval**: 1 dia (fixo)
+- **easy_interval**: 4 dias (configurável)
+
+**Validação de Mudanças**:
+- Confirmação para alterações drásticas
+- Preview do impacto nos cartões futuros
+- Reset opcional de cartões existentes
+
+## Requisitos Não-Funcionais
+
+### Performance
+- Resposta API: <200ms (95th percentile)
+- Geração TTS: <1500ms (cache miss)
+- Cache hit TTS: <20ms
+- Carregamento frontend: <2s
+
+### Cache
+- Áudio cache em disco permanente
+- Seleção de cartões otimizada
+- Dados estáticos cacheados localmente
+
+### Usabilidade
+- Interface responsiva (mobile/tablet/desktop)
+- Navegação por teclado (Enter para submit)
+- Feedback visual imediato
+- Acessibilidade básica (ARIA labels)
+
+### Dados
+- Persistência PostgreSQL
+- Migrations com Alembic
+- Backup automático do banco
+- Logs básicos de auditoria

@@ -1,0 +1,324 @@
+# FillTheWord - Modelo de Domínio Completo
+
+## Visão Geral
+Modelo de domínio completo incluindo todas as entidades do texto-base com algoritmo SM-2 completo e entidades User/UserCardState/ReviewEvent.
+
+## Entidades Principais
+
+### Language
+Idiomas suportados pelo sistema com configurações de TTS.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `code` (string, unique) - Ex: "en", "pt", "es"
+- `name` (string) - Ex: "English", "Português", "Español"
+- `voice_model` (string) - Coqui/Piper TTS voice name
+- `is_active` (boolean)
+- `created_at` (datetime)
+
+**Invariants**:
+- Language code deve ser ISO 639-1 (2 letras)
+- Não pode deletar se houver cards associados ativos
+
+### Deck
+Categorias de conteúdo organizadas por dificuldade e tópico.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `name` (string) - Ex: "Daily English", "Business Vocabulary"
+- `language_id` (UUID, FK)
+- `difficulty_level` (int, 1-5)
+- `description` (string, optional)
+- `card_count` (int, computed)
+- `is_active` (boolean)
+- `created_at` (datetime)
+
+**Invariants**:
+- difficulty_level deve ser 1-5
+- Deve ter pelo menos um card associado para estar ativo
+
+### Word
+Vocabulário individual usado nas frases.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `text` (string, unique by language)
+- `language_id` (UUID, FK)
+- `pronunciation` (string, optional) - IPA notation
+- `frequency_rank` (int, optional) - Common word frequency (1=most common)
+- `audio_path` (string, optional) - Path to cached TTS audio
+- `difficulty` (int, 1-5) - Derived from frequency and complexity
+- `created_at` (datetime)
+
+**Invariants**:
+- text deve ser único por idioma
+- difficulty deve ser 1-5
+
+### Sentence
+Frases usadas nos cartões, com tradução associada.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `text` (string) - Frase completa
+- `translation` (string) - Tradução da frase
+- `word_id` (UUID, FK) - Palavra target da lacuna
+- `language_id` (UUID, FK)
+- `type` (enum) - "example", "usage", "definition"
+- `difficulty` (int, 1-5)
+- `audio_path` (string, optional) - Path to cached TTS audio
+- `gap_start` (int) - Posição inicial da lacuna
+- `gap_end` (int) - Posição final da lacuna
+- `created_at` (datetime)
+
+**Invariants**:
+- gap_start < gap_end
+- gap_end <= len(text)
+- Frase deve conter exatamente uma lacuna
+
+### Card
+Cartão de estudo com lacuna para preenchimento.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `sentence_id` (UUID, FK)
+- `deck_id` (UUID, FK)
+- `grammar_hint` (string) - Dica gramatical sobre a palavra
+- `difficulty` (int, 1-5)
+- `position` (int) - Posição da lacuna (legacy, usar gap_start/gap_end)
+- `gap_start` (int) - Índice inicial da lacuna
+- `gap_end` (int) - Índice final da lacuna
+- `is_active` (boolean)
+- `created_at` (datetime)
+
+**Derived Fields**:
+- `sentence_with_gap` - Texto com lacuna visual: "The ___ is on the table"
+- `target_word` - Palavra que preenche a lacuna
+- `context_before` - Texto antes da lacuna
+- `context_after` - Texto depois da lacuna
+
+**Invariants**:
+- deck_id deve apontar para deck ativo
+- gap_start < gap_end
+- grammar_hint deve ser útil não vaga
+
+### User
+Usuário do sistema para controle de progresso individual.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `username` (string, unique)
+- `email` (string, unique, optional)
+- `password_hash` (string, optional)
+- `language_preference` (string, default "en")
+- `daily_new_limit` (int, default 10)
+- `easiness_factor` (float, default 2.5)
+- `created_at` (datetime)
+- `last_login` (datetime, optional)
+
+**Settings**:
+- `new_cards_per_day`: 5-20 (default: 10)
+- `auto_play_audio`: boolean (default: true)
+- `show_hints`: boolean (default: true)
+- `keyboard_shortcuts`: boolean (default: true)
+
+**Invariants**:
+- username deve ser único
+- daily_new_limit deve ser 1-50
+- easiness_factor deve ser 1.3-2.5
+
+### UserCardState
+Estado individual do cartão para cada usuário com algoritmo SM-2 completo.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `user_id` (UUID, FK)
+- `card_id` (UUID, FK)
+- `repetitions` (int, default 0) - Número de repetições corretas
+- `easiness_factor` (float, default 2.5) - Fator de facilidade SM-2
+- `interval_days` (int, default 1) - Intervalo em dias
+- `next_review_at` (datetime) - Próxima revisão
+- `last_reviewed_at` (datetime, optional) - Última revisão
+- `status` (enum) - "new", "learning", "review", "relearn", "mature"
+- `total_reviews` (int, default 0) - Total de revisões
+- `correct_reviews` (int, default 0) - Revisões corretas
+- `created_at` (datetime)
+- `updated_at` (datetime)
+
+**SM-2 Status Mapping**:
+- **new**: repetitions = 0, nunca revisado
+- **learning**: repetitions < 3, interval < 7 dias
+- **review**: repetitions >= 3, interval >= 7 dias
+- **relearn**: falhou após ser review/mature
+- **mature**: interval >= 21 dias
+
+**Invariants**:
+- easiness_factor >= 1.3
+- interval_days >= 1
+- next_review_at >= last_reviewed_at
+
+### ReviewEvent
+Registro individual de cada sessão de revisão para analytics e ajuste SM-2.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `user_id` (UUID, FK)
+- `card_id` (UUID, FK)
+- `quality` (int, 0-5) - Qualidade da resposta SM-2
+- `response_time_ms` (int) - Tempo de resposta em milissegundos
+- `user_answer` (string) - Resposta do usuário
+- `correct_answer` (string) - Resposta correta
+- `was_correct` (boolean) - Se a resposta estava correta
+- `hints_used` (int, default 0) - Quantidade de dicas usadas
+- `previous_easiness` (float) - Easiness factor antes da revisão
+- `new_easiness` (float) - Easiness factor após revisão
+- `previous_interval` (int) - Intervalo antes da revisão
+- `new_interval` (int) - Intervalo após revisão
+- `session_id` (UUID, optional) - ID da sessão de estudo
+- `created_at` (datetime)
+
+**SM-2 Quality Scale**:
+- **0**: Falha completa (esquecimento total)
+- **1**: Falha com algum reconhecimento
+- **2**: Falha mas lembrada com hesitação
+- **3**: Resposta correta com dificuldade
+- **4**: Resposta correta com alguma hesitação
+- **5**: Resposta perfeita e rápida
+
+**Invariants**:
+- quality deve ser 0-5
+- response_time_ms > 0
+- previous_easiness/new_easiness >= 1.3
+
+## Algoritmo SM-2 Completo
+
+### Cálculo do Próximo Intervalo
+
+```python
+def calculate_sm2_next(quality, repetitions, easiness_factor, interval_days):
+    """
+    Calculate next SM-2 values based on quality (0-5)
+    """
+    # Update easiness factor
+    easiness_factor = max(1.3, easiness_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
+    
+    # Update repetitions and interval
+    if quality < 3:
+        # Failed review - reset repetitions
+        repetitions = 0
+        interval_days = 1
+    else:
+        # Successful review
+        repetitions += 1
+        
+        if repetitions == 1:
+            interval_days = 1
+        elif repetitions == 2:
+            interval_days = 6
+        else:
+            interval_days = round(interval_days * easiness_factor)
+    
+    # Update status
+    if repetitions == 0:
+        status = "relearn"
+    elif repetitions < 3 and interval_days < 7:
+        status = "learning"
+    elif repetitions >= 3 and interval_days >= 7 and interval_days < 21:
+        status = "review"
+    else:
+        status = "mature"
+    
+    return {
+        "repetitions": repetitions,
+        "easiness_factor": easiness_factor,
+        "interval_days": interval_days,
+        "next_review_at": datetime.now() + timedelta(days=interval_days),
+        "status": status
+    }
+```
+
+### Lógica de Seleção de Cartões
+
+```python
+def select_next_card(user_id, daily_new_limit):
+    """
+    Select next card based on SM-2 priorities
+    """
+    # Priority 1: Due cards for review
+    due_cards = UserCardState.objects.filter(
+        user_id=user_id,
+        next_review_at__lte=now(),
+        status__in=["review", "relearn", "mature"]
+    ).order_by('next_review_at')
+    
+    if due_cards.exists():
+        return due_cards.first()
+    
+    # Priority 2: New cards (respect daily limit)
+    new_today_count = ReviewEvent.objects.filter(
+        user_id=user_id,
+        card__usercardstate__status="new",
+        created_at__date=today()
+    ).count()
+    
+    if new_today_count < daily_new_limit:
+        new_cards = UserCardState.objects.filter(
+            user_id=user_id,
+            status="new"
+        ).order_by('?').first()
+        
+        if new_cards:
+            return new_cards
+    
+    # Priority 3: Learning cards
+    learning_cards = UserCardState.objects.filter(
+        user_id=user_id,
+        status="learning"
+    ).order_by('next_review_at').first()
+    
+    return learning_cards
+```
+
+## Relacionamentos
+
+### Diagrama Simplificado
+```
+User (1) ──── (N) UserCardState (N) ──── (1) Card
+  │                                      │
+  │                                      │
+  └── (N) ReviewEvent (N) ───────────────┘
+                      │
+                      │
+               Sentence (1) ──── (N) Word
+                      │
+                      │
+                   Deck (N)
+```
+
+### Key Relationships
+- User → UserCardState (1:N): Cada usuário tem estado por cartão
+- Card → UserCardState (1:N): Cada cartão tem estado por usuário  
+- UserCardState → ReviewEvent (1:N): Cada revisão gera evento
+- Card → Sentence (1:1): Cada cartão tem uma frase
+- Sentence → Word (N:1): Várias frases podem usar mesma palavra
+- Sentence → Deck (N:1): Frases pertencem a um deck
+
+## Corpora Pipeline
+
+### Fontes de Dados
+- **Tatoeba**: Sentenças paralelas com tradução
+- **ParaCrawl**: Corpus paralelo de alta qualidade
+- **OpenSubtitles**: Legendas de filmes/series
+
+### Processamento
+1. **Download**: Scripts para baixar corpora
+2. **Parsing**: Extrair sentenças e traduções
+3. **Alignment**: Alinhar sentenças por palavra
+4. **Filtering**: Filtrar por qualidade e complexidade
+5. **Gap Creation**: Criar lacunas automáticas
+6. **Validation**: Validação gramatical humana
+
+### Seed Data
+- 100 palavras iniciais (frequency rank 1-100)
+- 300 sentenças (3 por palavra média)
+- 3 decks por dificuldade
+- Pronúncias IPA para todas palavras
