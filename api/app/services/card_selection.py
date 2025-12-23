@@ -398,9 +398,47 @@ class CardSelectionService:
         ).first()
 
         if not card:
-            # This shouldn't happen in normal flow, but handle gracefully
-            print(f"WARNING: No active card found for sentence {sentence.id}, word {word.text}")
-            return None
+            # Auto-create Card on-the-fly (Spec4 requirement - never return None)
+            print(f"INFO: Auto-creating card for sentence {sentence.id}, word {word.text}")
+
+            from app.models import Deck
+
+            # Find or create default deck for this language
+            deck = self.db.query(Deck).filter(
+                Deck.language_id == word.language_id,
+                Deck.is_active == True
+            ).first()
+
+            if not deck:
+                # Create default deck if none exists
+                deck = Deck(
+                    name=f"Default {word.language_id}",
+                    language_id=word.language_id,
+                    difficulty_level=1,
+                    description="Auto-created default deck",
+                    is_active=True
+                )
+                self.db.add(deck)
+                self.db.flush()
+
+            # Calculate gap positions from sentence text
+            text = sentence.text or ""
+            gap_start = text.find("___")
+            gap_end = gap_start + 3 if gap_start >= 0 else len(text)
+
+            # Create card
+            card = Card(
+                sentence_id=sentence.id,
+                deck_id=deck.id,
+                grammar_hint="",  # Can be enhanced later with word.part_of_speech
+                gap_start=gap_start,
+                gap_end=gap_end,
+                is_active=True
+            )
+            self.db.add(card)
+            self.db.flush()
+
+            print(f"INFO: Created card {card.id} for sentence {sentence.id}")
 
         # Get user's target language code for audio URLs
         user = self.db.query(User).filter(User.id == user_id).first()
