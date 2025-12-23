@@ -407,9 +407,9 @@ class CardSelectionService:
             "word": word.text,
             "sentence": sentence.text or "",
             "gap": {
-                "start": sentence.gap_start,
-                "end": sentence.gap_end
-            } if sentence.gap_start and sentence.gap_end else None,
+                "start": card.gap_start or 0,
+                "end": card.gap_end or 0
+            },
             "sentence_translation": sentence.translation or "",
             "grammar_hint": card.grammar_hint or "",
             "memory_stage": "NEW" if is_new else "REVIEW",
