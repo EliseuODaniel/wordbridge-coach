@@ -154,6 +154,13 @@ class CardSelectionService:
         if not user or not user.target_language_id:
             return []
 
+        # Get user's target language code for WordFrequency join
+        from app.models import Language
+        target_lang = db.query(Language).filter(Language.id == user.target_language_id).first()
+        if not target_lang:
+            return []
+        target_lang_code = target_lang.code
+
         # Build query for due cards
         # Note: We filter by Card.id in exclude_card_id, NOT by Word.id
         query = db.query(UserCardState, Word).join(
@@ -176,7 +183,7 @@ class CardSelectionService:
             query = query.join(WordFrequency,
                 and_(
                     func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                    WordFrequency.language_code == 'en'  # TODO: Get from user
+                    WordFrequency.language_code == target_lang_code  # Use user's target language
                 )
             ).filter(WordFrequency.rank <= max_allowed_rank)
 
