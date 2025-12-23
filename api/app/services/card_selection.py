@@ -486,21 +486,61 @@ class CardSelectionService:
             "audio_sentence_url": audio_sentence_url
         }
 
-    def record_answer(self, user_id: str, card_id: str, was_correct: bool,
-                     quality: int, response_time_ms: int) -> Dict[str, Any]:
-        """Record answer and update SM-2 state
+    def record_answer(self, user_id: str, word_id: str, sentence_id: str,
+                     was_correct: bool, response_time_ms: int, quality: int) -> Dict[str, Any]:
+        """Record answer and update Spec4 vocabulary progression
 
         Args:
             user_id: User identifier
-            card_id: Card identifier
+            word_id: Word identifier (from card.sentence.word_id)
+            sentence_id: Sentence identifier
             was_correct: Whether answer was correct
-            quality: SM-2 quality score (0-5)
             response_time_ms: Response time in milliseconds
+            quality: SM-2 quality score (0-5)
 
         Returns:
             Dictionary with result
         """
-        # Delegate to VocabularyProgressionService
-        return self.progression_service.record_answer(
-            user_id, card_id, was_correct, quality, response_time_ms
-        )
+        # Update vocabulary progression only for correct answers (Spec4)
+        if was_correct:
+            try:
+                # Get user's target language
+                from app.models.user import User
+                user = self.db.query(User).filter(User.id == user_id).first()
+                if not user or not user.target_language:
+                    print(f"DEBUG: No user or target_language found for user_id={user_id}")
+                    return {"success": False, "error": "User not found"}
+
+                # Get word rank from WordFrequency
+                from app.models.word import Word
+                from app.models.word_frequency import WordFrequency
+                from sqlalchemy import func
+
+                word = self.db.query(Word).filter(Word.id == word_id).first()
+                if not word:
+                    print(f"DEBUG: Word not found for word_id={word_id}")
+                    return {"success": False, "error": "Word not found"}
+
+                # Match WordFrequency by word (case-insensitive)
+                wf = self.db.query(WordFrequency).filter(
+                    func.lower(WordFrequency.word) == func.lower(word.lemma),
+                    WordFrequency.language_code == user.target_language
+                ).first()
+
+                if not wf:
+                    print(f"DEBUG: WordFrequency not found for word={word.lemma}, lang={user.target_language}")
+                    return {"success": False, "error": "WordFrequency not found"}
+
+                # Update contiguous mastered rank
+                print(f"DEBUG: Updating progression for user={user_id}, rank={wf.rank}")
+                self.progression_service.update_contiguous_mastered_rank(user_id, wf.rank)
+                print(f"DEBUG: Updated max_contiguous_mastered_rank for user={user_id} to rank {wf.rank}")
+                return {"success": True, "rank": wf.rank}
+
+            except Exception as e:
+                print(f"DEBUG: Error updating progression: {e}")
+                import traceback
+                traceback.print_exc()
+                return {"success": False, "error": str(e)}
+
+        return {"success": True, "message": "Incorrect answer, progression not updated"}

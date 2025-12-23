@@ -1209,34 +1209,41 @@ def ensure_themes_and_mappings(db: Session):
     """Ensure themes and mappings exist (idempotent)"""
     print("\nEnsuring themes and word-theme mappings...")
 
-    # Check if themes already exist
     from app.models.word_theme import WordTheme
+    from app.models.word_theme_mapping import WordThemeMapping
+
+    # Check if themes exist
     theme_count = db.query(WordTheme).count()
 
-    if theme_count > 0:
-        print(f"✅ Themes already exist ({theme_count} themes), skipping...")
-        return
+    # Check if mappings exist
+    mapping_count = db.query(WordThemeMapping).count()
 
-    # Import and run seed_themes logic
-    print("No themes found, running seed_themes.py...")
-
-    # Import functions from seed_themes
+    # Import seed_themes functions
     sys.path.insert(0, '/app')
     try:
-        from seed_themes import create_basic_themes, create_word_theme_mappings
+        from seed_themes import create_basic_themes, map_words_to_themes
 
-        # Create themes
-        themes = create_basic_themes(db)
+        # Create themes if needed
+        if theme_count == 0:
+            print("No themes found, creating themes...")
+            themes = create_basic_themes(db)
+            db.commit()
+            print(f"✅ Created {len(themes)} themes")
+        else:
+            print(f"✅ Themes already exist ({theme_count} themes)")
 
-        # Create mappings
-        create_word_theme_mappings(db)
-
-        db.commit()
-        print(f"✅ Created {len(themes)} themes and word mappings")
+        # Create mappings if needed
+        if mapping_count == 0:
+            print("No mappings found, creating word-theme mappings...")
+            map_words_to_themes(db)
+            db.commit()
+            print(f"✅ Created word-theme mappings")
+        else:
+            print(f"✅ Word-theme mappings already exist ({mapping_count} mappings)")
 
     except ImportError as e:
         print(f"⚠️  Could not import seed_themes: {e}")
-        print("Themes not seeded - run 'python seed_themes.py' manually if needed")
+        print("Themes/mappings not seeded - run 'python seed_themes.py' manually if needed")
     finally:
         sys.path.pop(0)
 
