@@ -69,9 +69,9 @@ def create_sample_data_if_needed(db: Session):
                 id=str(uuid.uuid4()),
                 username="demo",
                 email="demo@filltheword.com",
-                native_language_id=en_lang.id,  # UUID instead of string
-                target_language_id=pt_lang.id,   # UUID instead of string
-                language_preference="en",
+                native_language_id=pt_lang.id,  # Portuguese: native language
+                target_language_id=en_lang.id,   # English: learning target
+                language_preference="pt",        # UI in Portuguese
                 daily_new_limit=10,
                 easiness_factor=2.5
             )
