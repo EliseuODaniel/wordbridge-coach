@@ -507,9 +507,12 @@ class CardSelectionService:
                 # Get user's target language
                 from app.models.user import User
                 user = self.db.query(User).filter(User.id == user_id).first()
-                if not user or not user.target_language:
+                if not user or not user.target_language_obj:
                     print(f"DEBUG: No user or target_language found for user_id={user_id}")
                     return {"success": False, "error": "User not found"}
+
+                # Get language code from target_language_obj
+                target_lang_code = user.target_language_obj.code
 
                 # Get word rank from WordFrequency
                 from app.models.word import Word
@@ -524,11 +527,11 @@ class CardSelectionService:
                 # Match WordFrequency by word (case-insensitive)
                 wf = self.db.query(WordFrequency).filter(
                     func.lower(WordFrequency.word) == func.lower(word.lemma),
-                    WordFrequency.language_code == user.target_language
+                    WordFrequency.language_code == target_lang_code
                 ).first()
 
                 if not wf:
-                    print(f"DEBUG: WordFrequency not found for word={word.lemma}, lang={user.target_language}")
+                    print(f"DEBUG: WordFrequency not found for word={word.lemma}, lang={target_lang_code}")
                     return {"success": False, "error": "WordFrequency not found"}
 
                 # Update contiguous mastered rank
