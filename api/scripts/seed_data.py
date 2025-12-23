@@ -1248,7 +1248,7 @@ def ensure_themes_and_mappings(db: Session):
         sys.path.pop(0)
 
 
-def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
+def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: int = 10000):
     """
     Create Words, Sentences, and Cards from WordFrequency data.
 
@@ -1259,6 +1259,7 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
     Args:
         db: Database session
         lang_ids: Dict of language IDs
+        decks: List of Deck objects (must exist before calling this function)
         max_rank: Maximum rank to create (default 10000)
 
     Returns:
@@ -1270,6 +1271,11 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
     from app.models.card import Card
 
     print(f"Creating 10k vocabulary (top {max_rank} words)...")
+
+    # Get default deck (first deck)
+    if not decks:
+        raise ValueError("decks list is empty - must create decks first")
+    default_deck = decks[0]
 
     # Get all WordFrequency entries for English up to max_rank
     word_freqs = db.query(WordFrequency).filter(
@@ -1321,8 +1327,7 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
                 pronunciation='',  # Empty initially
                 frequency_rank=wf.rank,
                 difficulty=difficulty,
-                language_id=lang_ids['en'],
-                is_active=True
+                language_id=lang_ids['en']
             )
             db.add(word)
             db.flush()  # Get the ID
@@ -1365,8 +1370,7 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
                 type='example',
                 difficulty=word.difficulty,
                 gap_start=gap_start,
-                gap_end=gap_end,
-                is_active=True
+                gap_end=gap_end
             )
             db.add(sentence)
             db.flush()
@@ -1376,7 +1380,7 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, max_rank: int = 10000):
             card = Card(
                 id=uuid.uuid4(),
                 sentence_id=sentence.id,
-                deck_id=uuid.uuid4(),  # Will be updated later
+                deck_id=default_deck.id,  # Use real deck ID
                 grammar_hint='',  # Empty for now
                 difficulty=word.difficulty,
                 gap_start=sentence.gap_start,
@@ -1424,19 +1428,14 @@ def main():
             from import_en_10k_frequency import import_word_frequencies
             import_word_frequencies(db)
 
-            print("\n📦 Full mode: Creating 10k vocabulary from WordFrequency...")
-            words, sentences, cards = create_10k_vocabulary(db, lang_ids, max_rank=10000)
-
-            # Create a default deck for all cards
+            # Create decks FIRST (needed for Card foreign key constraint)
+            print("\n📦 Full mode: Creating decks...")
             decks = create_decks(db, lang_ids)
 
-            # Update deck_id for all cards to point to first deck
-            if decks and cards:
-                default_deck = decks[0]
-                for card in cards:
-                    card.deck_id = default_deck.id
-                db.commit()
-                print(f"✅ Updated {len(cards)} cards to use deck '{default_deck.name}'")
+            print("\n📦 Full mode: Creating 10k vocabulary from WordFrequency...")
+            words, sentences, cards = create_10k_vocabulary(db, lang_ids, decks=decks, max_rank=10000)
+
+            print(f"✅ Created {len(cards)} cards with deck '{decks[0].name}'")
         else:
             # Normal mode: Create sample data
             words = create_words(db, lang_ids)

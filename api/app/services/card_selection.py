@@ -35,21 +35,22 @@ class CardSelectionService:
         cutoff_date = datetime.utcnow() - timedelta(days=days)
 
         # Get distinct word IDs from recent review events
-        recent_words = self.db.query(
-            func.distinct(Sentence.word_id)
-        ).join(
-            ReviewEvent, ReviewEvent.card_id == Card.id
-        ).join(
-            Sentence, Card.sentence_id == Sentence.id
-        ).filter(
-            and_(
-                ReviewEvent.user_id == user_id,
-                ReviewEvent.created_at >= cutoff_date
-            )
-        ).limit(limit).all()
+        # Explicitly specify FROM ReviewEvent and JOIN with Card and Sentence
+        recent_words = self.db.query(ReviewEvent)\
+            .join(Card, ReviewEvent.card_id == Card.id)\
+            .join(Sentence, Card.sentence_id == Sentence.id)\
+            .filter(
+                and_(
+                    ReviewEvent.user_id == user_id,
+                    ReviewEvent.created_at >= cutoff_date
+                )
+            )\
+            .distinct(Sentence.word_id)\
+            .limit(limit)\
+            .all()
 
-        # Extract word IDs from tuples
-        return {word_tuple[0] for word_tuple in recent_words if word_tuple[0]}
+        # Extract word IDs from ReviewEvent->Sentence->word_id
+        return {review_event.card.sentence.word_id for review_event in recent_words if review_event.card and review_event.card.sentence}
 
     def get_next_card_for_user(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
