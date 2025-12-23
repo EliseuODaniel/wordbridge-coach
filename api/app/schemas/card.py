@@ -38,9 +38,9 @@ class CardResponse(BaseModel):
                 "gap": {"start": 4, "end": 8},
                 "sentence_translation": "O livro está na mesa.",
                 "grammar_hint": "É um objeto que você lê",
-                "memory_stage": "learning",
-                "audio_word_url": "/api/audio/en/word/abc123.wav",
-                "audio_sentence_url": "/api/audio/en/sentence/def456.wav"
+                "memory_stage": "LEARNING",
+                "audio_word_url": "/api/tts/word/550e8400-e29b-41d4-a716-446655440000?text=book&lang=en",
+                "audio_sentence_url": "/api/tts/sentence/550e8400-e29b-41d4-a716-446655440000?text=The%20book%20is%20on%20the%20table.&lang=en"
             }
         }
 

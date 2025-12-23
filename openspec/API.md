@@ -237,6 +237,11 @@ GET /api/v1/cards/next-spec4
 - `sentence_id` indica qual frase foi selecionada (para rastrear variedade)
 - `exclude_card_id` deve ser o `card_id` retornado anteriormente
 
+**Audio URLs**:
+- As URLs `audio_word_url` e `audio_sentence_url` retornadas pelo endpoint são **root-relative** (`/api/tts/...`)
+- No runtime, funcionam via frontend origin (nginx/vite proxy para `http://tts:8001/api/tts/...`)
+- Exemplo: `/api/tts/word/{card_id}?text=book&lang=en` → proxy para TTS service → retorna audio binary
+
 #### Submit Answer
 ```http
 POST /api/v1/cards/{card_id}/answer
