@@ -30,7 +30,13 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
     }
   }, []);
 
-  
+  // Clear answer when card changes (new card = fresh start)
+  useEffect(() => {
+    if (cardId) {
+      setAnswer('');
+    }
+  }, [cardId]);
+
   // Unified focus handling for feedback and card changes
   useEffect(() => {
     if (!inputRef.current) return;

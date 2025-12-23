@@ -57,6 +57,9 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       console.log(`📝 User ID being used: ${userId}`);
       console.log(`📝 Exclude card ID: ${excludeCardId || 'none'}`);
 
+      // Clear current card immediately to show loading spinner
+      // This prevents "visual repetition" of the old card
+      setCurrentCard(null);
       setIsSubmitting(true);
       setFeedback(null);
       setAttempts(0);
