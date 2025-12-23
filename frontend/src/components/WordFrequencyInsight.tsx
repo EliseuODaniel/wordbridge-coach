@@ -93,7 +93,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
 
   // Generate coverage curve based on the word's rank and coverage
   const coverageCurve = useMemo(() => {
-    if (!insight || !insight.rank || !insight.coverage_pct) return [];
+    if (!insight || !insight.rank || insight.coverage_pct === undefined) return [];
 
     const { rank, coverage_pct } = insight;
 
@@ -369,7 +369,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
         </div>
 
         <div className="text-sm text-gray-300">
-          Coverage up to here: <span className="font-semibold text-green-400">{(coverage_pct || 0).toFixed(1)}%</span> of word usage
+          Coverage up to here: <span className="font-semibold text-green-400">{(coverage_pct ?? 0).toFixed(1)}%</span> of word usage
         </div>
 
         <div className="text-xs text-gray-400 italic">
