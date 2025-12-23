@@ -127,7 +127,7 @@ class CardSelectionService:
 
         # Get sentence (variety K=10 handled by get_sentence_for_word)
         sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
-        card_context = self._build_card_context(word, sentence, is_new=True)
+        card_context = self._build_card_context(user_id, word, sentence, is_new=True)
 
         # Record the new card in session stats
         self.progression_service.record_card_shown(user_id, is_new_card=True)
@@ -209,7 +209,7 @@ class CardSelectionService:
 
         word = self.progression_service.pick_best_review_word(user_id, review_words)
         sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
-        card_context = self._build_card_context(word, sentence, is_new=False)
+        card_context = self._build_card_context(user_id, word, sentence, is_new=False)
 
         # Record the review card in session stats
         self.progression_service.record_card_shown(user_id, is_new_card=False)
@@ -271,7 +271,7 @@ class CardSelectionService:
 
         is_new = (ucs is None or ucs.status.value == 'NEW')
 
-        card_context = self._build_card_context(word, sentence, is_new=is_new)
+        card_context = self._build_card_context(user_id, word, sentence, is_new=is_new)
 
         # Record in session stats
         self.progression_service.record_card_shown(user_id, is_new_card=is_new)
@@ -373,6 +373,7 @@ class CardSelectionService:
 
     def _build_card_context(
         self,
+        user_id: str,
         word: Word,
         sentence: Optional[Sentence],
         is_new: bool
@@ -380,6 +381,7 @@ class CardSelectionService:
         """Build card context dictionary for API response
 
         Args:
+            user_id: User identifier (needed for target language)
             word: The word being studied
             sentence: The sentence for this card
             is_new: Whether this is a new card or review
@@ -387,7 +389,7 @@ class CardSelectionService:
         Returns:
             Dictionary with card data for API response
         """
-        from app.models import Card
+        from app.models import Card, User, Language
 
         # Find or create card for this sentence
         card = self.db.query(Card).filter(
@@ -399,6 +401,14 @@ class CardSelectionService:
             # This shouldn't happen in normal flow, but handle gracefully
             print(f"WARNING: No active card found for sentence {sentence.id}, word {word.text}")
             return None
+
+        # Get user's target language code for audio URLs
+        user = self.db.query(User).filter(User.id == user_id).first()
+        lang_code = 'en'  # Default fallback
+        if user and user.target_language_id:
+            target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+            if target_lang:
+                lang_code = target_lang.code
 
         return {
             "card_id": str(card.id),
@@ -414,8 +424,8 @@ class CardSelectionService:
             "grammar_hint": card.grammar_hint or "",
             "memory_stage": "NEW" if is_new else "REVIEW",
             "is_new": is_new,
-            "audio_word_url": f"/api/audio/{word.language_id or 'en'}/word/{word.id}.wav",
-            "audio_sentence_url": f"/api/audio/{word.language_id or 'en'}/sentence/{sentence.id}.wav"
+            "audio_word_url": f"/api/audio/{lang_code}/word/{word.id}.wav",
+            "audio_sentence_url": f"/api/audio/{lang_code}/sentence/{sentence.id}.wav"
         }
 
     def record_answer(self, user_id: str, card_id: str, was_correct: bool,
