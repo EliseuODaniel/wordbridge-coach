@@ -1,6 +1,7 @@
 /** Inline Gap Input for Lingvist Mode */
 
-import React, { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import type { KeyboardEvent } from 'react';
 
 interface InlineGapInputProps {
   sentence: string;

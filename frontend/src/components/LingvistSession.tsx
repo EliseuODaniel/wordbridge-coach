@@ -1,6 +1,6 @@
 /** Lingvist Mode Study Session Component */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { cardsApi, type LingvistCardResponse, type AnswerResponse } from '../services/api';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
@@ -265,7 +265,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
             )}
 
             {/* Debug Info (hidden in production) */}
-            {process.env.NODE_ENV === 'development' && (
+            {import.meta.env.DEV && (
               <div className="bg-gray-800 rounded-lg p-4 text-xs text-gray-500">
                 <p>correct_answer: <span className="text-gray-300">{currentCard.correct_answer}</span></p>
                 <p>word: <span className="text-gray-300">{currentCard.word}</span></p>

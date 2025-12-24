@@ -202,7 +202,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
       case 'Enter':
         if (focusedIndex !== null && users[focusedIndex]) {
           e.preventDefault();
-          handleStartLearning(users[focusedIndex].id);
+          handleStartLearning(users[focusedIndex].id, selectedMode);
         }
         break;
     }

@@ -14,7 +14,6 @@ const AudioAfterCorrect: React.FC<AudioAfterCorrectProps> = ({
   onFinished,
   timeoutMs = 3000,
 }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
@@ -24,14 +23,12 @@ const AudioAfterCorrect: React.FC<AudioAfterCorrectProps> = ({
     const playAudioAndWait = async () => {
       try {
         console.log('🔊 Playing sentence audio after correct...');
-        setIsPlaying(true);
 
         // Play audio and wait for it to finish
         await audioService.playFromUrl(audioSentenceUrl);
 
         if (isMounted) {
           console.log('✅ Audio finished');
-          setIsPlaying(false);
           setHasFinished(true);
 
           // Load next card immediately after audio ends
@@ -41,7 +38,6 @@ const AudioAfterCorrect: React.FC<AudioAfterCorrectProps> = ({
         console.error('❌ Error playing audio:', error);
 
         if (isMounted) {
-          setIsPlaying(false);
           setHasFinished(true);
 
           // Even on error, load next card after timeout
@@ -59,7 +55,6 @@ const AudioAfterCorrect: React.FC<AudioAfterCorrectProps> = ({
     timeoutRef.current = window.setTimeout(() => {
       if (isMounted && !hasFinished) {
         console.log('⏱️ Audio timeout, advancing to next card');
-        setIsPlaying(false);
         setHasFinished(true);
         onFinished();
       }
