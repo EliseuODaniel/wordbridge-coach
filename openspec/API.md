@@ -242,6 +242,71 @@ GET /api/v1/cards/next-spec4
 - No runtime, funcionam via frontend origin (nginx/vite proxy para `http://tts:8001/api/tts/...`)
 - Exemplo: `/api/tts/word/{card_id}?text=book&lang=en` → proxy para TTS service → retorna audio binary
 
+#### Get Next Card (Lingvist - Inline Cloze + Hints + Audio pós-acerto)
+```http
+GET /api/v1/cards/next-lingvist
+```
+
+**Status**: 📋 Proposed (ver [change proposal](openspec/changes/2025-12-lingvist-mode-v1.md))
+
+**Lingvist Algorithm**: Reutiliza Spec4, mas com payload enriquecido para input inline, hints progressivos e áudio pós-acerto.
+
+**Query Parameters**:
+- `user_id` (optional, string): User ID for demo user if not provided
+- `exclude_card_id` (optional, string): Card ID to exclude from selection
+
+**Response**:
+```json
+{
+  "card_id": "550e8400-e29b-41d4-a716-446655440000",
+  "word_id": "660e8400-e29b-41d4-a716-446655440000",
+  "sentence_id": "770e8400-e29b-41d4-a716-446655440000",
+  "word": "book",
+  "sentence": "The ___ is on the table.",
+  "gap": {"start": 4, "end": 7},
+  "correct_answer": "book",  // ⚠️ NOVO: campo explícito (não em Spec4)
+  "grammar_tag_pt": "substantivo, masculino, singular",  // ⚠️ NOVO
+  "word_translation_pt": "livro",  // ⚠️ NOVO
+  "sentence_translation_pt": "O livro está na mesa.",  // ⚠️ NOVO
+  "sentence_source": "Dracula",  // ⚠️ NOVO: se aplicável
+  "is_new": true,
+  "micro_progress": {  // ⚠️ NOVO
+    "current": 3,
+    "total": 10,
+    "new_words": 2
+  },
+  "audio_word_url": "/api/tts/word/{card_id}?text=book&lang=en",
+  "audio_sentence_url": "/api/tts/sentence/{card_id}?text=The book is on the table.&lang=en"
+}
+```
+
+**Diferenças de Spec4**:
+- `correct_answer`: Campo explícito para validação client-side
+- `grammar_tag_pt`: Tag gramatical em PT-BR (ex: "substantivo, plural")
+- `word_translation_pt`: Tradução PT-BR da palavra-alvo
+- `sentence_translation_pt`: Tradução PT-BR da frase completa
+- `micro_progress`: Progresso da sessão (X/Y)
+- Mesmo Spec4 features: mix, gating, variedade, anti-repetição
+
+**Mix Recomendado**: 20% novas / 80% revisão (mais conservativo que Spec4)
+
+**Critical Contracts**:
+- Mesmo que Spec4: `card_id` real, `word_id` separado, `sentence_id` para variedade
+- `correct_answer` é o valor esperado do campo `gap` após preenchimento
+
+**Behavior**:
+- Input inline na lacuna (sem botão "Check")
+- Auto-submit ao digitar `correct_answer` (normalizado)
+- Hints progressivos aparecem após erros/tempo preso
+- Áudio da frase toca **apenas** após acerto (não ao carregar card)
+- Próximo card avança **apenas** após áudio terminar (ou timeout 3s)
+
+**Empty Values**:
+- `grammar_tag_pt` → vazio se não disponível
+- `word_translation_pt` → vazio se não traduzido
+- `sentence_translation_pt` → vazio se não traduzido (mostra "Tradução indisponível" no UI)
+- `sentence_source` → vazio se template ou gerado
+
 #### Submit Answer
 ```http
 POST /api/v1/cards/{card_id}/answer
