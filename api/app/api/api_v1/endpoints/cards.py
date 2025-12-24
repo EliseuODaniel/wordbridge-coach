@@ -898,16 +898,22 @@ def _extract_word_translation(word: 'Word') -> Optional[str]:
 
 
 def _get_micro_progress(db: 'Session', user_id: str, user: 'User') -> 'MicroProgress':
-    """Calculate micro-progress from UserSessionStats and User"""
-    stats = db.query(UserSessionStats).filter(UserSessionStats.user_id == user_id).first()
+    """Calculate micro-progress from UserSessionStats and User for TODAY"""
+    from datetime import date
+
+    today = date.today()
+    stats = db.query(UserSessionStats).filter(
+        UserSessionStats.user_id == user_id,
+        UserSessionStats.date == today
+    ).first()
 
     if not stats:
         return MicroProgress(current=0, total=user.daily_new_limit, new_words=0)
 
-    # Simple progress: cards_shown / daily_limit
-    current = stats.cards_shown
-    total = user.daily_new_limit  # Total cards in session (from User)
-    new_words = stats.new_cards_shown
+    # Clamp current to never exceed total (session progress semantics)
+    current = min(stats.cards_shown, user.daily_new_limit)
+    total = user.daily_new_limit  # Daily session goal
+    new_words = min(stats.new_cards_shown, user.daily_new_limit)  # Also clamp to avoid confusion
 
     return MicroProgress(current=current, total=total, new_words=new_words)
 
