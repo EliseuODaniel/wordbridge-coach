@@ -707,7 +707,8 @@ async def get_next_card_spec4(
             memory_stage=memory_stage,  # Real SM-2 status from UserCardState or NEW
             is_new=card_context["is_new"],
             audio_word_url=card_context["audio_word_url"],
-            audio_sentence_url=card_context["audio_sentence_url"]
+            audio_sentence_url=card_context["audio_sentence_url"],
+            sentence_source=card_context.get("sentence_source")
         )
 
     except HTTPException:

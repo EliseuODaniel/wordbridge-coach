@@ -532,7 +532,8 @@ class CardSelectionService:
             "memory_stage": "NEW" if is_new else "REVIEW",
             "is_new": is_new,
             "audio_word_url": audio_word_url,
-            "audio_sentence_url": audio_sentence_url
+            "audio_sentence_url": audio_sentence_url,
+            "sentence_source": sentence.source_title if sentence.source_title else None
         }
 
     def record_answer(self, user_id: str, word_id: str, sentence_id: str,

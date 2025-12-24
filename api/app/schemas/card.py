@@ -26,6 +26,7 @@ class CardResponse(BaseModel):
     is_new: bool = Field(..., description="Whether this is a new word or review")
     audio_word_url: str = Field(..., description="URL for word audio")
     audio_sentence_url: str = Field(..., description="URL for sentence audio")
+    sentence_source: Optional[str] = Field(None, description="Source title (e.g., 'Dracula') if from sentence bank")
     
     class Config:
         json_schema_extra = {

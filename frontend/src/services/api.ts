@@ -11,13 +11,16 @@ export interface Gap {
 export interface CardResponse {
   card_id: string;
   word_id: string;
+  sentence_id: string;
   sentence: string;
   gap: Gap;
   sentence_translation: string;
   grammar_hint: string;
   memory_stage: string;
+  is_new: boolean;
   audio_word_url: string;
   audio_sentence_url: string;
+  sentence_source?: string | null;
 }
 
 export interface AnswerRequest {

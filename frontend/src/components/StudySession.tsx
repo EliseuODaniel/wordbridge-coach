@@ -27,8 +27,14 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Track if user has interacted (for autoplay gating)
+  const [userHasInteracted, setUserHasInteracted] = useState(false);
+
   // Ref to manage next card timeout and prevent "ghost timers"
   const nextCardTimeoutRef = useRef<number | null>(null);
+
+  // Ref to track previous card_id for autoplay logic
+  const previousCardIdRef = useRef<string | null>(null);
 
   // Load stats from API
   const loadStats = useCallback(async () => {
@@ -257,22 +263,46 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
     }
   };
 
-  
-  // Auto-play sentence audio when card changes
+
+  // Auto-play sentence audio when card changes (only after user interaction)
   useEffect(() => {
-    if (currentCard?.audio_sentence_url) {
-      // Auto-play sentence audio for new cards
+    if (!currentCard?.card_id) {
+      return; // No card yet
+    }
+
+    const currentCardId = currentCard.card_id;
+    const previousCardId = previousCardIdRef.current;
+
+    // Update ref for next comparison
+    previousCardIdRef.current = currentCardId;
+
+    // Only auto-play if:
+    // 1. User has interacted (prevents autoplay blocking)
+    // 2. card_id actually changed (ignores userHasInteracted becoming true)
+    if (currentCard?.audio_sentence_url && userHasInteracted && currentCardId !== previousCardId) {
       audioService.playFromUrl(currentCard.audio_sentence_url).catch(error => {
         console.log('Auto-play sentence audio failed:', error);
       });
     }
-  }, [currentCard?.audio_sentence_url]);
+  }, [currentCard?.card_id, currentCard?.audio_sentence_url, userHasInteracted]);
 
   // Initialize session
   useEffect(() => {
     loadNextCard();
     loadStats(); // Load initial stats
     loadSettings(); // Load initial settings
+
+    // Detect first user interaction (click, keydown, touch)
+    const handleUserInteraction = () => {
+      if (!userHasInteracted) {
+        setUserHasInteracted(true);
+      }
+    };
+
+    // Add event listeners for user interaction
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
 
     return () => {
       // Cleanup audio on unmount
@@ -283,6 +313,10 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         clearTimeout(nextCardTimeoutRef.current);
         nextCardTimeoutRef.current = null;
       }
+      // Remove event listeners
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
     };
   }, [loadNextCard, loadStats, loadSettings]);
 
