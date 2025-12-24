@@ -197,6 +197,62 @@ export class AudioService {
     // Clear cache
     this.audioCache.clear();
   }
+
+  // Play audio from URL and wait for it to finish (or timeout)
+  async playFromUrlAndWaitEnded(url: string, timeoutMs: number = 60000): Promise<void> {
+    return new Promise((resolve) => {
+      let timeoutHandle: number | null = null;
+      let hasResolved = false;
+
+      const cleanup = () => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+        // Don't stop audio - let it finish naturally
+      };
+
+      const resolveOnce = () => {
+        if (!hasResolved) {
+          hasResolved = true;
+          cleanup();
+          resolve();
+        }
+      };
+
+      // Set timeout fallback (only as failsafe for very long audio or stuck playback)
+      timeoutHandle = window.setTimeout(() => {
+        console.log(`Audio timeout after ${timeoutMs}ms (failsafe), advancing anyway`);
+        resolveOnce();
+      }, timeoutMs);
+
+      // Play audio
+      this.playFromUrl(url)
+        .then(() => {
+          // Audio started successfully, wait for it to end
+          if (this.currentAudio) {
+            this.currentAudio.addEventListener('ended', () => {
+              console.log('Audio ended naturally');
+              resolveOnce();
+            }, { once: true });
+
+            this.currentAudio.addEventListener('error', (e) => {
+              console.error('Audio playback error:', e);
+              // Still resolve - don't block the flow on audio error
+              resolveOnce();
+            }, { once: true });
+          } else {
+            // No audio element, resolve immediately
+            resolveOnce();
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to start audio:', error);
+          // Still resolve - don't block the flow on audio failure
+          resolveOnce();
+        });
+    });
+  }
 }
 
 // Export singleton instance
