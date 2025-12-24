@@ -2,11 +2,13 @@
 
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
-from datetime import datetime
+from sqlalchemy import and_, func, or_
+from datetime import datetime, timedelta
+import random
 
 from app.models import (
-    User, Word, Sentence, Card, UserFrequencyProgress, UserSessionStats, ReviewEvent
+    User, Word, Sentence, Card, UserFrequencyProgress, UserSessionStats, ReviewEvent,
+    UserCardState, WordFrequency, Language
 )
 from app.services.vocabulary_progression import VocabularyProgressionService
 
@@ -18,10 +20,44 @@ class CardSelectionService:
         self.db = db
         self.progression_service = VocabularyProgressionService(db)
 
+    def _get_recent_word_ids(self, user_id: str, days: int = 7, limit: int = 50) -> set:
+        """
+        Get distinct word IDs seen by user in recent days.
+
+        Args:
+            user_id: User ID
+            days: Look back period in days (default 7)
+            limit: Maximum number of word IDs to return (default 50)
+
+        Returns:
+            Set of word IDs recently seen
+        """
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+        # Get distinct word IDs from recent review events
+        # Explicitly specify FROM ReviewEvent and JOIN with Card and Sentence
+        recent_words = self.db.query(ReviewEvent)\
+            .join(Card, ReviewEvent.card_id == Card.id)\
+            .join(Sentence, Card.sentence_id == Sentence.id)\
+            .filter(
+                and_(
+                    ReviewEvent.user_id == user_id,
+                    ReviewEvent.created_at >= cutoff_date
+                )
+            )\
+            .distinct(Sentence.word_id)\
+            .limit(limit)\
+            .all()
+
+        # Extract word IDs from ReviewEvent->Sentence->word_id
+        return {review_event.card.sentence.word_id for review_event in recent_words if review_event.card and review_event.card.sentence}
+
     def get_next_card_for_user(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get next card for user implementing Spec4's getNextCardForUser algorithm
         Mixes new words (25%) with reviews (75%) and reinforces errors
+
+        NEVER returns 404 if DB is seeded - always tries to find an eligible card.
 
         Args:
             user_id: User identifier
@@ -31,8 +67,6 @@ class CardSelectionService:
         progress = self.progression_service.get_or_create_user_progress(user_id)
         session_stats = self.progression_service.get_session_stats_for_today(user_id)
 
-        # Debug logs removidos para produção
-
         # Calculate new share for today
         new_share = 0
         if session_stats.cards_shown > 0:
@@ -40,116 +74,271 @@ class CardSelectionService:
 
         # Get review candidates (only from unlocked prefix)
         review_candidates = self.get_due_review_words(
-            self.db, user_id, max_count=50
+            self.db, user_id, max_count=50, exclude_card_id=exclude_card_id
         )
 
         # Check if we can introduce a new word
         from app.services.vocabulary_progression import TARGET_NEW_SHARE
         can_introduce_new = (
-            new_share < TARGET_NEW_SHARE and
-            self.progression_service.get_next_new_word_rank(user_id, progress) is not None
+            new_share < TARGET_NEW_SHARE
         )
 
         if can_introduce_new:
-            # Introduce new word
-            next_rank = self.progression_service.get_next_new_word_rank(user_id, progress)
-            print(f"DEBUG: get_next_new_word_rank returned: {next_rank}")
-            if not next_rank:
-                # No more new words available, fall back to review
-                return self._get_review_card(user_id, review_candidates, exclude_card_id)
+            # T1: Try new card (random selection)
+            new_card = self._get_random_new_card(user_id, progress, exclude_card_id)
+            if new_card:
+                return new_card
 
-            # Try to find a word starting from next_rank, handling exclude
-            max_attempts = 10  # Prevent infinite loops
-            current_rank = next_rank
+        # T2: Try review card
+        if review_candidates:
+            review_card = self._get_review_card(user_id, review_candidates, exclude_card_id)
+            if review_card:
+                return review_card
 
-            while current_rank <= min(progress.current_window_end_rank, progress.word_goal_rank) and max_attempts > 0:
-                word = self._get_word_by_rank(current_rank, user_id, exclude_card_id)
-                print(f"DEBUG: _get_word_by_rank({current_rank}) returned: {word}")
+        # T3: Fallback - try ANY eligible card (even if not "due" yet)
+        fallback_card = self._get_any_eligible_card(user_id, progress, exclude_card_id)
+        if fallback_card:
+            return fallback_card
 
-                if word:
-                    print(f"DEBUG: Word details - text: '{word.text}', id: {word.id}")
-                    # Found a valid word, break the loop
-                    break
+        # T4: Only return None if DB is truly empty
+        print(f"DEBUG: No cards available for user {user_id} - DB may be empty")
+        return None
 
-                # Word not found or was excluded, try next rank
-                current_rank += 1
-                max_attempts -= 1
-                print(f"DEBUG: Word not found at rank {current_rank-1}, trying rank {current_rank}")
+    def _get_random_new_card(self, user_id: str, progress: UserFrequencyProgress,
+                             exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get a random new card within the user's goal/window
 
-            if not word:
-                # No word found in the window, fall back to review
-                print(f"DEBUG: No word found in ranks {next_rank}-{current_rank-1}, falling back to review")
-                return self._get_review_card(user_id, review_candidates, exclude_card_id)
+        Args:
+            user_id: User identifier
+            progress: User's frequency progress
+            exclude_card_id: Optional card ID to exclude (soft preference)
+        """
+        # Get user's target language
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or not user.target_language_id:
+            return None
 
-            sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
-            card_context = self._build_card_context(word, sentence, is_new=True)
-            print(f"DEBUG: card_context card_id: '{card_context.get('card_id', 'MISSING')}'")
+        target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+        if not target_lang:
+            return None
 
-            # Record the new card in session stats
-            self.progression_service.record_card_shown(user_id, is_new_card=True)
+        max_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
 
-            return card_context
+        # Build query for eligible words
+        query = self.db.query(Word).join(WordFrequency,
+            and_(
+                func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                WordFrequency.language_code == target_lang.code,
+                WordFrequency.rank <= max_rank
+            )
+        )
 
+        # Soft exclusion: prefer other words if possible
+        excluded_word_id = None
+        if exclude_card_id:
+            excluded_card = self.db.query(Card).filter(Card.id == exclude_card_id).first()
+            if excluded_card and excluded_card.sentence:
+                excluded_word_id = excluded_card.sentence.word_id
+
+        # Anti-repetition: get recently seen words (last 7 days, max 50)
+        recent_word_ids = self._get_recent_word_ids(user_id, days=7, limit=50)
+
+        # Build exclusions: current card + recent words
+        exclusions = set()
+        if excluded_word_id:
+            exclusions.add(excluded_word_id)
+
+        # Try without excluded/recent words first
+        words_without_recent = query.filter(
+            ~Word.id.in_(exclusions | recent_word_ids)
+        ).all()
+
+        # Use words without recent if we have enough alternatives (threshold: 10)
+        if len(words_without_recent) >= 10:
+            word = random.choice(words_without_recent)
         else:
-            # Choose review word
-            return self._get_review_card(user_id, review_candidates, exclude_card_id)
+            # Fallback: include recent words (but still exclude current card)
+            if excluded_word_id:
+                words_without_current = query.filter(Word.id != excluded_word_id).all()
+                if words_without_current:
+                    word = random.choice(words_without_current)
+                else:
+                    # Last resort: include current card (will show different sentence)
+                    words = query.all()
+                    if not words:
+                        return None
+                    word = random.choice(words)
+            else:
+                words = query.all()
+                if not words:
+                    return None
+                word = random.choice(words)
+
+        # Get sentence (variety K=10 handled by get_sentence_for_word)
+        sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
+        card_context = self._build_card_context(user_id, word, sentence, is_new=True)
+
+        # Record the new card in session stats
+        self.progression_service.record_card_shown(user_id, is_new_card=True)
+
+        return card_context
+
+    def get_due_review_words(self, db: Session, user_id: str, max_count: int = 50,
+                            exclude_card_id: Optional[str] = None) -> List[Tuple[Word, UserCardState]]:
+        """Get words due for review with proper gating
+
+        Args:
+            db: Database session
+            user_id: User identifier
+            max_count: Maximum number of candidates to return
+            exclude_card_id: Optional specific card to exclude (by Card.id, NOT Word.id)
+        """
+        from sqlalchemy import desc
+        from app.models.user_card_state import MemoryStage
+
+        # Get user's progress for gating
+        progress = self.progression_service.get_or_create_user_progress(user_id)
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if not user or not user.target_language_id:
+            return []
+
+        # Get user's target language code for WordFrequency join
+        from app.models import Language
+        target_lang = db.query(Language).filter(Language.id == user.target_language_id).first()
+        if not target_lang:
+            return []
+        target_lang_code = target_lang.code
+
+        # Build query for due cards
+        # Note: We filter by Card.id in exclude_card_id, NOT by Word.id
+        query = db.query(UserCardState, Word).join(
+            Card, UserCardState.card_id == Card.id
+        ).join(
+            Sentence, Card.sentence_id == Sentence.id
+        ).join(
+            Word, Sentence.word_id == Word.id
+        ).filter(
+            UserCardState.user_id == user_id,
+            Word.language_id == user.target_language_id,
+            UserCardState.next_review_at <= datetime.utcnow(),
+            UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE])
+        )
+
+        # Apply max_contiguous_mastered_rank gating (prefix)
+        if progress.max_contiguous_mastered_rank > 0:
+            # Allow words within mastered prefix + reasonable range for sparse data
+            max_allowed_rank = progress.max_contiguous_mastered_rank + 100  # Generous range
+            query = query.join(WordFrequency,
+                and_(
+                    func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                    WordFrequency.language_code == target_lang_code  # Use user's target language
+                )
+            ).filter(WordFrequency.rank <= max_allowed_rank)
+
+        # Exclude specific card if provided (by Card.id, NOT Word.id)
+        if exclude_card_id:
+            query = query.filter(UserCardState.card_id != exclude_card_id)
+
+        # Order by priority (errors first, then interval, then random)
+        # For now, simple ordering by next_review_at
+        query = query.order_by(UserCardState.next_review_at).limit(max_count)
+
+        results = query.all()
+
+        # Convert to tuples of (Word, UserCardState)
+        return [(word, ucs) for ucs, word in results]
 
     def _get_review_card(self, user_id: str, review_candidates, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get a review card from candidates
 
         Args:
             user_id: User identifier
-            review_candidates: Available review candidates
-            exclude_card_id: Optional card ID to exclude from selection
+            review_candidates: Available review candidates (tuples of Word, UserCardState)
+            exclude_card_id: Optional card ID to exclude (already filtered in get_due_review_words)
         """
         if not review_candidates:
-            # No review candidates available, could introduce new word if possible
-            progress = self.progression_service.get_or_create_user_progress(user_id)
-            next_rank = self.progression_service.get_next_new_word_rank(user_id, progress)
-
-            if next_rank:
-                word = self._get_word_by_rank(next_rank, user_id, exclude_card_id)
-
-                if word:
-                    sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
-                    card_context = self._build_card_context(word, sentence, is_new=True)
-                    self.progression_service.record_card_shown(user_id, is_new_card=True)
-                    return card_context
             return None
 
         # Pick best review word (favoring problematic words)
-        # Convert tuples to words for the service
-        review_words = [candidate[0] for candidate in review_candidates] if review_candidates else []
-        if not review_words:
-            return None
-
-        # Filter out excluded word if provided
-        if exclude_card_id:
-            # Get word_id from the excluded card_id
-            from app.models import Card
-            excluded_card = self.db.query(Card).filter(Card.id == exclude_card_id).first()
-            if excluded_card and excluded_card.sentence and excluded_card.sentence.word_id:
-                excluded_word_id = str(excluded_card.sentence.word_id)
-                review_words = [word for word in review_words if str(word.id) != excluded_word_id]
-                if not review_words:
-                    return None
+        review_words = [candidate[0] for candidate in review_candidates]
 
         word = self.progression_service.pick_best_review_word(user_id, review_words)
         sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
-        card_context = self._build_card_context(word, sentence, is_new=False)
+        card_context = self._build_card_context(user_id, word, sentence, is_new=False)
 
         # Record the review card in session stats
         self.progression_service.record_card_shown(user_id, is_new_card=False)
 
         return card_context
 
-    def _get_word_by_rank(self, rank: int, user_id: str = None, exclude_card_id: Optional[str] = None) -> Optional[Word]:
-        """Get word by frequency rank with deterministic lookup and proper gating
+    def _get_any_eligible_card(self, user_id: str, progress: UserFrequencyProgress,
+                               exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Fallback: Get ANY eligible card (even if not "due" yet)
+
+        This is the final fallback to prevent 404 errors in seeded environments.
 
         Args:
-            rank: Target frequency rank
-            user_id: User identifier for gating
-            exclude_card_id: Optional card ID to exclude from selection (will be converted to word_id)
+            user_id: User identifier
+            progress: User's frequency progress
+            exclude_card_id: Optional card ID to exclude
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or not user.target_language_id:
+            return None
+
+        target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+        if not target_lang:
+            return None
+
+        max_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
+
+        # Query ANY active card within constraints
+        query = self.db.query(Card).join(Sentence).join(Word).filter(
+            Card.is_active == True,
+            Word.language_id == user.target_language_id
+        ).join(WordFrequency,
+            and_(
+                func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                WordFrequency.language_code == target_lang.code,
+                WordFrequency.rank <= max_rank
+            )
+        )
+
+        # Exclude specific card if provided
+        if exclude_card_id:
+            query = query.filter(Card.id != exclude_card_id)
+
+        # Random selection to avoid repetition
+        card = query.order_by(func.random()).first()
+
+        if not card:
+            return None
+
+        # Get word and build context
+        word = card.sentence.word
+        sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
+
+        # Determine if this is new or review based on UserCardState
+        ucs = self.db.query(UserCardState).filter(
+            UserCardState.user_id == user_id,
+            UserCardState.card_id == card.id
+        ).first()
+
+        is_new = (ucs is None or ucs.status.value == 'NEW')
+
+        card_context = self._build_card_context(user_id, word, sentence, is_new=is_new)
+
+        # Record in session stats
+        self.progression_service.record_card_shown(user_id, is_new_card=is_new)
+
+        return card_context
+
+    def _get_word_by_rank(self, rank: int, user_id: str = None, exclude_card_id: Optional[str] = None) -> Optional[Word]:
+        """Get word by frequency rank (DEPRECATED - kept for compatibility)
+
+        NOTE: This method is kept for backwards compatibility but is no longer used
+        in the main flow. Use _get_random_new_card instead.
         """
         from app.models import WordFrequency
         from app.models.user_frequency_progress import UserFrequencyProgress
@@ -240,189 +429,171 @@ class CardSelectionService:
 
     def _build_card_context(
         self,
+        user_id: str,
         word: Word,
         sentence: Optional[Sentence],
         is_new: bool
     ) -> Dict[str, Any]:
-        """
-        Build card context for API response with REAL Card ID
-        Implements buildCardContext(word, sentence, { isNew: true/false }) from Spec4
+        """Build card context dictionary for API response
 
-        CRITICAL: Always returns a real card_id from an existing Card in the database.
-        If Card doesn't exist for the Sentence, creates it on-demand.
-        """
-        if not sentence:
-            # Create fallback sentence
-            sentence = self.progression_service._create_fallback_sentence(word.id)
+        Args:
+            user_id: User identifier (needed for target language)
+            word: The word being studied
+            sentence: The sentence for this card
+            is_new: Whether this is a new card or review
 
-        # CRITICAL: Find or create Card for this sentence
-        card = self.db.query(Card).filter(Card.sentence_id == sentence.id).first()
+        Returns:
+            Dictionary with card data for API response
+        """
+        from app.models import Card, User, Language
+
+        # Find or create card for this sentence
+        card = self.db.query(Card).filter(
+            Card.sentence_id == sentence.id,
+            Card.is_active == True
+        ).first()
 
         if not card:
-            # Card doesn't exist - create on-demand (Spec4 requirement)
-            from app.models import Deck
-            import uuid
+            # Auto-create Card on-the-fly (Spec4 requirement - never return None)
+            print(f"INFO: Auto-creating card for sentence {sentence.id}, word {word.text}")
 
-            # Get or create a default deck for the word's language
+            from app.models import Deck
+
+            # Find or create default deck for this language
             deck = self.db.query(Deck).filter(
-                and_(
-                    Deck.language_id == word.language_id,
-                    Deck.is_active == True
-                )
+                Deck.language_id == word.language_id,
+                Deck.is_active == True
             ).first()
 
             if not deck:
-                # Create a default deck if none exists
+                # Create default deck if none exists
                 deck = Deck(
-                    id=str(uuid.uuid4()),
-                    name=f"Default {word.language_id or 'EN'}",
+                    name=f"Default {word.language_id}",
                     language_id=word.language_id,
                     difficulty_level=1,
-                    description=f"Auto-generated deck for {word.language_id}",
+                    description="Auto-created default deck",
                     is_active=True
                 )
                 self.db.add(deck)
                 self.db.flush()
 
-            # Create the Card
+            # Calculate gap positions from sentence text
+            text = sentence.text or ""
+            gap_start = text.find("___")
+            gap_end = gap_start + 3 if gap_start >= 0 else len(text)
+
+            # Create card
             card = Card(
-                id=str(uuid.uuid4()),
                 sentence_id=sentence.id,
                 deck_id=deck.id,
-                grammar_hint=sentence.grammar_hint or f"{word.part_of_speech}",
-                difficulty=word.difficulty or 1,
-                gap_start=sentence.gap_start,
-                gap_end=sentence.gap_end,
+                grammar_hint="",  # Can be enhanced later with word.part_of_speech
+                gap_start=gap_start,
+                gap_end=gap_end,
                 is_active=True
             )
             self.db.add(card)
             self.db.flush()
-            print(f"DEBUG: Created on-demand Card {card.id} for Sentence {sentence.id}")
 
-        # Build context with REAL card_id
+            print(f"INFO: Created card {card.id} for sentence {sentence.id}")
+
+        # Get user's target language code for audio URLs
+        user = self.db.query(User).filter(User.id == user_id).first()
+        lang_code = 'en'  # Default fallback
+        if user and user.target_language_id:
+            target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+            if target_lang:
+                lang_code = target_lang.code
+
+        # Build audio URLs using TTS service endpoints (via nginx proxy)
+        from urllib.parse import quote
+
+        # Word audio URL
+        word_text_encoded = quote(word.text or "")
+        audio_word_url = f"/api/tts/word/{card.id}?text={word_text_encoded}&lang={lang_code}"
+
+        # Sentence audio URL - replace ___ with actual word
+        sentence_with_gap = sentence.text or ""
+        sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
+        sentence_text_encoded = quote(sentence_with_word)
+        audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
         return {
-            "card_id": str(card.id),  # CRITICAL: Real Card.id
+            "card_id": str(card.id),
             "word_id": str(word.id),
-            "sentence_id": str(sentence.id),  # Added for Spec4 variety tracking
+            "sentence_id": str(sentence.id),
             "word": word.text,
-            "sentence": sentence.text,
-            "sentence_translation": sentence.translation or "",
-            "grammar_hint": sentence.grammar_hint or f"{word.part_of_speech}",
+            "sentence": sentence.text or "",
             "gap": {
-                "start": sentence.gap_start,
-                "end": sentence.gap_end
+                "start": card.gap_start or 0,
+                "end": card.gap_end or 0
             },
+            "sentence_translation": sentence.translation or "",
+            "grammar_hint": card.grammar_hint or "",
+            "memory_stage": "NEW" if is_new else "REVIEW",
             "is_new": is_new,
-            "difficulty": word.difficulty,
-            "audio_word_url": f"http://localhost:8001/api/tts/word/{card.id}?text={word.text}&lang=en",  # Use card.id for TTS
-            "audio_sentence_url": f"http://localhost:8001/api/tts/sentence/{card.id}?text={sentence.text.replace('___', word.text)}&lang=en"
+            "audio_word_url": audio_word_url,
+            "audio_sentence_url": audio_sentence_url,
+            "sentence_source": sentence.source_title if sentence.source_title else None
         }
 
-    def record_answer(
-        self,
-        user_id: str,
-        word_id: str,
-        sentence_id: str,
-        was_correct: bool,
-        response_time_ms: int,
-        quality: int
-    ):
+    def record_answer(self, user_id: str, word_id: str, sentence_id: str,
+                     was_correct: bool, response_time_ms: int, quality: int) -> Dict[str, Any]:
+        """Record answer and update Spec4 vocabulary progression
+
+        Args:
+            user_id: User identifier
+            word_id: Word identifier (from card.sentence.word_id)
+            sentence_id: Sentence identifier
+            was_correct: Whether answer was correct
+            response_time_ms: Response time in milliseconds
+            quality: SM-2 quality score (0-5)
+
+        Returns:
+            Dictionary with result
         """
-        Record user answer and update progression
-        This integrates with existing ReviewEvent system and adds Spec4 progression logic
-        """
-        # Get word rank for progression update
-        from app.models import WordFrequency
-        from app.models.word import Word
+        # Update vocabulary progression only for correct answers (Spec4)
+        if was_correct:
+            try:
+                # Get user's target language
+                from app.models.user import User
+                user = self.db.query(User).filter(User.id == user_id).first()
+                if not user or not user.target_language_obj:
+                    print(f"DEBUG: No user or target_language found for user_id={user_id}")
+                    return {"success": False, "error": "User not found"}
 
-        # Try to get Word with WordFrequency data
-        word = None
+                # Get language code from target_language_obj
+                target_lang_code = user.target_language_obj.code
 
-        # First try: direct query with WordFrequency join (use MIN rank to get the correct frequency)
-        from app.models.word import Word
+                # Get word rank from WordFrequency
+                from app.models.word import Word
+                from app.models.word_frequency import WordFrequency
+                from sqlalchemy import func
 
-        # Get the word first
-        word_obj = self.db.query(Word).filter(Word.id == word_id).first()
-        if word_obj:
-            # Get the MIN frequency rank for this word
-            wf = self.db.query(func.min(WordFrequency.rank)).filter(
-                func.lower(WordFrequency.word) == func.lower(word_obj.lemma),
-                WordFrequency.language_code == "en"
-            ).scalar()
+                word = self.db.query(Word).filter(Word.id == word_id).first()
+                if not word:
+                    print(f"DEBUG: Word not found for word_id={word_id}")
+                    return {"success": False, "error": "Word not found"}
 
-            if wf:
-                word_obj.frequency_rank = wf
-                word = word_obj
-            else:
-                word = None
-        else:
-            word = None
-
-        # Fallback: try without WordFrequency join and get rank separately
-        if not word:
-            word = self.db.query(Word).filter(Word.id == word_id).first()
-            if word:
-                # Try to get frequency rank separately
+                # Match WordFrequency by word (case-insensitive)
                 wf = self.db.query(WordFrequency).filter(
                     func.lower(WordFrequency.word) == func.lower(word.lemma),
-                    WordFrequency.language_code == "en"
+                    WordFrequency.language_code == target_lang_code
                 ).first()
-                if wf:
-                    word.frequency_rank = wf.rank
 
-        if word and was_correct:
-            # Update contiguous mastered rank if this is first time correct
-            self._check_and_update_first_time_correct(user_id, word_id, getattr(word, 'frequency_rank', None))
-            print(f"DEBUG: Updated progression for word '{word.text}' (rank: {getattr(word, 'frequency_rank', 'unknown')})")
+                if not wf:
+                    print(f"DEBUG: WordFrequency not found for word={word.lemma}, lang={target_lang_code}")
+                    return {"success": False, "error": "WordFrequency not found"}
 
-        # Note: The actual ReviewEvent creation would be handled by the existing system
-        # This method focuses on the Spec4 progression logic
+                # Update contiguous mastered rank
+                print(f"DEBUG: Updating progression for user={user_id}, rank={wf.rank}")
+                self.progression_service.update_contiguous_mastered_rank(user_id, wf.rank)
+                print(f"DEBUG: Updated max_contiguous_mastered_rank for user={user_id} to rank {wf.rank}")
+                return {"success": True, "rank": wf.rank}
 
-    def get_due_review_words(
-        self, db: Session, user_id: str, max_count: int = 50
-    ) -> List[Tuple['Word', 'UserCardState', int]]:
-        """Get words that are due for review, limited by unlocked rank"""
-        from app.models.user_frequency_progress import UserFrequencyProgress
-        from app.models.word import Word
-        from app.models.user_card_state import UserCardState
-        from app.models.word_frequency import WordFrequency
+            except Exception as e:
+                print(f"DEBUG: Error updating progression: {e}")
+                import traceback
+                traceback.print_exc()
+                return {"success": False, "error": str(e)}
 
-        # Get user's progress to enforce rank gating
-        progress = db.query(UserFrequencyProgress).filter(UserFrequencyProgress.user_id == user_id).first()
-        max_unlocked_rank = progress.max_contiguous_mastered_rank if progress else 1
-
-        # Use proper SQLAlchemy relationships for joins
-        # UserCardState -> Card -> Sentence -> Word -> WordFrequency
-        from app.models.card import Card
-        from app.models.sentence import Sentence
-        query = (
-            db.query(Word, UserCardState, WordFrequency.rank)
-            .join(Sentence, Word.id == Sentence.word_id)
-            .join(Card, Sentence.id == Card.sentence_id)
-            .join(UserCardState, Card.id == UserCardState.card_id)
-            .join(WordFrequency, Word.text == WordFrequency.word)
-            .filter(
-                UserCardState.user_id == user_id,
-                UserCardState.next_review_at <= datetime.utcnow(),  # Due for review
-                WordFrequency.rank <= max_unlocked_rank,  # CRITICAL: Only review unlocked words
-            )
-            .order_by(WordFrequency.rank)
-            .limit(max_count)
-        )
-
-        return query.all()
-
-    def _check_and_update_first_time_correct(self, user_id: str, word_id: str, word_rank: int):
-        """Check if this is first correct answer and update progression if needed"""
-        from app.models import Card
-
-        # Check if user has been correct before - need to join through Card
-        previous_correct = self.db.query(ReviewEvent).join(Card).join(Sentence).filter(
-            ReviewEvent.user_id == user_id,
-            Sentence.word_id == word_id,
-            ReviewEvent.was_correct == True
-        ).first()
-
-        if not previous_correct and word_rank:
-            # First time correct - update progression
-            self.progression_service.update_contiguous_mastered_rank(user_id, word_rank)
+        return {"success": True, "message": "Incorrect answer, progression not updated"}

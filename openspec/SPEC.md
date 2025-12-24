@@ -433,6 +433,99 @@ Bands unlock progressively based on user mastery thresholds (30%/60%/80%).
 - **Audio usage**: >90% play word/sentence audio
 - **Error rate**: <1% failed requests
 
+## Training Modes
+
+FillTheWord supports multiple training modes to accommodate different learning preferences. Users can switch between modes freely.
+
+### Spec4 Mode (Default)
+
+**Route**: `/study`
+
+**Description**: Traditional flashcard-style training with explicit "Check" button submission.
+
+**Key Features**:
+- Display sentence with gap `___`
+- Separate input field for answer
+- Manual submission via "Check" button
+- Immediate feedback (correct/incorrect)
+- Memory stage visualization (0-4 dots)
+- Audio plays on card load
+
+**Selection Algorithm**:
+- Implements Spec4 getNextCardForUser logic
+- Mix: 25% new / 75% review
+- Gating by max_contiguous_mastered_rank
+- Anti-repetition: K=10 sentence variety
+- Priority: due cards → new cards (if under daily limit) → learning cards
+
+**Best For**: Users who prefer traditional flashcard review, explicit control over submission timing.
+
+### Lingvist Mode (Cloze Inline + Hints + Audio pós-acerto)
+
+**Route**: `/train/lingvist`
+
+**Status**: 📋 Proposed (see [change proposal](openspec/changes/2025-12-lingvist-mode-v1.md))
+
+**Description**: Cloze deletion training with inline input, real-time validation, progressive hints, and audio reinforcement only after correct answers.
+
+**Key Features**:
+- **Inline input**: Gap `___` becomes editable chip `[_______]`
+- **No "Check" button**: Auto-submit on correct answer (normalized match)
+- **Enter fallback**: For accessibility/ambiguous cases
+- **Real-time validation**: Prefix match feedback without server calls
+- **Progressive hints**: Appear after mistakes/time stuck
+  - Hint 1: Grammar tag PT-BR (ex: "substantivo, plural")
+  - Hint 2: Length mask (ex: "_ _ _ _ _")
+  - Hint 3: First letter
+  - Hint 4: Reveal letters progressively
+  - Hint 5: PT-BR word translation
+  - Hint 6: Semantic hint
+- **Audio after correct**: Play sentence audio only when `correct=true`
+- **Advance after audio**: Next card loads only after audio ends (or 3s timeout)
+- **Micro-progress**: "3/10" counter in top bar
+- **Bottom sheet**: PT-BR translations (word + sentence)
+- **Menu**: Skip card, report problem, exit mode
+
+**Selection Algorithm**:
+- Reuses Spec4 CardSelectionService (same gating, janela, anti-repetição)
+- Mix: 20% new / 80% review (more conservative than Spec4)
+- Same SM-2 intervals, memory stages
+
+**Best For**: Users who prefer typing practice, muscle memory building, gamified progression.
+
+**Differences from Spec4**:
+| Feature | Spec4 Mode | Lingvist Mode |
+|---------|------------|---------------|
+| Input | Separate field | Inline in gap |
+| Submission | Manual "Check" | Auto-submit + Enter fallback |
+| Feedback | After submission | Real-time prefix match |
+| Hints | None | Progressive (6 levels) |
+| Audio | On card load | After correct only |
+| Translations | None (MVP) | PT-BR word + sentence |
+| Progress | Per session | Micro (X/Y) |
+
+**Technical Implementation**:
+- **Endpoint**: `GET /api/v1/cards/next-lingvist`
+- **Response**: Enriched payload with `correct_answer`, `grammar_tag_pt`, `word_translation_pt`, `sentence_translation_pt`, `micro_progress`
+- **Frontend**: New components (`InlineGapInput`, `HintPanel`, `BottomSheet`, `MicroProgress`, `OptionsMenu`)
+- **Audio**: Hook `usePostCorrectAudio` with timeout (3s)
+- **Hints**: Hook `useProgressiveHints` with triggers (mistakes, time stuck)
+
+**Validation**:
+- Auto-submit on exact normalized match
+- Enter as fallback
+- Client-side prefix match (green "bo____", red "box")
+- Hints respect 60% max reveal rule
+- Audio fallback if blocked/timeout
+
+**Risks & Mitigations**:
+- **Autoplay policy**: User just typed (valid gesture), fallback button if blocked
+- **Spec4 regression**: New endpoint, `/next-spec4` unchanged
+- **Translation debt**: MVP accepts empty, shows "Tradução indisponível"
+- **Performance**: Hints calculated server-side, cached client-side
+
+See [openspec/changes/2025-12-lingvist-mode-v1.md](openspec/changes/2025-12-lingvist-mode-v1.md) for complete specification.
+
 ## Future Considerations
 
 ### Post-MVP Features

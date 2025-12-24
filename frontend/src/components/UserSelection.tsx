@@ -5,8 +5,12 @@ import { usersApi, type CreateUserRequest, type UpdateUserRequest } from '../ser
 import ProfileCard, { type ProfileStats, type Profile } from './ProfileCard';
 import ConfirmDialog from './ConfirmDialog';
 
+type TrainingMode = 'spec4' | 'lingvist';
+
 interface UserSelectionProps {
   onUserSelected: (userId: string) => void;
+  onModeSelect: (mode: TrainingMode) => void;
+  selectedMode: TrainingMode;
 }
 
 // Language options based on API specification
@@ -31,7 +35,7 @@ const VOCABULARY_GOALS = [
   { rank: 10000, label: '10000 words', description: 'Near-native vocabulary' }
 ];
 
-const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected }) => {
+const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSelect, selectedMode }) => {
   const [users, setUsers] = useState<Profile[]>([]);
   const [newUsername, setNewUsername] = useState('');
   const [targetLanguage, setTargetLanguage] = useState('en');
@@ -202,6 +206,39 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected }) => {
           <p className="text-gray-400">
             Learn vocabulary with smart spaced repetition
           </p>
+        </div>
+
+        {/* Training Mode Selector */}
+        <div className="bg-gray-800 rounded-lg p-4 mb-6 shadow-xl">
+          <label className="block text-sm font-medium text-gray-400 mb-3">
+            Training Mode
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onModeSelect('spec4')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                selectedMode === 'spec4'
+                  ? 'bg-primary-600 text-white shadow-lg'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              <div className="text-lg mb-1">🎯</div>
+              <div className="text-sm">Spec4</div>
+              <div className="text-xs opacity-75">Multiple choice</div>
+            </button>
+            <button
+              onClick={() => onModeSelect('lingvist')}
+              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                selectedMode === 'lingvist'
+                  ? 'bg-primary-600 text-white shadow-lg'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              <div className="text-lg mb-1">✍️</div>
+              <div className="text-sm">Lingvist</div>
+              <div className="text-xs opacity-75">Cloze + hints</div>
+            </button>
+          </div>
         </div>
 
         {/* Profiles Section */}

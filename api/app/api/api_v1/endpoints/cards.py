@@ -10,10 +10,14 @@ import uuid
 from app.core.database import get_db
 from app.core.config import settings
 from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorResponse
+from app.schemas.lingvist import LingvistCardResponse, MicroProgress
 from app.services.sm2 import SM2Algorithm
 from app.services.card_selection import CardSelectionService
 from app.models import Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
+from app.models.user_session_stats import UserSessionStats
 from app.models.user_card_state import MemoryStage
+from app.models.user_theme_stats import UserThemeStats
+from app.models.word_theme_mapping import WordThemeMapping
 
 router = APIRouter()
 
@@ -69,9 +73,9 @@ def create_sample_data_if_needed(db: Session):
                 id=str(uuid.uuid4()),
                 username="demo",
                 email="demo@filltheword.com",
-                native_language_id=en_lang.id,  # UUID instead of string
-                target_language_id=pt_lang.id,   # UUID instead of string
-                language_preference="en",
+                native_language_id=pt_lang.id,  # Portuguese: native language
+                target_language_id=en_lang.id,   # English: learning target
+                language_preference="pt",        # UI in Portuguese
                 daily_new_limit=10,
                 easiness_factor=2.5
             )
@@ -538,6 +542,46 @@ async def submit_answer(
 
         print(f"DEBUG: UserCardState updated successfully")
 
+        # Update UserThemeStats for all themes associated with this word
+        word_id = card.sentence.word_id
+        theme_mappings = db.query(WordThemeMapping.theme_id).filter(
+            and_(
+                WordThemeMapping.word_id == word_id,
+                WordThemeMapping.is_active == True
+            )
+        ).all()
+
+        for theme_mapping in theme_mappings:
+            theme_id = theme_mapping[0]  # Extract theme_id from tuple
+
+            # Get or create UserThemeStats
+            theme_stats = db.query(UserThemeStats).filter(
+                and_(
+                    UserThemeStats.user_id == user_id,
+                    UserThemeStats.theme_id == theme_id
+                )
+            ).first()
+
+            if not theme_stats:
+                # Create new UserThemeStats
+                theme_stats = UserThemeStats(
+                    user_id=user_id,
+                    theme_id=theme_id,
+                    attempts=0,
+                    correct=0,
+                    accuracy=0.0,
+                    avg_response_time_ms=0.0
+                )
+                db.add(theme_stats)
+                db.flush()  # Flush to ensure it's persisted before updating
+
+            # Add attempt using model's method
+            theme_stats.add_attempt(
+                was_correct=is_correct,
+                response_time_ms=answer_data.response_time_ms
+            )
+            print(f"DEBUG: Updated UserThemeStats for theme_id={theme_id}, attempts={theme_stats.attempts}, accuracy={theme_stats.accuracy:.3f}")
+
         # CRITICAL: Update Spec4 progression after correct answer
         if is_correct:
             try:
@@ -665,7 +709,8 @@ async def get_next_card_spec4(
             memory_stage=memory_stage,  # Real SM-2 status from UserCardState or NEW
             is_new=card_context["is_new"],
             audio_word_url=card_context["audio_word_url"],
-            audio_sentence_url=card_context["audio_sentence_url"]
+            audio_sentence_url=card_context["audio_sentence_url"],
+            sentence_source=card_context.get("sentence_source")
         )
 
     except HTTPException:
@@ -676,6 +721,201 @@ async def get_next_card_spec4(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}
         )
+
+
+@router.get("/next-lingvist", response_model=LingvistCardResponse)
+async def get_next_card_lingvist(
+    user_id: Optional[str] = None,
+    exclude_card_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get next card for Lingvist mode training
+
+    Lingvist mode: Inline cloze with progressive hints, audio after correct,
+    and PT-BR translations. Reuses Spec4 selection algorithm but with
+    enriched payload.
+
+    Mix: 20% new / 80% review (more conservative than Spec4).
+    """
+    try:
+        from app.schemas.lingvist import LingvistCardResponse, MicroProgress
+        from app.services.card_selection import CardSelectionService
+
+        # Get demo user if user_id not provided
+        if not user_id:
+            demo_user = db.query(User).filter(User.username == "demo").first()
+            if not demo_user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"error": "Demo user not found", "message": "User setup required"}
+                )
+            user_id = demo_user.id
+
+        # Initialize Spec4 card selection service
+        card_service = CardSelectionService(db)
+
+        # Get next card using Spec4 algorithm with Lingvist mix (20% new / 80% review)
+        # Override target_new_share to 0.2 (20% new words)
+        original_target_new = None
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if user and hasattr(user, 'target_new_words'):
+            original_target_new = user.target_new_words
+
+        # Temporarily set target_new_words to enforce 20% new / 80% review mix
+        # Lingvist mode is more conservative than Spec4
+        if user:
+            user.target_new_words = 20  # 20% new words
+
+        try:
+            card_context = card_service.get_next_card_for_user(user_id, exclude_card_id=exclude_card_id)
+        finally:
+            # Restore original target_new_words
+            if user and original_target_new is not None:
+                user.target_new_words = original_target_new
+
+        if not card_context:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "No cards available", "message": "No cards available for study at this time"}
+            )
+
+        # Get actual card, word, and sentence objects
+        card = db.query(Card).filter(Card.id == card_context["card_id"]).first()
+        word = db.query(Word).filter(Word.id == card_context["word_id"]).first()
+        sentence = db.query(Sentence).filter(Sentence.id == card_context["sentence_id"]).first()
+
+        if not card or not word or not sentence:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "Card data incomplete", "message": "Missing card/word/sentence"}
+            )
+
+        # Build grammar_tag_pt from word.part_of_speech and word.features
+        grammar_tag_pt = _build_grammar_tag_pt(word)
+
+        # Extract PT-BR translations
+        word_translation_pt = _extract_word_translation(word)
+        sentence_translation_pt = sentence.translation  # Already in Sentence model
+
+        # Get micro_progress from UserSessionStats
+        micro_progress = _get_micro_progress(db, user_id, user)
+
+        # Build audio URLs
+        from urllib.parse import quote
+        lang_code = "en"  # TODO: Get from user.target_language
+
+        word_text_encoded = quote(word.text or "")
+        audio_word_url = f"/api/tts/word/{card.id}?text={word_text_encoded}&lang={lang_code}"
+
+        sentence_with_gap = sentence.text or ""
+        sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
+        sentence_text_encoded = quote(sentence_with_word)
+        audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
+        # Build enriched response
+        return LingvistCardResponse(
+            card_id=str(card.id),
+            word_id=str(word.id),
+            sentence_id=str(sentence.id),
+            word=word.text,
+            sentence=sentence.text or "",
+            gap={"start": card.gap_start or 0, "end": card.gap_end or 0},
+            correct_answer=word.text,  # Expected answer for validation
+            grammar_tag_pt=grammar_tag_pt,
+            word_translation_pt=word_translation_pt,
+            sentence_translation_pt=sentence_translation_pt,
+            sentence_source=sentence.source_title if sentence.source_title else None,
+            is_new=card_context["is_new"],
+            micro_progress=micro_progress,
+            audio_word_url=audio_word_url,
+            audio_sentence_url=audio_sentence_url
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in get_next_card_lingvist: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Internal server error", "message": str(e)}
+        )
+
+
+def _build_grammar_tag_pt(word: 'Word') -> str:
+    """Build PT-BR grammar tag from word.part_of_speech and word.features"""
+    pos_mapping = {
+        "noun": "substantivo",
+        "verb": "verbo",
+        "adjective": "adjetivo",
+        "adverb": "advérbio",
+        "preposition": "preposição",
+        "article": "artigo",
+        "pronoun": "pronome",
+        "conjunction": "conjunção"
+    }
+
+    pos_pt = pos_mapping.get(word.part_of_speech, word.part_of_speech)
+
+    # Extract additional grammatical features if available
+    features = []
+    if word.features:
+        if isinstance(word.features, dict):
+            # Number (for nouns)
+            if word.features.get("number"):
+                number_pt = {"singular": "singular", "plural": "plural"}.get(word.features["number"])
+                if number_pt:
+                    features.append(number_pt)
+
+            # Gender (for nouns/articles)
+            if word.features.get("gender"):
+                gender_pt = {"masculine": "masculino", "feminine": "feminine", "neuter": "neutro"}.get(word.features["gender"])
+                if gender_pt:
+                    features.append(gender_pt)
+
+            # Tense (for verbs)
+            if word.features.get("tense"):
+                tense_pt = {
+                    "present": "presente",
+                    "past": "passado",
+                    "future": "futuro"
+                }.get(word.features["tense"])
+                if tense_pt:
+                    features.append(tense_pt)
+
+    if features:
+        return f"{pos_pt}, {', '.join(features)}"
+    else:
+        return pos_pt
+
+
+def _extract_word_translation(word: 'Word') -> Optional[str]:
+    """Extract PT-BR translation from Word.features.pt_translation"""
+    if word.features and isinstance(word.features, dict):
+        return word.features.get("pt_translation")
+    return None
+
+
+def _get_micro_progress(db: 'Session', user_id: str, user: 'User') -> 'MicroProgress':
+    """Calculate micro-progress from UserSessionStats and User for TODAY"""
+    from datetime import date
+
+    today = date.today()
+    stats = db.query(UserSessionStats).filter(
+        UserSessionStats.user_id == user_id,
+        UserSessionStats.date == today
+    ).first()
+
+    if not stats:
+        return MicroProgress(current=0, total=user.daily_new_limit, new_words=0)
+
+    # Clamp current to never exceed total (session progress semantics)
+    current = min(stats.cards_shown, user.daily_new_limit)
+    total = user.daily_new_limit  # Daily session goal
+    new_words = min(stats.new_cards_shown, user.daily_new_limit)  # Also clamp to avoid confusion
+
+    return MicroProgress(current=current, total=total, new_words=new_words)
 
 
 @router.get("/health")

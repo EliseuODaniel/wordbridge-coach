@@ -68,6 +68,7 @@ Vocabulário individual usado nas frases com campos adicionais do texto-base.
 - `features` (JSON) - Propriedades gramaticais específicas do idioma
 - `language_id` (UUID, FK)
 - `pronunciation` (string, optional) - IPA notation
+- `pt_translation` (string, optional) - Tradução PT-BR da palavra (ex: "book" → "livro") - ⚠️ NOVO (Lingvist mode)
 - `frequency_rank` (int, optional) - Common word frequency (1=most common)
 - `audio_path` (string, optional) - Path to cached TTS audio
 - `difficulty` (int, 1-5) - Derived from frequency and complexity
@@ -241,7 +242,10 @@ Registro individual de cada sessão de revisão para analytics e ajuste SM-2.
 - `user_answer` (string) - Resposta do usuário
 - `correct_answer` (string) - Resposta correta
 - `was_correct` (boolean) - Se a resposta estava correta
-- `hints_used` (int, default 0) - Quantidade de dicas usadas
+- `hints_used` (int, default 0) - Quantidade de dicas usadas (Spec4 mode)
+- `typed_answer` (string, nullable) - Resposta digitada no modo Lingvist - ⚠️ NOVO
+- `hints_used_lingvist` (JSON, nullable) - Hints usados no modo Lingvist - ⚠️ NOVO
+- `attempt_index` (int, default 1) - Índice da tentativa (1ª, 2ª, 3ª...) - ⚠️ NOVO
 - `previous_easiness` (float) - Easiness factor antes da revisão
 - `new_easiness` (float) - Easiness factor após revisão
 - `previous_interval` (int) - Intervalo antes da revisão
@@ -262,6 +266,23 @@ Registro individual de cada sessão de revisão para analytics e ajuste SM-2.
 - response_time_ms > 0
 - previous_easiness/new_easiness >= 1.3
 - **Spec4**: `sentence_id` deve ser preenchido sempre que possível (para variedade de frases)
+- **Lingvist**: `typed_answer` deve ser preenchido, `hints_used_lingvist` rastreia hints progressivos
+
+**Examples (Lingvist mode)**:
+```json
+{
+  "typed_answer": "box",
+  "hints_used_lingvist": {
+    "grammar_tag": true,
+    "length_mask": true,
+    "first_letter": true,
+    "revealed_letters": "b _ _ k",
+    "translation": true,
+    "semantic": false
+  },
+  "attempt_index": 3
+}
+```
 
 ## Algoritmo SM-2 Completo
 

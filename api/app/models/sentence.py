@@ -31,6 +31,11 @@ class Sentence(BaseModel):
     gap_end = Column(Integer, nullable=False)  # Gap end position
     grammar_hint = Column(String(100), nullable=True)  # "verb, base form", "noun, plural", etc.
 
+    # Source metadata (v1.1 enhancement)
+    source_title = Column(String(200), nullable=True)  # Book title, e.g., "Dracula"
+    source_author = Column(String(200), nullable=True)  # Author, e.g., "Bram Stoker"
+    source_ref = Column(String(50), nullable=True)  # Reference, e.g., "gutenberg:345"
+
     # Relationships
     word = relationship("Word", back_populates="sentences")
     language = relationship("Language", back_populates="sentences")

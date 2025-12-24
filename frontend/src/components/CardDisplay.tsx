@@ -104,6 +104,15 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
           <WordThemeBadge wordId={card.word_id} />
         </div>
 
+        {/* Sentence Source Badge */}
+        {card.sentence_source && (
+          <div className="text-center mb-3">
+            <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-900/30 border border-amber-700/50 rounded-full text-amber-300 text-xs font-medium">
+              📚 {card.sentence_source}
+            </span>
+          </div>
+        )}
+
         {/* Translation */}
         <div className="text-center">
           <span className="text-gray-400 italic text-sm">

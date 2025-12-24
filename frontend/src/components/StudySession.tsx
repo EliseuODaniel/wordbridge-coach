@@ -1,6 +1,6 @@
 /** Main Study Session Component */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cardsApi } from '../services/api';
 import type { CardResponse, AnswerResponse } from '../services/api';
 import { audioService } from '../services/audio';
@@ -26,6 +26,15 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Track if user has interacted (for autoplay gating)
+  const [userHasInteracted, setUserHasInteracted] = useState(false);
+
+  // Ref to manage next card timeout and prevent "ghost timers"
+  const nextCardTimeoutRef = useRef<number | null>(null);
+
+  // Ref to track previous card_id for autoplay logic
+  const previousCardIdRef = useRef<string | null>(null);
 
   // Load stats from API
   const loadStats = useCallback(async () => {
@@ -57,6 +66,9 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       console.log(`📝 User ID being used: ${userId}`);
       console.log(`📝 Exclude card ID: ${excludeCardId || 'none'}`);
 
+      // Clear current card immediately to show loading spinner
+      // This prevents "visual repetition" of the old card
+      setCurrentCard(null);
       setIsSubmitting(true);
       setFeedback(null);
       setAttempts(0);
@@ -139,6 +151,9 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Refresh stats after answer
       loadStats();
 
+      // Log response.correct type and value for diagnosis
+      console.log('[answer] correct=', response.correct, 'type=', typeof response.correct, 'strict check:', response.correct === true);
+
       console.log('✅ Answer submitted successfully:', {
         answer,
         correct: response.correct,
@@ -148,12 +163,27 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Trigger insights refresh
       setRefreshTrigger(prev => prev + 1);
 
-      // Load next card after delay, excluding current card to avoid repetition
-      // This works for both correct and incorrect answers (SM-2 algorithm handles the scheduling)
-      setTimeout(() => {
-        console.log('🔄 Loading next card after answer submission...');
-        loadNextCard(currentCard?.card_id);
-      }, 1500); // Slightly longer delay to show feedback
+      // Clear any existing timeout before scheduling a new one
+      if (nextCardTimeoutRef.current) {
+        console.log('[timeout] Clearing previous timeout:', nextCardTimeoutRef.current);
+        clearTimeout(nextCardTimeoutRef.current);
+        nextCardTimeoutRef.current = null;
+      }
+
+      // Load next card ONLY if answer was correct (STRICT BOOL CHECK)
+      // If incorrect, user stays on same card to try again
+      if (response.correct === true) {
+        console.log('✅ Answer correct! Scheduling next card in 1500ms...');
+        nextCardTimeoutRef.current = window.setTimeout(() => {
+          console.log('[timeout] Executing loadNextCard');
+          loadNextCard(currentCard?.card_id);
+          nextCardTimeoutRef.current = null; // Clear after execution
+        }, 1500); // Slightly longer delay to show feedback
+      } else {
+        console.log('❌ Answer incorrect. User can try again with same card.');
+        // Explicitly ensure no timeout is scheduled for incorrect answers
+        nextCardTimeoutRef.current = null;
+      }
 
     } catch (error) {
       console.error('❌ Error submitting answer:', {
@@ -162,20 +192,37 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         data: (error as any)?.response?.data
       });
 
+      // Extract real error message from server response
+      const status = (error as any)?.response?.status || '???';
+      const errorData = (error as any)?.response?.data;
+      let errorMessage = 'Error submitting answer';
+
+      if (errorData?.detail) {
+        // FastAPI error format: {detail: {error: "...", message: "..."}}
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = errorData.detail.message || errorData.detail.error || JSON.stringify(errorData.detail);
+        }
+      } else if ((error as any)?.message) {
+        errorMessage = (error as any).message;
+      }
+
       // Show user feedback but still allow them to try again
       setFeedback({
         correct: false,
-        correct_answer: 'Check the sentence for the missing word',
+        correct_answer: `Error ${status}: ${errorMessage}`,
         sentence_full: currentCard.sentence || '',
         quality: 0,
         next_review_at: new Date().toISOString()
       });
 
-      // Still load next card after error so user can continue
-      setTimeout(() => {
-        console.log('🔄 Loading next card after submission error...');
-        loadNextCard(currentCard?.card_id);
-      }, 2000);
+      // Clear any timeout on error to prevent "ghost timers"
+      if (nextCardTimeoutRef.current) {
+        console.log('[error] Clearing timeout due to error');
+        clearTimeout(nextCardTimeoutRef.current);
+        nextCardTimeoutRef.current = null;
+      }
 
     } finally {
       setIsSubmitting(false);
@@ -216,16 +263,28 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
     }
   };
 
-  
-  // Auto-play sentence audio when card changes
+
+  // Auto-play sentence audio when card changes (only after user interaction)
   useEffect(() => {
-    if (currentCard?.audio_sentence_url) {
-      // Auto-play sentence audio for new cards
+    if (!currentCard?.card_id) {
+      return; // No card yet
+    }
+
+    const currentCardId = currentCard.card_id;
+    const previousCardId = previousCardIdRef.current;
+
+    // Update ref for next comparison
+    previousCardIdRef.current = currentCardId;
+
+    // Only auto-play if:
+    // 1. User has interacted (prevents autoplay blocking)
+    // 2. card_id actually changed (ignores userHasInteracted becoming true)
+    if (currentCard?.audio_sentence_url && userHasInteracted && currentCardId !== previousCardId) {
       audioService.playFromUrl(currentCard.audio_sentence_url).catch(error => {
         console.log('Auto-play sentence audio failed:', error);
       });
     }
-  }, [currentCard?.audio_sentence_url]);
+  }, [currentCard?.card_id, currentCard?.audio_sentence_url, userHasInteracted]);
 
   // Initialize session
   useEffect(() => {
@@ -233,9 +292,31 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
     loadStats(); // Load initial stats
     loadSettings(); // Load initial settings
 
+    // Detect first user interaction (click, keydown, touch)
+    const handleUserInteraction = () => {
+      if (!userHasInteracted) {
+        setUserHasInteracted(true);
+      }
+    };
+
+    // Add event listeners for user interaction
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+
     return () => {
       // Cleanup audio on unmount
       audioService.clearCache();
+      // Cleanup any pending timeout to prevent "ghost timers"
+      if (nextCardTimeoutRef.current) {
+        console.log('[unmount] Clearing pending timeout');
+        clearTimeout(nextCardTimeoutRef.current);
+        nextCardTimeoutRef.current = null;
+      }
+      // Remove event listeners
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
     };
   }, [loadNextCard, loadStats, loadSettings]);
 

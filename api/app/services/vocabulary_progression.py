@@ -42,19 +42,25 @@ class VocabularyProgressionService:
 
         return progress
 
-    def get_sentence_for_word(self, user_id: str, word_id: str) -> Optional[Sentence]:
+    def get_sentence_for_word(self, user_id: str, word_id: str, exclude_card_id: Optional[str] = None) -> Optional[Sentence]:
         """
         Get sentence for word, preferring unseen or least used sentences
         Implements getSentenceForWord(userId, wordId) from Spec4 with K=10 variety
 
+        Args:
+            user_id: User identifier
+            word_id: Word identifier
+            exclude_card_id: Optional card ID to exclude (avoids repeating same card)
+
         Algorithm:
         1. Get all sentence candidates for this word
-        2. Query usage stats: count(*) and max(created_at) per sentence_id
-        3. "Unseen" = sentences with count == 0 for this user
-        4. Choose:
+        2. Filter out exclude_card_id if provided
+        3. Query usage stats: count(*) and max(created_at) per sentence_id
+        4. "Unseen" = sentences with count == 0 for this user
+        5. Choose:
            - If unseen sentences exist: random choice among them
            - Else: least recently used (min max_created_at)
-        5. Fallback: create basic sentence + persist + create Card
+        6. Fallback: create basic sentence + persist + create Card
         """
         # 1. Get all sentence candidates for this word (Sentence.word_id OR WordSentence)
         sentences_via_direct = self.db.query(Sentence).filter(
@@ -75,7 +81,20 @@ class VocabularyProgressionService:
             # Fallback: create a basic sentence if none exists
             return self._create_fallback_sentence(word_id)
 
-        # 2. Query usage statistics for each candidate sentence
+        # 2. Filter out exclude_card_id if provided
+        if exclude_card_id:
+            # Get sentence_id from excluded card and filter it out
+            from app.models import Card
+            excluded_card = self.db.query(Card).filter(Card.id == exclude_card_id).first()
+            if excluded_card and excluded_card.sentence_id in candidate_sentence_ids:
+                candidate_sentence_ids.remove(excluded_card.sentence_id)
+
+                # If no sentences left after exclusion, we have to use the excluded one
+                # (soft exclusion - variety will come from next card)
+                if not candidate_sentence_ids:
+                    return all_sentences[excluded_card.sentence_id]
+
+        # 3. Query usage statistics for each candidate sentence
         # Get count(*) and max(created_at) grouped by sentence_id
         K = 10
         usage_stats = self.db.query(
@@ -94,7 +113,7 @@ class VocabularyProgressionService:
         sentence_counts = {stat.sentence_id: stat.usage_count for stat in usage_stats}
         sentence_last_used = {stat.sentence_id: stat.last_used_at for stat in usage_stats}
 
-        # 3. Separate unseen (count == 0) from seen sentences
+        # 4. Separate unseen (count == 0) from seen sentences
         unseen_sentence_ids = [
             sid for sid in candidate_sentence_ids
             if sentence_counts.get(sid, 0) == 0
@@ -106,7 +125,7 @@ class VocabularyProgressionService:
             chosen_id = random.choice(unseen_sentence_ids)
             return all_sentences[chosen_id]
 
-        # 4. If all sentences were seen, get the least recently used
+        # 5. If all sentences were seen, get the least recently used
         # Sort candidate_sentence_ids by last_used_at (ascending)
         seen_sentences_with_last_used = [
             (sid, sentence_last_used.get(sid))
@@ -173,11 +192,13 @@ class VocabularyProgressionService:
 
         for candidate_rank in range(start_rank, max_rank + 1):
             # Verify word exists at this rank
-            word = self.db.query(Word).join(WordFrequency, Word.text == WordFrequency.word).filter(
+            word = self.db.query(Word).join(WordFrequency,
                 and_(
-                    WordFrequency.rank == candidate_rank,
+                    func.lower(Word.lemma) == func.lower(WordFrequency.word),
                     WordFrequency.language_code == "en"  # TODO: Get from user's target language
                 )
+            ).filter(
+                WordFrequency.rank == candidate_rank
             ).first()
 
             if word:

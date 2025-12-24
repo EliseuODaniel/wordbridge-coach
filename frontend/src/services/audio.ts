@@ -129,7 +129,7 @@ export class AudioService {
     return Math.abs(hash).toString(16).substring(0, 12);
   }
 
-  // Play audio directly from URL
+  // Play audio directly from URL (preserves user gesture)
   async playFromUrl(url: string): Promise<void> {
     try {
       // Check if already cached by URL
@@ -137,6 +137,10 @@ export class AudioService {
         const audio = this.audioCache.get(url)!;
         this.stopCurrentAudio();
         this.currentAudio = audio;
+
+        // Rewind to beginning before replaying
+        audio.currentTime = 0;
+
         await audio.play();
         return;
       }
@@ -144,18 +148,11 @@ export class AudioService {
       // Stop any currently playing audio
       this.stopCurrentAudio();
 
-      // Fetch audio from URL
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
-      }
+      // Resolve absolute URL to avoid relative path issues
+      const resolved = new URL(url, window.location.origin).toString();
 
-      // Get blob and create object URL
-      const blob = await response.blob();
-      const audioUrl = URL.createObjectURL(blob);
-
-      // Create audio element
-      const audio = new Audio(audioUrl);
+      // Create audio element directly from URL (preserves user gesture better than fetch)
+      const audio = new Audio(resolved);
       this.currentAudio = audio;
 
       // Set up event listeners
@@ -163,19 +160,30 @@ export class AudioService {
         this.currentAudio = null;
       });
 
-      audio.addEventListener('error', (e) => {
-        console.error('Audio playback error:', e);
+      audio.addEventListener('error', (e: Event) => {
+        const err = e.target as HTMLAudioElement;
+        const mediaError = err.error;
+        const errorName = mediaError ? 'MediaError' : 'UnknownError';
+        const errorMessage = mediaError?.message || 'No message';
+        console.error(`Audio playback error [${errorName}]: ${errorMessage}`);
         this.currentAudio = null;
       });
 
-      // Cache the audio element
-      this.audioCache.set(url, audio);
+      audio.addEventListener('canplaythrough', () => {
+        // Cache the audio element once it's loaded
+        this.audioCache.set(url, audio);
+      }, { once: true });
 
-      // Play the audio
+      // Play the audio directly (no fetch before play - better for user gesture)
       await audio.play();
 
+      // Cache immediately for future use
+      this.audioCache.set(url, audio);
+
     } catch (error) {
-      console.error('Error playing audio from URL:', error);
+      const errorName = (error as Error).name || 'UnknownError';
+      const errorMessage = (error as Error).message || 'No message';
+      console.error(`Error playing audio from URL [${errorName}]: ${errorMessage}`);
       this.currentAudio = null;
       throw error;
     }

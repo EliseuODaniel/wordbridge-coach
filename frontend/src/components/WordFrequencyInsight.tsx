@@ -93,7 +93,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
 
   // Generate coverage curve based on the word's rank and coverage
   const coverageCurve = useMemo(() => {
-    if (!insight || !insight.rank || !insight.coverage_pct) return [];
+    if (!insight || !insight.rank || insight.coverage_pct === undefined) return [];
 
     const { rank, coverage_pct } = insight;
 
@@ -115,7 +115,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
     for (const point of baseCurvePoints) {
       // Add current point before this base point if its rank is smaller
       if (!currentPointInserted && rank < point.rank) {
-        curvePoints.push({ rank, coverage_pct });
+        curvePoints.push({ rank, coverage_pct: coverage_pct ?? 0 });
         currentPointInserted = true;
       }
       curvePoints.push(point);
@@ -123,7 +123,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
 
     // Add current point at the end if its rank is larger than all base points
     if (!currentPointInserted) {
-      curvePoints.push({ rank, coverage_pct });
+      curvePoints.push({ rank, coverage_pct: coverage_pct ?? 0 });
     }
 
     // Ensure monotonic increase: adjust coverage_pct to be cumulative
@@ -369,7 +369,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
         </div>
 
         <div className="text-sm text-gray-300">
-          Coverage up to here: <span className="font-semibold text-green-400">{(coverage_pct || 0).toFixed(1)}%</span> of word usage
+          Coverage up to here: <span className="font-semibold text-green-400">{(coverage_pct ?? 0).toFixed(1)}%</span> of word usage
         </div>
 
         <div className="text-xs text-gray-400 italic">

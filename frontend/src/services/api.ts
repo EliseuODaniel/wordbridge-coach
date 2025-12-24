@@ -11,11 +11,39 @@ export interface Gap {
 export interface CardResponse {
   card_id: string;
   word_id: string;
+  sentence_id: string;
   sentence: string;
   gap: Gap;
   sentence_translation: string;
   grammar_hint: string;
   memory_stage: string;
+  is_new: boolean;
+  audio_word_url: string;
+  audio_sentence_url: string;
+  sentence_source?: string | null;
+}
+
+// Lingvist mode types
+export interface MicroProgress {
+  current: number;
+  total: number;
+  new_words: number;
+}
+
+export interface LingvistCardResponse {
+  card_id: string;
+  word_id: string;
+  sentence_id: string;
+  word: string;
+  sentence: string;
+  gap: Gap;
+  correct_answer: string;
+  grammar_tag_pt: string;
+  word_translation_pt: string | null;
+  sentence_translation_pt: string | null;
+  sentence_source?: string | null;
+  is_new: boolean;
+  micro_progress: MicroProgress;
   audio_word_url: string;
   audio_sentence_url: string;
 }
@@ -88,7 +116,7 @@ api.interceptors.response.use(
 
 // Card API endpoints
 export const cardsApi = {
-  // Get next card for study
+  // Get next card for study (Spec4 mode)
   getNextCard: async (userId?: string, excludeCardId?: string): Promise<CardResponse> => {
     const params: any = {};
     if (userId) params.user_id = userId;
@@ -97,15 +125,24 @@ export const cardsApi = {
     return response.data;
   },
 
+  // Get next card for Lingvist mode
+  getNextLingvistCard: async (userId?: string, excludeCardId?: string): Promise<LingvistCardResponse> => {
+    const params: any = {};
+    if (userId) params.user_id = userId;
+    if (excludeCardId) params.exclude_card_id = excludeCardId;
+    const response = await api.get('/api/v1/cards/next-lingvist', { params });
+    return response.data;
+  },
+
   // Submit answer for a card
   submitAnswer: async (
-    cardId: string, 
+    cardId: string,
     answerData: AnswerRequest,
     userId?: string
   ): Promise<AnswerResponse> => {
     const params = userId ? { user_id: userId } : {};
     const response = await api.post(
-      '/api/v1/cards/' + cardId + '/answer', 
+      '/api/v1/cards/' + cardId + '/answer',
       answerData,
       { params }
     );

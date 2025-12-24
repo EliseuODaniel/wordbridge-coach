@@ -7,8 +7,10 @@ Creates initial languages, words, sentences, cards, and demo user with proper UU
 import sys
 import os
 import uuid
+import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from typing import List, Tuple
 
 # Add the parent directory to the path to import app modules
 sys.path.append('/app')
@@ -19,6 +21,8 @@ from app.models import (
     Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
 )
 from app.models.user_card_state import MemoryStage
+from app.models.word_frequency import WordFrequency
+from app.models.word_theme_mapping import WordThemeMapping
 
 
 def create_languages(db: Session):
@@ -1067,7 +1071,7 @@ def create_cards(db: Session, sentences: list, decks: list):
 
         # Get the word to find the appropriate grammar hint
         word = db.query(Word).filter(Word.id == sentence.word_id).first()
-        grammar_hint = grammar_hints.get(word.lemma, 'Preencha com a palavra correta')
+        grammar_hint = grammar_hints.get(word.lemma, f'Type the {word.part_of_speech if word.part_of_speech != "UNK" else "word"}')
 
         card = Card(
             id=uuid.uuid4(),
@@ -1111,9 +1115,9 @@ def create_demo_user(db: Session):
         id=uuid.uuid4(),
         username="demo",
         email="demo@filltheword.com",
-        native_language_id=en_lang.id,  # UUID instead of string
-        target_language_id=pt_lang.id,   # UUID instead of string
-        language_preference="en",
+        native_language_id=pt_lang.id,  # Portuguese: native language
+        target_language_id=en_lang.id,   # English: learning target
+        language_preference="pt",        # UI in Portuguese
         daily_new_limit=10,
         easiness_factor=2.5
     )
@@ -1170,16 +1174,583 @@ def cleanup_existing_data(db: Session):
     print("Cleaned up existing seed data")
 
 
+def ensure_word_frequencies(db: Session, words: list, lang_ids: dict):
+    """Ensure WordFrequency entries exist for seeded words"""
+    print("\nEnsuring WordFrequency entries...")
+
+    en_lang_id = lang_ids.get('en')
+
+    for word in words:
+        # Only process English words with frequency_rank
+        if not en_lang_id or word.language_id != en_lang_id or not word.frequency_rank:
+            continue
+
+        # Check if already exists
+        existing = db.query(WordFrequency).filter(
+            WordFrequency.word == word.lemma.lower()
+        ).first()
+
+        if existing:
+            continue
+
+        # Create WordFrequency
+        wf = WordFrequency(
+            word=word.lemma.lower(),
+            language_code='en',
+            rank=word.frequency_rank,
+            band=WordFrequency.get_band_from_rank(word.frequency_rank),
+            is_active=True
+        )
+        db.add(wf)
+
+    db.commit()
+    print(f"✅ WordFrequency entries created/verified")
+
+
+def ensure_themes_and_mappings(db: Session):
+    """Ensure themes and mappings exist (idempotent)"""
+    print("\nEnsuring themes and word-theme mappings...")
+
+    from app.models.word_theme import WordTheme
+    from app.models.word_theme_mapping import WordThemeMapping
+
+    # Check if themes exist
+    theme_count = db.query(WordTheme).count()
+
+    # Check if mappings exist
+    mapping_count = db.query(WordThemeMapping).count()
+
+    # Import seed_themes functions
+    sys.path.insert(0, '/app')
+    try:
+        from seed_themes import create_basic_themes, map_words_to_themes
+
+        # Create themes if needed
+        if theme_count == 0:
+            print("No themes found, creating themes...")
+            themes = create_basic_themes(db)
+            db.commit()
+            print(f"✅ Created {len(themes)} themes")
+        else:
+            print(f"✅ Themes already exist ({theme_count} themes)")
+
+        # Create mappings if needed
+        if mapping_count == 0:
+            print("No mappings found, creating word-theme mappings...")
+            map_words_to_themes(db)
+            db.commit()
+            print(f"✅ Created word-theme mappings")
+        else:
+            print(f"✅ Word-theme mappings already exist ({mapping_count} mappings)")
+
+    except ImportError as e:
+        print(f"⚠️  Could not import seed_themes: {e}")
+        print("Themes/mappings not seeded - run 'python seed_themes.py' manually if needed")
+    finally:
+        sys.path.pop(0)
+
+
+def build_sentence_index(sentence_bank_path: str, max_sentences_per_token: int = 200):
+    """
+    Build inverted index: token -> list of sentence entries from sentence bank.
+
+    Tries to load TSV first (with metadata), falls back to TXT (backward compatibility).
+
+    Args:
+        sentence_bank_path: Path to en_sentence_bank.txt (or .tsv)
+        max_sentences_per_token: Limit sentences per token (for memory)
+
+    Returns:
+        Dict mapping token -> list of dicts with keys: text, source_title, source_author, source_ref
+    """
+    import string
+    from collections import defaultdict
+    import csv
+
+    # Try TSV first
+    tsv_path = sentence_bank_path.replace('.txt', '.tsv')
+
+    if os.path.exists(tsv_path):
+        print(f"📚 Loading sentence bank from TSV: {tsv_path}...")
+        index = defaultdict(list)
+
+        with open(tsv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+
+            for line_num, row in enumerate(reader, 1):
+                sentence = row['sentence'].strip()
+                if not sentence:
+                    continue
+
+                # Entry with metadata
+                entry = {
+                    'text': sentence,
+                    'source_title': row.get('title', ''),
+                    'source_author': row.get('author', ''),
+                    'source_ref': f"gutenberg:{row.get('gutenberg_id', '')}"
+                }
+
+                # Tokenize: lowercase + remove punctuation
+                tokens = sentence.lower().split()
+                cleaned_tokens_set = set()  # Deduplicate by token
+
+                for token in tokens:
+                    # Strip punctuation from start/end only
+                    cleaned = token.strip(string.punctuation + '"\'"''')
+                    if cleaned:
+                        cleaned_tokens_set.add(cleaned)
+
+                # Add sentence to index for each unique token
+                for token in cleaned_tokens_set:
+                    # Limit sentences per token (to avoid explosion for "the", "and", etc.)
+                    if len(index[token]) < max_sentences_per_token:
+                        index[token].append(entry)
+
+                if line_num % 5000 == 0:
+                    print(f"  Processed {line_num} sentences...")
+
+        print(f"✅ Built index with {len(index)} unique tokens (from TSV)")
+        return dict(index)  # Convert back to regular dict
+    else:
+        # Fallback to TXT (backward compatibility)
+        print(f"📚 TSV not found, loading TXT: {sentence_bank_path}...")
+        index = defaultdict(list)
+
+        with open(sentence_bank_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                sentence = line.strip()
+                if not sentence:
+                    continue
+
+                # Entry without metadata (backward compatible)
+                entry = {
+                    'text': sentence,
+                    'source_title': None,
+                    'source_author': None,
+                    'source_ref': None
+                }
+
+                # Tokenize: lowercase + remove punctuation
+                tokens = sentence.lower().split()
+                cleaned_tokens_set = set()  # Deduplicate by token
+
+                for token in tokens:
+                    cleaned = token.strip(string.punctuation + '"\'"''')
+                    if cleaned:
+                        cleaned_tokens_set.add(cleaned)
+
+                # Add sentence to index for each unique token
+                for token in cleaned_tokens_set:
+                    if len(index[token]) < max_sentences_per_token:
+                        index[token].append(entry)
+
+                if line_num % 5000 == 0:
+                    print(f"  Processed {line_num} sentences...")
+
+        print(f"✅ Built index with {len(index)} unique tokens (from TXT)")
+        return dict(index)
+
+
+def create_gap_in_sentence(sentence: str, word: str) -> Tuple[str, int, int]:
+    """
+    Create gap in sentence by replacing first occurrence of word with ___.
+
+    Args:
+        sentence: Original sentence
+        word: Word to replace (case-insensitive)
+
+    Returns:
+        Tuple (gapped_sentence, gap_start, gap_end)
+    """
+    import re
+
+    # Search for word (case-insensitive, with word boundaries)
+    pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
+    match = pattern.search(sentence)
+
+    if not match:
+        # Word not found, append at end (fallback)
+        gapped = f"{sentence} ___"
+        gap_start = len(sentence) + 1
+        gap_end = gap_start + 3
+        return gapped, gap_start, gap_end
+
+    # Replace with gap
+    gap_start = match.start()
+    gap_end = match.end()
+    gapped = sentence[:gap_start] + "___" + sentence[gap_end:]
+
+    return gapped, gap_start, gap_end
+
+
+def generate_smart_templates(word: str, count: int, part_of_speech: str = 'UNK') -> List[Tuple[str, int, int]]:
+    """
+    Generate improved template sentences based on word category.
+
+    Fallback when sentence bank doesn't have enough sentences for a word.
+
+    Args:
+        word: Target word
+        count: Number of templates to generate
+        part_of_speech: Grammatical category (if known)
+
+    Returns:
+        List of tuples (sentence, gap_start, gap_end)
+    """
+    templates = []
+
+    # Determine word category (simple heuristic)
+    word_lower = word.lower()
+
+    # Articles
+    if word_lower in ['the', 'a', 'an']:
+        templates.append((f"The {word} was here.", 4, 4 + len(word)))
+        templates.append((f"I saw {word} thing.", 6, 6 + len(word)))
+
+    # Prepositions
+    elif word_lower in ['to', 'of', 'in', 'on', 'at', 'by', 'with', 'from']:
+        templates.append((f"I went {word} the house.", 7, 7 + len(word)))
+        templates.append((f"The book is {word} the table.", 15, 15 + len(word)))
+
+    # Pronouns
+    elif word_lower in ['he', 'she', 'it', 'they', 'we', 'you', 'i']:
+        templates.append((f"{word.capitalize()} is here today.", 0, len(word)))
+        templates.append((f"I saw {word} yesterday.", 6, 6 + len(word)))
+
+    # Conjunctions
+    elif word_lower in ['and', 'but', 'or', 'nor', 'so', 'yet']:
+        templates.append((f"I like tea {word} coffee.", 13, 13 + len(word)))
+        templates.append((f"Day {word} night.", 4, 4 + len(word)))
+
+    # Common verbs
+    elif word_lower in ['be', 'have', 'do', 'say', 'go', 'get', 'make']:
+        templates.append((f"I {word} here every day.", 2, 2 + len(word)))
+        templates.append((f"They {word} to work.", 5, 5 + len(word)))
+
+    # Default: noun-like
+    else:
+        templates.append((f"The {word} is here.", 4, 4 + len(word)))
+        templates.append((f"I see a {word}.", 7, 7 + len(word)))
+        templates.append((f"This is my {word}.", 11, 11 + len(word)))
+
+    # If we need more templates than available, repeat with variation
+    while len(templates) < count:
+        templates.append(templates[len(templates) % len(templates)])
+
+    return templates[:count]
+
+
+def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: int = 10000):
+    """
+    Create Words, Sentences, and Cards from WordFrequency data.
+
+    This creates vocabulary for the top N ranks:
+    - Ranks 1..2000: Multiple sentences (2-5 per word based on rank band)
+    - Ranks 2001..max_rank: Single placeholder sentence each
+
+    Args:
+        db: Database session
+        lang_ids: Dict of language IDs
+        decks: List of Deck objects (must exist before calling this function)
+        max_rank: Maximum rank to create (default 10000)
+
+    Returns:
+        Tuple of (words, sentences, cards) created
+    """
+    from app.models.word_frequency import WordFrequency
+    from app.models.word import Word
+    from app.models.sentence import Sentence
+    from app.models.card import Card
+
+    print(f"Creating 10k vocabulary (top {max_rank} words)...")
+
+    # Get default deck (first deck)
+    if not decks:
+        raise ValueError("decks list is empty - must create decks first")
+    default_deck = decks[0]
+
+    # Get all WordFrequency entries for English up to max_rank
+    word_freqs = db.query(WordFrequency).filter(
+        WordFrequency.language_code == 'en',
+        WordFrequency.rank <= max_rank,
+        WordFrequency.is_active == True
+    ).order_by(WordFrequency.rank).all()
+
+    print(f"Found {len(word_freqs)} word frequencies to process")
+
+    # Sentence count per word based on rank
+    # Top 100: 5 sentences, 101-500: 3, 501-1000: 2, 1001-2000: 1, 2001+: 1 placeholder
+    def get_sentence_count(rank):
+        if rank <= 100:
+            return 5
+        elif rank <= 500:
+            return 3
+        elif rank <= 1000:
+            return 2
+        elif rank <= 2000:
+            return 1
+        else:
+            return 1  # Placeholder
+
+    created_words = []
+    created_sentences = []
+    created_cards = []
+
+    # Load sentence bank if available (offline-first)
+    sentence_bank_path = "/app/data/en_sentence_bank.txt"
+    sentence_index = None
+
+    if os.path.exists(sentence_bank_path):
+        print("\n📚 Sentence bank found, building index...")
+        try:
+            sentence_index = build_sentence_index(sentence_bank_path, max_sentences_per_token=200)
+            print(f"✅ Sentence index ready ({len(sentence_index)} tokens)")
+        except Exception as e:
+            print(f"⚠️  Error loading sentence bank: {e}")
+            print("   Falling back to template-based generation")
+            sentence_index = None
+    else:
+        print("📚 No sentence bank found, using template-based generation")
+
+    for wf in word_freqs:
+        # Check if Word already exists
+        existing_word = db.query(Word).filter(
+            Word.lemma == wf.word,
+            Word.language_id == lang_ids['en']
+        ).first()
+
+        if existing_word:
+            word = existing_word
+        else:
+            # Calculate difficulty based on band
+            # Band 1 (1-1000) = difficulty 1, Band 2 (1001-3000) = 2, etc.
+            difficulty = wf.band
+
+            # Create Word
+            word = Word(
+                id=uuid.uuid4(),
+                lemma=wf.word,
+                text=wf.word,  # For now, text = lemma (no inflections)
+                part_of_speech='UNK',  # Unknown POS from dataset
+                pronunciation='',  # Empty initially
+                frequency_rank=wf.rank,
+                difficulty=difficulty,
+                language_id=lang_ids['en']
+            )
+            db.add(word)
+            db.flush()  # Get the ID
+            created_words.append(word)
+
+        # Determine sentence count for this word
+        sentence_count = get_sentence_count(wf.rank)
+
+        # Select sentences without replacement (avoid duplicates for same word)
+        used_gapped_texts = set()  # Track used sentence texts for this word_id
+        sentences_created_for_word = 0
+
+        # Try sentence bank first (if available and rank <= 2000)
+        if sentence_index and wf.rank <= 2000:
+            candidates = sentence_index.get(wf.word.lower(), [])
+
+            if candidates:
+                # Shuffle candidates for variety
+                random.shuffle(candidates)
+
+                # Try to get sentence_count unique sentences
+                for entry in candidates:
+                    if sentences_created_for_word >= sentence_count:
+                        break
+
+                    # Create gap
+                    original_sentence = entry['text']
+                    gapped_sentence, gap_start, gap_end = create_gap_in_sentence(
+                        original_sentence, wf.word
+                    )
+
+                    # Skip if this gapped text was already used for this word
+                    if gapped_sentence in used_gapped_texts:
+                        continue
+
+                    # Check if already exists in DB (idempotency)
+                    existing = db.query(Sentence).filter(
+                        Sentence.word_id == word.id,
+                        Sentence.text == gapped_sentence
+                    ).first()
+
+                    if existing:
+                        # Already exists, skip but still create card if needed
+                        continue
+
+                    # Create sentence with source metadata
+                    sentence = Sentence(
+                        id=uuid.uuid4(),
+                        text=gapped_sentence,
+                        translation="",  # Empty: no bad translation
+                        word_id=word.id,
+                        language_id=lang_ids['en'],
+                        type='example',
+                        difficulty=word.difficulty,
+                        gap_start=gap_start,
+                        gap_end=gap_end,
+                        source_title=entry.get('source_title'),
+                        source_author=entry.get('source_author'),
+                        source_ref=entry.get('source_ref')
+                    )
+                    db.add(sentence)
+                    db.flush()
+                    created_sentences.append(sentence)
+
+                    # Track that we used this gapped text
+                    used_gapped_texts.add(gapped_sentence)
+                    sentences_created_for_word += 1
+
+                    # Create Card
+                    card = Card(
+                        id=uuid.uuid4(),
+                        sentence_id=sentence.id,
+                        deck_id=default_deck.id,
+                        grammar_hint='',
+                        difficulty=word.difficulty,
+                        gap_start=sentence.gap_start,
+                        gap_end=sentence.gap_end,
+                        is_active=True
+                    )
+                    db.add(card)
+                    db.flush()
+                    created_cards.append(card)
+
+            # If we didn't get enough sentences from bank, fill with templates
+            while sentences_created_for_word < sentence_count:
+                # Use smart templates (no source metadata)
+                template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                template_sentence, gap_start, gap_end = template_info
+
+                # Skip duplicate
+                if template_sentence in used_gapped_texts:
+                    # Try next template
+                    template_info = generate_smart_templates(f"{wf.word}_alt", 1, 'UNK')[0]
+                    template_sentence, gap_start, gap_end = template_info
+
+                    if template_sentence in used_gapped_texts:
+                        # Give up, move to next word
+                        break
+
+                # Check if already exists
+                existing = db.query(Sentence).filter(
+                    Sentence.word_id == word.id,
+                    Sentence.text == template_sentence
+                ).first()
+
+                if existing:
+                    continue
+
+                # Create sentence with NO source (template)
+                sentence = Sentence(
+                    id=uuid.uuid4(),
+                    text=template_sentence,
+                    translation="",
+                    word_id=word.id,
+                    language_id=lang_ids['en'],
+                    type='example',
+                    difficulty=word.difficulty,
+                    gap_start=gap_start,
+                    gap_end=gap_end,
+                    source_title=None,  # Template: no source
+                    source_author=None,
+                    source_ref=None
+                )
+                db.add(sentence)
+                db.flush()
+                created_sentences.append(sentence)
+
+                used_gapped_texts.add(template_sentence)
+                sentences_created_for_word += 1
+
+                # Create Card
+                card = Card(
+                    id=uuid.uuid4(),
+                    sentence_id=sentence.id,
+                    deck_id=default_deck.id,
+                    grammar_hint='',
+                    difficulty=word.difficulty,
+                    gap_start=sentence.gap_start,
+                    gap_end=sentence.gap_end,
+                    is_active=True
+                )
+                db.add(card)
+                db.flush()
+                created_cards.append(card)
+        else:
+            # No sentence bank or rank > 2000: use smart templates
+            for i in range(sentence_count):
+                template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                template_sentence, gap_start, gap_end = template_info
+
+                # Check if already exists (idempotency)
+                existing = db.query(Sentence).filter(
+                    Sentence.word_id == word.id,
+                    Sentence.text == template_sentence
+                ).first()
+
+                if existing:
+                    continue
+
+                # Create sentence with NO source (template)
+                sentence = Sentence(
+                    id=uuid.uuid4(),
+                    text=template_sentence,
+                    translation="",
+                    word_id=word.id,
+                    language_id=lang_ids['en'],
+                    type='example',
+                    difficulty=word.difficulty,
+                    gap_start=gap_start,
+                    gap_end=gap_end,
+                    source_title=None,
+                    source_author=None,
+                    source_ref=None
+                )
+                db.add(sentence)
+                db.flush()
+                created_sentences.append(sentence)
+
+                # Create Card
+                card = Card(
+                    id=uuid.uuid4(),
+                    sentence_id=sentence.id,
+                    deck_id=default_deck.id,
+                    grammar_hint='',
+                    difficulty=word.difficulty,
+                    gap_start=sentence.gap_start,
+                    gap_end=sentence.gap_end,
+                    is_active=True
+                )
+                db.add(card)
+                db.flush()
+                created_cards.append(card)
+
+        if len(created_words) % 1000 == 0:
+            print(f"  Processed {len(created_words)} words...")
+
+    db.commit()
+    print(f"✅ Created {len(created_words)} words, {len(created_sentences)} sentences, {len(created_cards)} cards")
+
+    return created_words, created_sentences, created_cards
+
+
 def main():
     """Main seed function"""
     import argparse
     parser = argparse.ArgumentParser(description='Seed FillTheWord database')
     parser.add_argument('--reset', action='store_true', help='Reset all data before seeding')
+    parser.add_argument('--full', action='store_true', help='Full seed: create 10k vocabulary from WordFrequency')
     args = parser.parse_args()
 
     print("Starting FillTheWord seed data creation...")
     if args.reset:
         print("🔄 Reset mode: cleaning existing data...")
+    if args.full:
+        print("🌟 Full mode: creating 10k vocabulary...")
 
     db = SessionLocal()
     try:
@@ -1188,12 +1759,37 @@ def main():
 
         # Create data in dependency order
         lang_ids = create_languages(db)
-        words = create_words(db, lang_ids)
-        sentences = create_sentences(db, words, lang_ids)
-        decks = create_decks(db, lang_ids)
-        cards = create_cards(db, sentences, decks)
+
+        if args.full:
+            # Full mode: Import 10k frequencies + create Words/Sentences/Cards
+            print("\n📦 Full mode: Importing 10k word frequencies...")
+            from import_en_10k_frequency import import_word_frequencies
+            import_word_frequencies(db)
+
+            # Create decks FIRST (needed for Card foreign key constraint)
+            print("\n📦 Full mode: Creating decks...")
+            decks = create_decks(db, lang_ids)
+
+            print("\n📦 Full mode: Creating 10k vocabulary from WordFrequency...")
+            words, sentences, cards = create_10k_vocabulary(db, lang_ids, decks=decks, max_rank=10000)
+
+            print(f"✅ Created {len(cards)} cards with deck '{decks[0].name}'")
+        else:
+            # Normal mode: Create sample data
+            words = create_words(db, lang_ids)
+            sentences = create_sentences(db, words, lang_ids)
+            decks = create_decks(db, lang_ids)
+            cards = create_cards(db, sentences, decks)
+
+        # Always create demo user and user states
         demo_user = create_demo_user(db)
         user_states = create_user_card_states(db, demo_user, cards)
+
+        # Ensure WordFrequency and themes (idempotent)
+        if not args.full:
+            # Normal mode: ensure WordFrequency from manually created words
+            ensure_word_frequencies(db, words, lang_ids)
+        ensure_themes_and_mappings(db)
 
         print("\n🎉 Seed data creation completed successfully!")
         print(f"📊 Summary:")
@@ -1204,6 +1800,11 @@ def main():
         print(f"  - Cards: {len(cards)}")
         print(f"  - Demo User: 1")
         print(f"  - User Card States: {len(user_states)}")
+        if args.full:
+            print(f"  - WordFrequency: 10,000 imported from OpenSubtitles2016")
+        else:
+            print(f"  - WordFrequency: ensured (if ranks present)")
+        print(f"  - Themes/Mappings: ensured (idempotent)")
 
     except Exception as e:
         print(f"❌ Error during seed data creation: {e}")
