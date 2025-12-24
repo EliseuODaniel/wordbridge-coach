@@ -8,7 +8,7 @@ This file lists the sources used to generate `en_sentence_bank.txt`.
    - Project Gutenberg ID: 1342
    - URL: https://www.gutenberg.org/files/1342/1342-0.txt
    - License: Public Domain (published before 1929)
-   - Sentences contributed: ~2,506
+   - Sentences contributed: ~2,522
 
 2. **Alice's Adventures in Wonderland** (1865) by Lewis Carroll
    - Project Gutenberg ID: 11
@@ -20,16 +20,16 @@ This file lists the sources used to generate `en_sentence_bank.txt`.
    - Project Gutenberg ID: 1661
    - URL: https://www.gutenberg.org/files/1661/1661-0.txt
    - License: Public Domain (published before 1929)
-   - Sentences contributed: ~1,804
+   - Sentences contributed: ~1,819
 
 4. **Dracula** (1897) by Bram Stoker
    - Project Gutenberg ID: 345
    - URL: https://www.gutenberg.org/files/345/345-0.txt
    - License: Public Domain (published before 1929)
-   - Sentences contributed: ~3,851
+   - Sentences contributed: ~3,891
 
 ## Total Sentences
-8,280 unique sentences (after deduplication and filtering)
+8,348 unique sentences (after deduplication and filtering)
 
 ## Generation Method
 1. Download from Project Gutenberg (public domain)
@@ -51,5 +51,5 @@ Complies with Project Gutenberg terms of use.
 
 ---
 
-Generated: 2025-12-24
+Generated: 2025-12-23
 Script: api/scripts/build_en_sentence_bank.py

@@ -1,10 +1,10 @@
 # Change: EN Sentence Bank Quality - Natural Sentences from Real Sources
 
 **Date**: 2025-12-23
-**Status**: 📋 Proposed
-**Version**: v1.0
+**Status**: ✅ Implemented
+**Version**: v1.1 (Enhanced)
 **Type**: Quality Improvement + Data Enhancement
-**Scope**: Backend (seed, Sentence matching), Data (offline sentence bank), OpenSpec (SPEC.md)
+**Scope**: Backend (seed, Sentence matching), Data (offline sentence bank), OpenSpec (SPEC.md), Frontend (UI), API (response)
 
 ---
 
@@ -478,4 +478,191 @@ Se encontrar problemas críticos:
 
 ---
 
+## v1.1 Enhancements (2025-12-23)
+
+### Overview
+
+Adiciona **rastreamento de fonte** (livro/autor) para cada sentença e **elimina duplicatas** de sentenças para a mesma palavra, melhorando a experiência do usuário com mais transparência e variedade.
+
+### Novos Requisitos
+
+#### 1. Mostrar Origem na UI
+
+**Problema**: Usuário não sabe de onde vem a frase (qual livro, autor).
+
+**Solução**:
+- Sentence model adiciona campos: `source_title`, `source_author`, `source_ref`
+- CardResponse API adiciona `sentence_source` (string opcional)
+- Frontend mostra "📚 Título do Livro" abaixo do card
+- Sentenças de templates ficam com source=null (não exibe nada)
+
+**Exemplo de UI**:
+```
+┌─────────────────────────────────────┐
+│ How I slept, with that dear, ___ Dr │
+│                                       │
+│ Your answer: good                    │
+│ ✅ Correct!                           │
+│                                       │
+│ 📚 Dracula - Bram Stoker              │
+└─────────────────────────────────────┘
+```
+
+#### 2. Eliminar Duplicatas
+
+**Problema**: Seed pode criar múltiplas Sentence com o mesmo texto para o mesmo word_id.
+
+**Exemplo**:
+```python
+word_id = "abc" (word="look")
+sentence_count = 3  # Top 100 tem 3 sentenças
+
+# Bug: se todas as 3 sentenças do índice começarem com "If you look...",
+# Resultado: 3 Sentence.objects.create(text="If you look, ___ ...", word_id="abc")
+```
+
+**Solução**:
+1. **Index**: Deduplicar sentenças por token (usar `set()` para cleaned_tokens)
+2. **Seed**: "Sem reposição" + verificação antes de inserir:
+   - Embaralhar candidatos
+   - Criar gap em cada candidato
+   - Usar `used_gapped_text = set()` para evitar duplicatas
+   - Checar se já existe Sentence com (word_id, text) no DB antes de inserir
+3. **Validação SQL**: Query para garantir 0 duplicatas
+
+#### 3. Formato TSV com Metadados
+
+**Arquivo**: `api/data/en_sentence_bank.tsv` (adicional ao TXT)
+
+**Formato**:
+```
+gutenberg_id	title	author	sentence
+1342	Pride and Prejudice	Jane Austen	It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.
+11	Alice's Adventures in Wonderland	Lewis Carroll	Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do.
+```
+
+**Compatibilidade**:
+- Se TSV não existir, seed lê TXT (comportamento atual)
+- Se TSV existir, seed usa metadados + deduplicação
+- Deduplicação: case-insensitive por texto, mantém primeira ocorrência
+
+### Implementation Changes
+
+#### PASSO 1: Database Migration
+
+**Model**: `api/app/models/sentence.py`
+```python
+source_title = Column(String(200), nullable=True)
+source_author = Column(String(200), nullable=True)
+source_ref = Column(String(50), nullable=True)  # ex.: "gutenberg:1342"
+```
+
+**Migration**: `alembic revision --autogenerate -m "add sentence source fields"`
+
+#### PASSO 2: TSV Generator
+
+**Script**: `api/scripts/build_en_sentence_bank.py` (modificado)
+
+**Mudanças**:
+- Gerar `en_sentence_bank.tsv` além de `en_sentence_bank.txt`
+- Normalizar whitespace (remover quebras internas)
+- Deduplicar por texto (case-insensitive)
+- Preservar primeira ocorrência como source
+
+#### PASSO 3: Seed Integration
+
+**Index**: `build_sentence_index()` (modificado)
+- Ler TSV se disponível
+- Retornar `dict[str, List[Entry]]` onde `Entry = {text, source_title, source_author, source_ref}`
+- Deduplicar: `for token in set(cleaned_tokens):`
+
+**Seed**: `create_10k_vocabulary()` (modificado)
+- `used_sentences = set()` por word_id
+- Selecionar sem reposição: `random.shuffle(candidates)`
+- Criar gap e verificar se já existe no set
+- Checar DB: `Sentence.query.filter(word_id=X, text=Y).first()`
+- Criar Sentence com source preenchido (ou null para templates)
+
+#### PASSO 4: API Response
+
+**Schema**: `api/app/schemas/card.py`
+```python
+class CardResponse(BaseModel):
+    # ... campos existentes ...
+    sentence_source: Optional[str] = None  # Novo
+```
+
+**Service**: `card_selection.py:_build_card_context()`
+```python
+sentence_source = sentence.source_title if sentence.source_title else None
+```
+
+#### PASSO 5: Frontend UI
+
+**Component**: `frontend/src/components/CardDisplay.tsx`
+```tsx
+{card.sentence_source && (
+  <Badge variant="outline">
+    📚 {card.sentence_source}
+  </Badge>
+)}
+```
+
+### Acceptance Criteria v1.1
+
+### Database (Must Have)
+
+- [ ] Migration criada e aplicada (columns nullable)
+- [ ] `source_title`, `source_author`, `source_ref` existem em Sentence
+- [ ] 0 linhas com valores para templates (source=null)
+
+### Seed (Must Have)
+
+- [ ] TSV gerado com 4 colunas: gutenberg_id, title, author, sentence
+- [ ] Seed lê TSV quando disponível (fallback para TXT)
+- [ ] Deduplica sentenças por texto (case-insensitive)
+- [ ] Para sentence_count > 1: sem reposição + used_sentences set
+- [ ] Verifica DB antes de inserir (SELECT word_id + text)
+- [ ] Sentence.source_title preenchido para bank, null para templates
+
+### API (Must Have)
+
+- [ ] CardResponse inclui sentence_source (string ou null)
+- [ ] sentence_source = sentence.source_title (não inclui autor)
+- [ ] Templates retornam sentence_source=null
+
+### Frontend (Must Have)
+
+- [ ] CardDisplay renderiza "📚 {source}" quando presente
+- [ ] Badge posicionado abaixo de theme badge
+- [ ] Não renderiza nada quando source=null
+
+### Validação SQL (Must Have)
+
+Query de duplicatas por palavra:
+```sql
+SELECT word_id, COUNT(*) as total, COUNT(DISTINCT text) as unique_texts
+FROM sentence
+GROUP BY word_id
+HAVING COUNT(*) != COUNT(DISTINCT text)
+LIMIT 20;
+```
+
+**Resultado esperado**: 0 linhas
+
+### Smoke Test (Must Have)
+
+- [ ] 100x calls ao /next-spec4: 0 erros
+- [ ] sentence_source aparece para frases do bank (>80% das calls)
+- [ ] 0 repetições imediatas do mesmo sentence_id (com exclude_card_id)
+
+### Manual Inspection (Must Have)
+
+- [ ] 10 cards amostrados mostram "📚 Livro" corretamente
+- [ ] Top 50 words têm sentenças distintas por palavra
+- [ ] Templates não mostram source
+
+---
+
 **Co-Authored-By**: Claude <noreply@anthropic.com>
+**v1.1 Date**: 2025-12-23

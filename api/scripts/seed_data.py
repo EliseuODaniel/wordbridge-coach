@@ -1252,48 +1252,103 @@ def ensure_themes_and_mappings(db: Session):
 
 def build_sentence_index(sentence_bank_path: str, max_sentences_per_token: int = 200):
     """
-    Build inverted index: token -> list of sentences from sentence bank.
+    Build inverted index: token -> list of sentence entries from sentence bank.
+
+    Tries to load TSV first (with metadata), falls back to TXT (backward compatibility).
 
     Args:
-        sentence_bank_path: Path to en_sentence_bank.txt
+        sentence_bank_path: Path to en_sentence_bank.txt (or .tsv)
         max_sentences_per_token: Limit sentences per token (for memory)
 
     Returns:
-        Dict mapping token -> list of sentences
+        Dict mapping token -> list of dicts with keys: text, source_title, source_author, source_ref
     """
     import string
     from collections import defaultdict
+    import csv
 
-    print(f"📚 Loading sentence bank from {sentence_bank_path}...")
-    index = defaultdict(list)
+    # Try TSV first
+    tsv_path = sentence_bank_path.replace('.txt', '.tsv')
 
-    with open(sentence_bank_path, 'r', encoding='utf-8') as f:
-        for line_num, line in enumerate(f, 1):
-            sentence = line.strip()
-            if not sentence:
-                continue
+    if os.path.exists(tsv_path):
+        print(f"📚 Loading sentence bank from TSV: {tsv_path}...")
+        index = defaultdict(list)
 
-            # Tokenize: lowercase + remove punctuation
-            # Simple tokenization: split on whitespace and strip punctuation
-            tokens = sentence.lower().split()
-            cleaned_tokens = []
-            for token in tokens:
-                # Strip punctuation from start/end only
-                cleaned = token.strip(string.punctuation + '"\'"''')
-                if cleaned:
-                    cleaned_tokens.append(cleaned)
+        with open(tsv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter='\t')
 
-            # Add sentence to index for each token
-            for token in cleaned_tokens:
-                # Limit sentences per token (to avoid explosion for "the", "and", etc.)
-                if len(index[token]) < max_sentences_per_token:
-                    index[token].append(sentence)
+            for line_num, row in enumerate(reader, 1):
+                sentence = row['sentence'].strip()
+                if not sentence:
+                    continue
 
-            if line_num % 5000 == 0:
-                print(f"  Processed {line_num} sentences...")
+                # Entry with metadata
+                entry = {
+                    'text': sentence,
+                    'source_title': row.get('title', ''),
+                    'source_author': row.get('author', ''),
+                    'source_ref': f"gutenberg:{row.get('gutenberg_id', '')}"
+                }
 
-    print(f"✅ Built index with {len(index)} unique tokens")
-    return dict(index)  # Convert back to regular dict
+                # Tokenize: lowercase + remove punctuation
+                tokens = sentence.lower().split()
+                cleaned_tokens_set = set()  # Deduplicate by token
+
+                for token in tokens:
+                    # Strip punctuation from start/end only
+                    cleaned = token.strip(string.punctuation + '"\'"''')
+                    if cleaned:
+                        cleaned_tokens_set.add(cleaned)
+
+                # Add sentence to index for each unique token
+                for token in cleaned_tokens_set:
+                    # Limit sentences per token (to avoid explosion for "the", "and", etc.)
+                    if len(index[token]) < max_sentences_per_token:
+                        index[token].append(entry)
+
+                if line_num % 5000 == 0:
+                    print(f"  Processed {line_num} sentences...")
+
+        print(f"✅ Built index with {len(index)} unique tokens (from TSV)")
+        return dict(index)  # Convert back to regular dict
+    else:
+        # Fallback to TXT (backward compatibility)
+        print(f"📚 TSV not found, loading TXT: {sentence_bank_path}...")
+        index = defaultdict(list)
+
+        with open(sentence_bank_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                sentence = line.strip()
+                if not sentence:
+                    continue
+
+                # Entry without metadata (backward compatible)
+                entry = {
+                    'text': sentence,
+                    'source_title': None,
+                    'source_author': None,
+                    'source_ref': None
+                }
+
+                # Tokenize: lowercase + remove punctuation
+                tokens = sentence.lower().split()
+                cleaned_tokens_set = set()  # Deduplicate by token
+
+                for token in tokens:
+                    cleaned = token.strip(string.punctuation + '"\'"''')
+                    if cleaned:
+                        cleaned_tokens_set.add(cleaned)
+
+                # Add sentence to index for each unique token
+                for token in cleaned_tokens_set:
+                    if len(index[token]) < max_sentences_per_token:
+                        index[token].append(entry)
+
+                if line_num % 5000 == 0:
+                    print(f"  Processed {line_num} sentences...")
+
+        print(f"✅ Built index with {len(index)} unique tokens (from TXT)")
+        return dict(index)
 
 
 def create_gap_in_sentence(sentence: str, word: str) -> Tuple[str, int, int]:
@@ -1489,67 +1544,190 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
         # Determine sentence count for this word
         sentence_count = get_sentence_count(wf.rank)
 
-        for i in range(sentence_count):
-            # Create sentence with gap
-            sentence_text = ""
-            gap_start = 0
-            gap_end = 3
-            translation = ""  # Empty: better than bad translation
+        # Select sentences without replacement (avoid duplicates for same word)
+        used_gapped_texts = set()  # Track used sentence texts for this word_id
+        sentences_created_for_word = 0
 
-            # Try sentence bank first (if available and rank <= 2000)
-            if sentence_index and wf.rank <= 2000:
-                candidates = sentence_index.get(wf.word.lower(), [])
+        # Try sentence bank first (if available and rank <= 2000)
+        if sentence_index and wf.rank <= 2000:
+            candidates = sentence_index.get(wf.word.lower(), [])
 
-                if candidates:
-                    # Use real sentence from bank
-                    original_sentence = random.choice(candidates)
-                    sentence_text, gap_start, gap_end = create_gap_in_sentence(
+            if candidates:
+                # Shuffle candidates for variety
+                random.shuffle(candidates)
+
+                # Try to get sentence_count unique sentences
+                for entry in candidates:
+                    if sentences_created_for_word >= sentence_count:
+                        break
+
+                    # Create gap
+                    original_sentence = entry['text']
+                    gapped_sentence, gap_start, gap_end = create_gap_in_sentence(
                         original_sentence, wf.word
                     )
-                else:
-                    # Word not in sentence bank, use smart templates
-                    template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
-                    sentence_text, gap_start, gap_end = template_info
-            else:
-                # No sentence bank or rank > 2000: use smart templates
-                if wf.rank > 2000:
-                    # Better placeholder for high ranks
-                    template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
-                    sentence_text, gap_start, gap_end = template_info
-                else:
-                    # Ranks 1..2000 without sentence bank: templates
-                    template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
-                    sentence_text, gap_start, gap_end = template_info
 
-            sentence = Sentence(
-                id=uuid.uuid4(),
-                text=sentence_text,
-                translation=translation,  # Empty: no bad translation
-                word_id=word.id,
-                language_id=lang_ids['en'],
-                type='example',
-                difficulty=word.difficulty,
-                gap_start=gap_start,
-                gap_end=gap_end
-            )
-            db.add(sentence)
-            db.flush()
-            created_sentences.append(sentence)
+                    # Skip if this gapped text was already used for this word
+                    if gapped_sentence in used_gapped_texts:
+                        continue
 
-            # Create Card
-            card = Card(
-                id=uuid.uuid4(),
-                sentence_id=sentence.id,
-                deck_id=default_deck.id,  # Use real deck ID
-                grammar_hint='',  # Empty for now
-                difficulty=word.difficulty,
-                gap_start=sentence.gap_start,
-                gap_end=sentence.gap_end,
-                is_active=True
-            )
-            db.add(card)
-            db.flush()
-            created_cards.append(card)
+                    # Check if already exists in DB (idempotency)
+                    existing = db.query(Sentence).filter(
+                        Sentence.word_id == word.id,
+                        Sentence.text == gapped_sentence
+                    ).first()
+
+                    if existing:
+                        # Already exists, skip but still create card if needed
+                        continue
+
+                    # Create sentence with source metadata
+                    sentence = Sentence(
+                        id=uuid.uuid4(),
+                        text=gapped_sentence,
+                        translation="",  # Empty: no bad translation
+                        word_id=word.id,
+                        language_id=lang_ids['en'],
+                        type='example',
+                        difficulty=word.difficulty,
+                        gap_start=gap_start,
+                        gap_end=gap_end,
+                        source_title=entry.get('source_title'),
+                        source_author=entry.get('source_author'),
+                        source_ref=entry.get('source_ref')
+                    )
+                    db.add(sentence)
+                    db.flush()
+                    created_sentences.append(sentence)
+
+                    # Track that we used this gapped text
+                    used_gapped_texts.add(gapped_sentence)
+                    sentences_created_for_word += 1
+
+                    # Create Card
+                    card = Card(
+                        id=uuid.uuid4(),
+                        sentence_id=sentence.id,
+                        deck_id=default_deck.id,
+                        grammar_hint='',
+                        difficulty=word.difficulty,
+                        gap_start=sentence.gap_start,
+                        gap_end=sentence.gap_end,
+                        is_active=True
+                    )
+                    db.add(card)
+                    db.flush()
+                    created_cards.append(card)
+
+            # If we didn't get enough sentences from bank, fill with templates
+            while sentences_created_for_word < sentence_count:
+                # Use smart templates (no source metadata)
+                template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                template_sentence, gap_start, gap_end = template_info
+
+                # Skip duplicate
+                if template_sentence in used_gapped_texts:
+                    # Try next template
+                    template_info = generate_smart_templates(f"{wf.word}_alt", 1, 'UNK')[0]
+                    template_sentence, gap_start, gap_end = template_info
+
+                    if template_sentence in used_gapped_texts:
+                        # Give up, move to next word
+                        break
+
+                # Check if already exists
+                existing = db.query(Sentence).filter(
+                    Sentence.word_id == word.id,
+                    Sentence.text == template_sentence
+                ).first()
+
+                if existing:
+                    continue
+
+                # Create sentence with NO source (template)
+                sentence = Sentence(
+                    id=uuid.uuid4(),
+                    text=template_sentence,
+                    translation="",
+                    word_id=word.id,
+                    language_id=lang_ids['en'],
+                    type='example',
+                    difficulty=word.difficulty,
+                    gap_start=gap_start,
+                    gap_end=gap_end,
+                    source_title=None,  # Template: no source
+                    source_author=None,
+                    source_ref=None
+                )
+                db.add(sentence)
+                db.flush()
+                created_sentences.append(sentence)
+
+                used_gapped_texts.add(template_sentence)
+                sentences_created_for_word += 1
+
+                # Create Card
+                card = Card(
+                    id=uuid.uuid4(),
+                    sentence_id=sentence.id,
+                    deck_id=default_deck.id,
+                    grammar_hint='',
+                    difficulty=word.difficulty,
+                    gap_start=sentence.gap_start,
+                    gap_end=sentence.gap_end,
+                    is_active=True
+                )
+                db.add(card)
+                db.flush()
+                created_cards.append(card)
+        else:
+            # No sentence bank or rank > 2000: use smart templates
+            for i in range(sentence_count):
+                template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                template_sentence, gap_start, gap_end = template_info
+
+                # Check if already exists (idempotency)
+                existing = db.query(Sentence).filter(
+                    Sentence.word_id == word.id,
+                    Sentence.text == template_sentence
+                ).first()
+
+                if existing:
+                    continue
+
+                # Create sentence with NO source (template)
+                sentence = Sentence(
+                    id=uuid.uuid4(),
+                    text=template_sentence,
+                    translation="",
+                    word_id=word.id,
+                    language_id=lang_ids['en'],
+                    type='example',
+                    difficulty=word.difficulty,
+                    gap_start=gap_start,
+                    gap_end=gap_end,
+                    source_title=None,
+                    source_author=None,
+                    source_ref=None
+                )
+                db.add(sentence)
+                db.flush()
+                created_sentences.append(sentence)
+
+                # Create Card
+                card = Card(
+                    id=uuid.uuid4(),
+                    sentence_id=sentence.id,
+                    deck_id=default_deck.id,
+                    grammar_hint='',
+                    difficulty=word.difficulty,
+                    gap_start=sentence.gap_start,
+                    gap_end=sentence.gap_end,
+                    is_active=True
+                )
+                db.add(card)
+                db.flush()
+                created_cards.append(card)
 
         if len(created_words) % 1000 == 0:
             print(f"  Processed {len(created_words)} words...")

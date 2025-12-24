@@ -65,6 +65,7 @@ MAX_SENTENCES_PER_BOOK = 25000  # Limite para não explodir
 # Diretórios
 DATA_DIR = Path(__file__).parent.parent / "data"
 SENTENCE_BANK_PATH = DATA_DIR / "en_sentence_bank.txt"
+SENTENCE_BANK_TSV_PATH = DATA_DIR / "en_sentence_bank.tsv"
 SOURCES_PATH = DATA_DIR / "EN_SENTENCE_BANK_SOURCES.md"
 
 
@@ -133,7 +134,8 @@ def extract_sentences(text: str) -> List[str]:
     # Filter and clean
     filtered = []
     for sent in sentences:
-        sent = sent.strip()
+        # Normalize whitespace (remove newlines/tabs within sentence)
+        sent = re.sub(r'\s+', ' ', sent).strip()
 
         # Skip empty
         if not sent:
@@ -180,10 +182,10 @@ def deduplicate_sentences(all_sentences: List[str]) -> List[str]:
     return unique
 
 
-def shuffle_sentences(sentences: List[str]) -> List[str]:
+def shuffle_sentences(sentences_with_sources: List[dict]) -> List[dict]:
     """Shuffle sentences for randomness"""
-    random.shuffle(sentences)
-    return sentences
+    random.shuffle(sentences_with_sources)
+    return sentences_with_sources
 
 
 def save_sentence_bank(sentences: List[str], sources_info: List[dict]):
@@ -254,6 +256,44 @@ Script: api/scripts/build_en_sentence_bank.py
     return md
 
 
+def save_sentence_bank_with_sources(sentences_with_sources: List[dict], sources_info: List[dict]):
+    """Save sentence bank (TXT + TSV) and sources file"""
+    # Ensure data directory exists
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Extract sentences for TXT (backward compatibility)
+    sentences = [s['text'] for s in sentences_with_sources]
+
+    # Save TXT (backward compatible)
+    print(f"\n💾 Saving {len(sentences)} sentences to {SENTENCE_BANK_PATH}...")
+    with open(SENTENCE_BANK_PATH, 'w', encoding='utf-8') as f:
+        for sent in sentences:
+            f.write(sent + '\n')
+
+    print(f"✅ Saved {len(sentences)} sentences to TXT")
+
+    # Save TSV (new format with source metadata)
+    print(f"\n💾 Saving {len(sentences_with_sources)} sentences to {SENTENCE_BANK_TSV_PATH}...")
+    with open(SENTENCE_BANK_TSV_PATH, 'w', encoding='utf-8') as f:
+        # Header
+        f.write('gutenberg_id\ttitle\tauthor\tsentence\n')
+
+        # Rows
+        for entry in sentences_with_sources:
+            # Escape tabs in sentence
+            sentence = entry['text'].replace('\t', '    ')  # Replace tabs with spaces
+            f.write(f"{entry['gutenberg_id']}\t{entry['title']}\t{entry['author']}\t{sentence}\n")
+
+    print(f"✅ Saved {len(sentences_with_sources)} sentences to TSV")
+
+    # Save sources info
+    sources_md = generate_sources_markdown(sources_info, len(sentences_with_sources))
+    with open(SOURCES_PATH, 'w', encoding='utf-8') as f:
+        f.write(sources_md)
+
+    print(f"✅ Saved sources to {SOURCES_PATH}")
+
+
 def main():
     """Main function"""
     print("=" * 60)
@@ -261,7 +301,7 @@ def main():
     print("=" * 60)
     print()
 
-    all_sentences = []
+    all_sentences_with_sources = []  # List of dict with text + source metadata
     sources_info = []
 
     for idx, book in enumerate(GUTENBERG_BOOKS, 1):
@@ -288,7 +328,14 @@ def main():
             sentences = sentences[:MAX_SENTENCES_PER_BOOK]
             print(f"   Limited to: {len(sentences):,} sentences")
 
-        all_sentences.extend(sentences)
+        # Add source metadata
+        for sent in sentences:
+            all_sentences_with_sources.append({
+                'text': sent,
+                'gutenberg_id': book['id'],
+                'title': book['title'],
+                'author': book['author']
+            })
 
         # Track source info
         sources_info.append({
@@ -302,32 +349,42 @@ def main():
             "date": None  # Will be set at the end
         })
 
-    print(f"\n📊 Total sentences extracted: {len(all_sentences):,}")
+    print(f"\n📊 Total sentences extracted: {len(all_sentences_with_sources):,}")
 
-    # Deduplicate
+    # Deduplicate (by text, case-insensitive)
     print("🔍 Deduplicating...")
-    unique_sentences = deduplicate_sentences(all_sentences)
-    print(f"   Unique: {len(unique_sentences):,} sentences")
-    print(f"   Removed: {len(all_sentences) - len(unique_sentences):,} duplicates")
+    seen_hashes = set()
+    unique_with_sources = []
+
+    for entry in all_sentences_with_sources:
+        sent_hash = hashlib.sha256(entry['text'].lower().encode()).hexdigest()
+        if sent_hash not in seen_hashes:
+            seen_hashes.add(sent_hash)
+            unique_with_sources.append(entry)
+
+    print(f"   Unique: {len(unique_with_sources):,} sentences")
+    print(f"   Removed: {len(all_sentences_with_sources) - len(unique_with_sources):,} duplicates")
 
     # Shuffle
     print("🔀 Shuffling...")
-    shuffled_sentences = shuffle_sentences(unique_sentences)
+    shuffled_with_sources = shuffle_sentences(unique_with_sources)
 
     # Save
     from datetime import datetime
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    date_str = datetime.now().strftime("%Y-%m-%d")
     for info in sources_info:
         info['date'] = date_str
 
-    save_sentence_bank(shuffled_sentences, sources_info)
+    save_sentence_bank_with_sources(shuffled_with_sources, sources_info)
 
     print()
     print("=" * 60)
     print("✅ Sentence bank built successfully!")
-    print(f"📦 Location: {SENTENCE_BANK_PATH}")
-    print(f"📊 Size: {len(shuffled_sentences):,} sentences")
-    print(f"💾 Disk size: {SENTENCE_BANK_PATH.stat().st_size / 1024 / 1024:.1f} MB")
+    print(f"📦 Location TXT: {SENTENCE_BANK_PATH}")
+    print(f"📦 Location TSV: {SENTENCE_BANK_TSV_PATH}")
+    print(f"📊 Size: {len(shuffled_with_sources):,} sentences")
+    print(f"💾 Disk size TXT: {SENTENCE_BANK_PATH.stat().st_size / 1024 / 1024:.1f} MB")
+    print(f"💾 Disk size TSV: {SENTENCE_BANK_TSV_PATH.stat().st_size / 1024 / 1024:.1f} MB")
     print("=" * 60)
 
 
