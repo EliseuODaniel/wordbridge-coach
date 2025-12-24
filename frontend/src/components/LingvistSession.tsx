@@ -2,14 +2,19 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { cardsApi, type LingvistCardResponse, type AnswerResponse } from '../services/api';
+import { audioService } from '../services/audio';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
-import AudioAfterCorrect from './AudioAfterCorrect';
 
 interface LingvistSessionProps {
   userId?: string;
   onExit?: () => void;
 }
+
+// Helper: Normalize text for comparison (case-insensitive, trim, collapse spaces)
+const normalizeText = (text: string): string => {
+  return text.toLowerCase().trim().replace(/\s+/g, ' ');
+};
 
 const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => {
   // State management
@@ -20,6 +25,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [hintLevel, setHintLevel] = useState(0); // 0-5 based on mistakes
   const [isInputLocked, setIsInputLocked] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Track if audio is playing after correct
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -32,6 +38,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
       // Clear state for new card
       setCurrentCard(null);
       setFeedback(null);
+      setErrorMessage(null);
       setAttempts(0);
       setHintLevel(0);
       setIsInputLocked(false);
@@ -61,6 +68,12 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
     }
   }, [userId]);
 
+  // Handle user editing after incorrect answer
+  const handleUserEdit = useCallback(() => {
+    setFeedback(null);
+    setErrorMessage(null);
+  }, []);
+
   // Handle answer submission
   const handleSubmit = useCallback(async (answer: string) => {
     if (!currentCard || isSubmitting || isInputLocked) {
@@ -72,10 +85,34 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
       correct_answer: currentCard.correct_answer
     });
 
+    // Step 1: Check correctness LOCALLY before any await (preserves user gesture)
+    const isCorrectLocal = normalizeText(answer) === normalizeText(currentCard.correct_answer);
+    console.log('🎯 Local validation:', { isCorrectLocal, answer, correct: currentCard.correct_answer });
+
+    // Step 2: Trigger audio IMMEDIATELY if correct (before await, preserves user gesture)
+    let audioPromise: Promise<void> | null = null;
+    if (isCorrectLocal && currentCard.audio_sentence_url) {
+      console.log('🔊 Starting audio playback...');
+      setIsInputLocked(true);
+      setIsPlayingAudio(true);
+
+      // Start audio playback immediately (in same event as user gesture)
+      // Use default timeout (60s) to allow full audio playback
+      audioPromise = audioService.playFromUrlAndWaitEnded(currentCard.audio_sentence_url)
+        .then(() => {
+          console.log('✅ Audio finished (full playback)');
+        })
+        .catch((error) => {
+          console.error('❌ Audio error:', error);
+          // Don't block the flow on audio errors
+        });
+    }
+
     try {
       setIsSubmitting(true);
       const responseTime = Date.now() - startTime;
 
+      // Step 3: Always make the API call to record the attempt
       const response = await cardsApi.submitAnswer(
         currentCard.card_id,
         {
@@ -96,22 +133,26 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
         attempt: newAttemptCount
       });
 
-      if (response.correct === true) {
-        // CORRECT ANSWER
-        console.log('✅ Correct! Locking input and playing audio...');
+      if (isCorrectLocal) {
+        // CORRECT ANSWER (local check)
+        console.log('✅ Correct! Waiting for audio to finish...');
 
-        // Lock input immediately
-        setIsInputLocked(true);
+        // Wait for audio to finish (full playback, not timeout)
+        if (audioPromise) {
+          await audioPromise;
+        }
 
-        // Play audio and advance after it finishes (via AudioAfterCorrect component)
-        setIsPlayingAudio(true);
+        // Now advance to next card
+        console.log('🔄 Advancing to next card...');
+        loadNextCard(currentCard.card_id);
 
       } else {
         // INCORRECT ANSWER - increase hint level, don't advance
         console.log('❌ Incorrect! Showing more hints...');
 
-        // Increase hint level based on attempts (max 5)
-        const newHintLevel = Math.min(newAttemptCount, 5);
+        // Increase hint level based on attempts (max 6 - will show complete answer)
+        const MAX_HINT_LEVEL = 6;
+        const newHintLevel = Math.min(newAttemptCount, MAX_HINT_LEVEL);
         setHintLevel(newHintLevel);
 
         // Stay on same card - user can try again with more hints
@@ -119,10 +160,20 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
 
     } catch (error) {
       console.error('❌ Error submitting answer:', error);
+      setErrorMessage('Failed to submit answer. Please try again.');
+
+      // On error, still wait for audio if it was playing
+      if (audioPromise) {
+        await audioPromise;
+      }
     } finally {
       setIsSubmitting(false);
+      if (!isCorrectLocal) {
+        // Only reset these if incorrect (correct case will advance card)
+        setIsPlayingAudio(false);
+      }
     }
-  }, [currentCard, isSubmitting, isInputLocked, attempts, startTime, userId]);
+  }, [currentCard, isSubmitting, isInputLocked, attempts, startTime, userId, loadNextCard]);
 
   // Initialize session
   useEffect(() => {
@@ -186,10 +237,16 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
             </div>
 
             {/* Grammar Tag & Badges */}
-            <div className="flex gap-2 flex-wrap">
-              {currentCard.grammar_tag_pt !== 'UNK' && (
-                <span className="px-3 py-1 bg-blue-900 text-blue-200 text-sm rounded">
-                  {currentCard.grammar_tag_pt}
+            <div className="flex gap-2 flex-wrap items-center">
+              {currentCard.grammar_tag_pt !== 'UNK' ? (
+                <span className="px-3 py-1 bg-blue-900 text-blue-200 text-sm rounded flex items-center gap-1">
+                  <span>{currentCard.grammar_tag_pt}</span>
+                  <span className="text-xs">↓</span>
+                </span>
+              ) : (
+                <span className="px-3 py-1 bg-gray-700 text-gray-300 text-sm rounded flex items-center gap-1">
+                  <span>palavra</span>
+                  <span className="text-xs">↓</span>
                 </span>
               )}
               {currentCard.is_new && (
@@ -212,8 +269,10 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
                 gap={currentCard.gap}
                 correctAnswer={currentCard.correct_answer}
                 onSubmit={handleSubmit}
+                onUserEdit={handleUserEdit}
                 disabled={isSubmitting || isPlayingAudio}
                 isCorrect={feedback?.correct === true}
+                isIncorrect={feedback?.correct === false}
               />
 
               {/* Source */}
@@ -226,12 +285,41 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
 
             {/* Hint Panel */}
             <HintPanel
-              grammarTagPt={currentCard.grammar_tag_pt}
               correctAnswer={currentCard.correct_answer}
               wordTranslationPt={currentCard.word_translation_pt}
               sentenceTranslationPt={currentCard.sentence_translation_pt}
               hintLevel={hintLevel}
             />
+
+            {/* Translations Panel (Always Visible) */}
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">🌐</span>
+                <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+                  Traduções
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {/* Word Translation */}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Palavra</div>
+                  <div className="text-base text-gray-100">
+                    {currentCard.word_translation_pt ?? (
+                      <span className="text-gray-500 italic">Tradução indisponível</span>
+                    )}
+                  </div>
+                </div>
+                {/* Sentence Translation */}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Frase</div>
+                  <div className="text-base text-gray-100">
+                    {currentCard.sentence_translation_pt ?? (
+                      <span className="text-gray-500 italic">Tradução indisponível</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Feedback Message */}
             {feedback && (
@@ -264,6 +352,19 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
               </div>
             )}
 
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="bg-gray-800 rounded-lg p-6 border-l-4 border-yellow-500">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">⚠️</span>
+                  <div>
+                    <div className="text-yellow-400 font-semibold text-lg">Error</div>
+                    <div className="text-gray-400 text-sm">{errorMessage}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Debug Info (hidden in production) */}
             {import.meta.env.DEV && (
               <div className="bg-gray-800 rounded-lg p-4 text-xs text-gray-500">
@@ -272,6 +373,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
                 <p>hintLevel: <span className="text-gray-300">{hintLevel}</span></p>
                 <p>attempts: <span className="text-gray-300">{attempts}</span></p>
                 <p>isLocked: <span className="text-gray-300">{isInputLocked ? 'yes' : 'no'}</span></p>
+                <p>isPlayingAudio: <span className="text-gray-300">{isPlayingAudio ? 'yes' : 'no'}</span></p>
               </div>
             )}
           </div>
@@ -283,19 +385,6 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
               Loading card...
             </p>
           </div>
-        )}
-
-        {/* Audio After Correct (invisible component) */}
-        {feedback?.correct === true && currentCard && isPlayingAudio && (
-          <AudioAfterCorrect
-            audioSentenceUrl={currentCard.audio_sentence_url}
-            onFinished={() => {
-              console.log('🔄 Audio finished, loading next card...');
-              setIsPlayingAudio(false);
-              loadNextCard(currentCard.card_id);
-            }}
-            timeoutMs={3000}
-          />
         )}
       </div>
     </div>
