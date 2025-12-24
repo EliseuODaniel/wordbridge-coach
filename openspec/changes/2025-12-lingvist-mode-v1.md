@@ -65,7 +65,7 @@ Introduz um novo modo de treino inspirado no [Lingvist.com](https://lingvist.com
 4. **Keyboard customizado**: Não implementar teclado especial (usar nativo)
 5. **Áudio voz diferente**: Não implementar seletor de voz (usar padrão Piper)
 6. **Gamificação**: Sem pontos, streaks, conquistas neste modo (v1.0)
-7. **Offline mode**: Requer conexão para TTS (áudio online)
+7. **Offline mode**: TTS Piper roda localmente em container (não precisa de internet após download dos modelos)
 8. **Multiplayer**: Sem leaderboards ou competição (v1.0)
 
 ## UX Specification
@@ -365,23 +365,14 @@ Frontend usa essa URL para tocar áudio pós-acerto.
 
 ```python
 # Em CardSelectionService.get_next_card_for_user()
-if user.preferred_mode == "lingvist":
-    target_new_share = 0.2  # 20% novas, 80% revisão
-else:  # spec4
-    target_new_share = 0.25  # 25% novas (atual)
+# Hardcoded para Lingvist mode (config global do modo, não por usuário)
+target_new_share = 0.2  # 20% novas, 80% revisão (mais conservativo que Spec4)
+
+# Spec4 mode continua com:
+target_new_share = 0.25  # 25% novas (atual)
 ```
 
-**Decisão ABERTA**: Mix por usuário? Setting global?
-
-- **Opção A**: Campo em `User` table: `preferred_mode: "spec4" | "lingvist"`
-  - + Usuário escolhe
-  - - Complexidade extra na UI
-
-- **Opção B**: Switch global no app (mesmo mix para todos)
-  - + Simples de implementar
-  - - Menos flexível
-
-**Recomendação**: Opção A (modo por usuário), mas MVP pode usar Opção B.
+**NOTA**: v1.0 usa mix fixo por modo (config global). Futuras versões podem permitir `User.preferred_mode`.
 
 ## Dados & Modelos (Postgres)
 
@@ -894,29 +885,30 @@ Se bugs críticos forem encontrados pós-release:
 
 ---
 
-## Decisões ABERTAS (Aprovar com Escolha)
+## Decisões (APROVADAS ✅)
 
-Por favor, aprove as decisões abaixo:
+1. **Mix de cards (80/20)**: ✅ **DECIDIDO - Opção B (Config Global)**
+   - Mix fixo por modo (Lingvist: 20% novas / 80% revisão, Spec4: 25% novas)
+   - Implementação: hardcoded em `CardSelectionService`, sem `User.preferred_mode` no v1.0
+   - Motivo: simplicidade, MVP focado na experiência do modo
 
-1. **Mix de cards (80/20)**:
-   - [ ] Opção A: Campo `User.preferred_mode` (modo por usuário)
-   - [ ] Opção B: Setting global (mesmo mix para todos)
+2. **Registrar tentativas**: ✅ **DECIDIDO - Opção A (Estender ReviewEvent)**
+   - Adicionar colunas: `typed_answer`, `hints_used_lingvist`, `attempt_index`
+   - Não duplicar `user_answer` (usar `typed_answer` para Lingvist mode)
+   - Motivo: tudo em um lugar, backward compatible, queries fáceis
 
-2. **Registrar tentativas**:
-   - [ ] Opção A: Estender `ReviewEvent` (recomendado)
-   - [ ] Opção B: Nova tabela `Attempt`
-
-3. **API contract**:
-   - [ ] Opção A: Novo endpoint `/next-lingvist` (recomendado)
-   - [ ] Opção B: Estender `/next-spec4` com campos opcionais
+3. **API contract**: ✅ **DECIDIDO - Opção A (Novo Endpoint)**
+   - Criar `GET /api/v1/cards/next-lingvist`
+   - Não alterar `/next-spec4` (backward compatibility garantida)
+   - Motivo: separação clara de conceitos, payload enriquecido sem poluir Spec4
 
 ---
 
 ## Aprovação
 
-- [ ] Approve proposal
-- [ ] Approve decisions above (se aplique)
-- [ ] Ready to move to FASE 2 (Apply)
+- [x] Approve proposal
+- [x] Approve decisions above
+- [x] Ready to move to FASE 2 (Apply)
 
 ---
 
