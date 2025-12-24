@@ -1,5 +1,70 @@
 # FillTheWord OpenSpec - Histórico de Mudanças
 
+## ✅ Aplicado: Lingvist Mode - Inline Cloze + Hints Progressivos (2025-12-24)
+
+**Status**: ✅ Applied → Validated
+**Change Document**: `openspec/changes/archived/2025-12-lingvist-mode-v1.md`
+**Escopo**: Backend (API, migrations), Frontend (new route/components), OpenSpec (SPEC.md, API.md, DOMAINS.md)
+**Merge Commit**: e4b0ab4
+**PR**: [#3](https://github.com/EliseuODaniel/filltheword/pull/3)
+
+### Resumo
+
+Implementação do **Lingvist Mode**, novo modo de treinamento inspirado no Lingvist.com com:
+
+1. **Input inline** no gap `___` com auto-submit ao digitar resposta correta
+2. **6 hints progressivos** que aparecem conforme o usuário erra (grammar, length, first letter, reveal, translation, semantic)
+3. **Áudio pós-acerto**: toca frase completa e só avança após terminar (ou timeout 3s)
+4. **Mix conservador**: 20% novas / 80% revisão (vs 25% do Spec4)
+5. **Traduções PT-BR**: da palavra e sentença
+6. **Micro progress**: contador X/Y da sessão
+
+### Implementação
+
+**Backend**:
+- ✅ Migration `add_lingvist_fields` (ReviewEvent.typed_answer, hints_used_lingvist, attempt_index)
+- ✅ Endpoint `GET /api/v1/cards/next-lingvist` com payload enriquecido
+- ✅ Reutiliza CardSelectionService (Spec4) com target_new_words=20
+- ✅ Grammar tag PT-BR: mapeia part_of_speech + features → português
+- ✅ Micro progress clamped: current ≤ total (filter por today)
+
+**Frontend**:
+- ✅ Rota `/train/lingvist` (componente LingvistSession)
+- ✅ InlineGapInput: auto-submit no match exato (Enter fallback)
+- ✅ HintPanel: 6 níveis progressivos (escondido se "UNK")
+- ✅ AudioAfterCorrect: mock HTMLAudioElement, avança após evento `ended`
+- ✅ UserSelection: seletor de modo Spec4 (🎯) vs Lingvist (✍️)
+- ✅ App.tsx: suporta query param `?mode=lingvist`
+
+### Validação
+
+**Backend Smoke Test**:
+```bash
+curl "http://localhost:8000/api/v1/cards/next-lingvist?user_id=demo"
+# ✅ Retorna word, correct_answer, micro_progress (10/10)
+```
+
+**Frontend E2E**:
+```
+✅ Spec4 sanity test passou (chromium, firefox, webkit)
+✅ Playwright test: fluxo completo (erro → hints → acerto → áudio → avança)
+```
+
+**Manual QA** (4 itens):
+1. ✅ Foco Inline + Auto-Submit
+2. ✅ Erro Não Avança + Hints Progressivos
+3. ✅ Acerto Toca Áudio + Avança Só Após Ended
+4. ✅ Sem Botão Check
+
+### Isolamento de Spec4
+
+- ✅ Zero alterações em `/next-spec4`
+- ✅ Novo endpoint `/next-lingvist` separado
+- ✅ Migration backward compatible (campos nullable)
+- ✅ Spec4 sanity test passou sem regressão
+
+---
+
 ## ✅ Aplicado: Spec4 Variedade + Progressão (2025-12-22)
 
 **Status**: ✅ Applied → Validated
