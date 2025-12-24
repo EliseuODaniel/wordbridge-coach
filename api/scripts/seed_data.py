@@ -1248,6 +1248,141 @@ def ensure_themes_and_mappings(db: Session):
         sys.path.pop(0)
 
 
+def build_sentence_index(sentence_bank_path: str, max_sentences_per_token: int = 200):
+    """
+    Build inverted index: token -> list of sentences from sentence bank.
+
+    Args:
+        sentence_bank_path: Path to en_sentence_bank.txt
+        max_sentences_per_token: Limit sentences per token (for memory)
+
+    Returns:
+        Dict mapping token -> list of sentences
+    """
+    import string
+    from collections import defaultdict
+
+    print(f"📚 Loading sentence bank from {sentence_bank_path}...")
+    index = defaultdict(list)
+
+    with open(sentence_bank_path, 'r', encoding='utf-8') as f:
+        for line_num, line in enumerate(f, 1):
+            sentence = line.strip()
+            if not sentence:
+                continue
+
+            # Tokenize: lowercase + remove punctuation
+            # Simple tokenization: split on whitespace and strip punctuation
+            tokens = sentence.lower().split()
+            cleaned_tokens = []
+            for token in tokens:
+                # Strip punctuation from start/end only
+                cleaned = token.strip(string.punctuation + '"\'"''')
+                if cleaned:
+                    cleaned_tokens.append(cleaned)
+
+            # Add sentence to index for each token
+            for token in cleaned_tokens:
+                # Limit sentences per token (to avoid explosion for "the", "and", etc.)
+                if len(index[token]) < max_sentences_per_token:
+                    index[token].append(sentence)
+
+            if line_num % 5000 == 0:
+                print(f"  Processed {line_num} sentences...")
+
+    print(f"✅ Built index with {len(index)} unique tokens")
+    return dict(index)  # Convert back to regular dict
+
+
+def create_gap_in_sentence(sentence: str, word: str) -> Tuple[str, int, int]:
+    """
+    Create gap in sentence by replacing first occurrence of word with ___.
+
+    Args:
+        sentence: Original sentence
+        word: Word to replace (case-insensitive)
+
+    Returns:
+        Tuple (gapped_sentence, gap_start, gap_end)
+    """
+    import re
+
+    # Search for word (case-insensitive, with word boundaries)
+    pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
+    match = pattern.search(sentence)
+
+    if not match:
+        # Word not found, append at end (fallback)
+        gapped = f"{sentence} ___"
+        gap_start = len(sentence) + 1
+        gap_end = gap_start + 3
+        return gapped, gap_start, gap_end
+
+    # Replace with gap
+    gap_start = match.start()
+    gap_end = match.end()
+    gapped = sentence[:gap_start] + "___" + sentence[gap_end:]
+
+    return gapped, gap_start, gap_end
+
+
+def generate_smart_templates(word: str, count: int, part_of_speech: str = 'UNK') -> List[Tuple[str, int, int]]:
+    """
+    Generate improved template sentences based on word category.
+
+    Fallback when sentence bank doesn't have enough sentences for a word.
+
+    Args:
+        word: Target word
+        count: Number of templates to generate
+        part_of_speech: Grammatical category (if known)
+
+    Returns:
+        List of tuples (sentence, gap_start, gap_end)
+    """
+    templates = []
+
+    # Determine word category (simple heuristic)
+    word_lower = word.lower()
+
+    # Articles
+    if word_lower in ['the', 'a', 'an']:
+        templates.append((f"The {word} was here.", 4, 4 + len(word)))
+        templates.append((f"I saw {word} thing.", 6, 6 + len(word)))
+
+    # Prepositions
+    elif word_lower in ['to', 'of', 'in', 'on', 'at', 'by', 'with', 'from']:
+        templates.append((f"I went {word} the house.", 7, 7 + len(word)))
+        templates.append((f"The book is {word} the table.", 15, 15 + len(word)))
+
+    # Pronouns
+    elif word_lower in ['he', 'she', 'it', 'they', 'we', 'you', 'i']:
+        templates.append((f"{word.capitalize()} is here today.", 0, len(word)))
+        templates.append((f"I saw {word} yesterday.", 6, 6 + len(word)))
+
+    # Conjunctions
+    elif word_lower in ['and', 'but', 'or', 'nor', 'so', 'yet']:
+        templates.append((f"I like tea {word} coffee.", 13, 13 + len(word)))
+        templates.append((f"Day {word} night.", 4, 4 + len(word)))
+
+    # Common verbs
+    elif word_lower in ['be', 'have', 'do', 'say', 'go', 'get', 'make']:
+        templates.append((f"I {word} here every day.", 2, 2 + len(word)))
+        templates.append((f"They {word} to work.", 5, 5 + len(word)))
+
+    # Default: noun-like
+    else:
+        templates.append((f"The {word} is here.", 4, 4 + len(word)))
+        templates.append((f"I see a {word}.", 7, 7 + len(word)))
+        templates.append((f"This is my {word}.", 11, 11 + len(word)))
+
+    # If we need more templates than available, repeat with variation
+    while len(templates) < count:
+        templates.append(templates[len(templates) % len(templates)])
+
+    return templates[:count]
+
+
 def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: int = 10000):
     """
     Create Words, Sentences, and Cards from WordFrequency data.
@@ -1304,6 +1439,22 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
     created_sentences = []
     created_cards = []
 
+    # Load sentence bank if available (offline-first)
+    sentence_bank_path = "/app/data/en_sentence_bank.txt"
+    sentence_index = None
+
+    if os.path.exists(sentence_bank_path):
+        print("\n📚 Sentence bank found, building index...")
+        try:
+            sentence_index = build_sentence_index(sentence_bank_path, max_sentences_per_token=200)
+            print(f"✅ Sentence index ready ({len(sentence_index)} tokens)")
+        except Exception as e:
+            print(f"⚠️  Error loading sentence bank: {e}")
+            print("   Falling back to template-based generation")
+            sentence_index = None
+    else:
+        print("📚 No sentence bank found, using template-based generation")
+
     for wf in word_freqs:
         # Check if Word already exists
         existing_word = db.query(Word).filter(
@@ -1337,34 +1488,41 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
         sentence_count = get_sentence_count(wf.rank)
 
         for i in range(sentence_count):
-            # Create sentence
-            # For ranks > 2000, use simple placeholder
-            if wf.rank > 2000:
-                sentence_text = f"This is ___."
-                translation = f"Esta é a palavra '{wf.word}'."
-                gap_start = 8  # "This is " = 8 chars
-                gap_end = 11    # "___" = positions 8,9,10
-            else:
-                # For ranks 1..2000, use varied templates
-                templates = [
-                    f"The ___ is here.",
-                    f"I see a ___.",
-                    f"This is my ___.",
-                    f"Where is the ___?",
-                    f"A ___ is on the table."
-                ]
-                template = templates[i % len(templates)]
-                sentence_text = template.replace("___", "___")  # Keep gap marker
-                translation = f"{template.replace('___', wf.word)}"
+            # Create sentence with gap
+            sentence_text = ""
+            gap_start = 0
+            gap_end = 3
+            translation = ""  # Empty: better than bad translation
 
-                # Calculate gap position (___ location)
-                gap_start = template.index("___")
-                gap_end = gap_start + 3  # "___" = 3 chars
+            # Try sentence bank first (if available and rank <= 2000)
+            if sentence_index and wf.rank <= 2000:
+                candidates = sentence_index.get(wf.word.lower(), [])
+
+                if candidates:
+                    # Use real sentence from bank
+                    original_sentence = random.choice(candidates)
+                    sentence_text, gap_start, gap_end = create_gap_in_sentence(
+                        original_sentence, wf.word
+                    )
+                else:
+                    # Word not in sentence bank, use smart templates
+                    template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                    sentence_text, gap_start, gap_end = template_info
+            else:
+                # No sentence bank or rank > 2000: use smart templates
+                if wf.rank > 2000:
+                    # Better placeholder for high ranks
+                    template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                    sentence_text, gap_start, gap_end = template_info
+                else:
+                    # Ranks 1..2000 without sentence bank: templates
+                    template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
+                    sentence_text, gap_start, gap_end = template_info
 
             sentence = Sentence(
                 id=uuid.uuid4(),
                 text=sentence_text,
-                translation=translation,
+                translation=translation,  # Empty: no bad translation
                 word_id=word.id,
                 language_id=lang_ids['en'],
                 type='example',
