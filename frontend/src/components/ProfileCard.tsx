@@ -18,10 +18,11 @@ export interface Profile {
 
 interface ProfileCardProps {
   profile: Profile;
-  onStart: (profileId: string) => void;
+  onStart: (profileId: string, mode: 'spec4' | 'lingvist') => void;
   onEdit: (profileId: string) => void;
   onDelete: (profileId: string) => void;
   isFocused?: boolean;
+  selectedMode?: 'spec4' | 'lingvist';
 }
 
 const ProfileCard: React.FC<ProfileCardProps> = ({
@@ -29,7 +30,8 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
   onStart,
   onEdit,
   onDelete,
-  isFocused = false
+  isFocused = false,
+  selectedMode = 'spec4'
 }) => {
   const getLanguageName = (code: string) => {
     const languages: { [key: string]: { name: string; flag: string } } = {
@@ -44,10 +46,6 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
   const nativeLang = getLanguageName(profile.language_preference);
   const targetLang = profile.target_language ? getLanguageName(profile.target_language) : { name: 'English', flag: '🇺🇸' };
 
-  const handleCardClick = () => {
-    onStart(profile.id);
-  };
-
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onEdit(profile.id);
@@ -58,29 +56,29 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
     onDelete(profile.id);
   };
 
+  const handleStartSpec4 = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onStart(profile.id, 'spec4');
+  };
+
+  const handleStartLingvist = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onStart(profile.id, 'lingvist');
+  };
+
   return (
     <div
       className={`
-        group relative bg-gray-800 rounded-lg p-4 cursor-pointer
+        group relative bg-gray-800 rounded-lg p-4
         transition-all duration-200 border border-transparent
         hover:border-gray-600 hover:shadow-lg
-        focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+        focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent
         ${isFocused ? 'ring-2 ring-primary-500 border-primary-500' : ''}
       `}
       data-testid={`profile-card-${profile.id}`}
-      onClick={handleCardClick}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onStart(profile.id);
-        }
-      }}
-      role="button"
-      aria-label={`Start learning with ${profile.username}`}
     >
       {/* Main content */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-semibold text-gray-100 truncate">
             {profile.username}
@@ -96,16 +94,46 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
             </div>
           )}
         </div>
-
-        {/* Play indicator */}
-        <div className="ml-4 text-gray-400 group-hover:text-primary-400 transition-colors">
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-          </svg>
-        </div>
       </div>
 
-      {/* Secondary actions - only visible on hover or focus */}
+      {/* Action buttons */}
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={handleStartSpec4}
+          className={`
+            flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all
+            ${selectedMode === 'spec4'
+              ? 'bg-primary-600 text-white shadow-lg'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }
+          `}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <span>🎯</span>
+            <span>Spec4</span>
+          </div>
+          <div className="text-xs opacity-75 mt-0.5">Multiple choice</div>
+        </button>
+
+        <button
+          onClick={handleStartLingvist}
+          className={`
+            flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all
+            ${selectedMode === 'lingvist'
+              ? 'bg-primary-600 text-white shadow-lg'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }
+          `}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <span>✍️</span>
+            <span>Lingvist</span>
+          </div>
+          <div className="text-xs opacity-75 mt-0.5">Cloze + hints</div>
+        </button>
+      </div>
+
+      {/* Edit/Delete buttons - only visible on hover */}
       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1">
         <button
           onClick={handleEditClick}

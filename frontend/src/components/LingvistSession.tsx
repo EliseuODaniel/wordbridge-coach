@@ -133,25 +133,33 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
     <div className="min-h-screen bg-gray-900 py-8">
       <div className="container mx-auto px-4">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-extrabold text-gray-100 mb-2">
-            Lingvist Mode
-          </h1>
-          <p className="text-gray-500 text-sm">
-            Type the missing word • Auto-submit when correct
-          </p>
+        <div className="flex justify-between items-center mb-8">
+          <div className="text-center flex-1">
+            <h1 className="text-4xl font-extrabold text-gray-100 mb-2">
+              Lingvist Mode
+            </h1>
+            <p className="text-gray-500 text-sm">
+              Cloze Deletion • Progressive Hints • Auto-submit
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <a
+              href="/?mode=spec4"
+              className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
+            >
+              Switch to Spec4 🎯
+            </a>
+            <button
+              onClick={onExit}
+              className="px-4 py-2 bg-gray-800 text-gray-400 rounded hover:bg-gray-700 transition text-sm"
+              disabled={isPlayingAudio}
+            >
+              Exit
+            </button>
+          </div>
         </div>
 
-        {/* Exit Button */}
-        <div className="flex justify-end mb-4">
-          <button
-            onClick={onExit}
-            className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition"
-            disabled={isPlayingAudio}
-          >
-            ← Exit
-          </button>
-        </div>
+        {/* Exit Button (removed - now in header) */}
 
         {/* Main Content */}
         {currentCard ? (

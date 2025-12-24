@@ -43,6 +43,14 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
   const [wordGoalRank, setWordGoalRank] = useState(100);
   const [loading, setLoading] = useState(false);
 
+  // Load last used mode from localStorage
+  useEffect(() => {
+    const lastMode = localStorage.getItem('preferredTrainingMode') as TrainingMode | null;
+    if (lastMode && (lastMode === 'spec4' || lastMode === 'lingvist')) {
+      onModeSelect(lastMode);
+    }
+  }, []);
+
   // Edit mode states
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editUsername, setEditUsername] = useState('');
@@ -102,6 +110,9 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
       };
       setUsers([...users, userWithStats]);
       setNewUsername('');
+
+      // Save mode preference before starting
+      localStorage.setItem('preferredTrainingMode', selectedMode);
       onUserSelected(newUser.id);
     } catch (error) {
       console.error('Error creating user:', error);
@@ -110,7 +121,10 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
     }
   };
 
-  const handleStartLearning = (userId: string) => {
+  const handleStartLearning = (userId: string, mode: TrainingMode) => {
+    // Save mode preference
+    localStorage.setItem('preferredTrainingMode', mode);
+    onModeSelect(mode);
     onUserSelected(userId);
   };
 
@@ -208,36 +222,16 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
           </p>
         </div>
 
-        {/* Training Mode Selector */}
-        <div className="bg-gray-800 rounded-lg p-4 mb-6 shadow-xl">
-          <label className="block text-sm font-medium text-gray-400 mb-3">
-            Training Mode
-          </label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onModeSelect('spec4')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
-                selectedMode === 'spec4'
-                  ? 'bg-primary-600 text-white shadow-lg'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              <div className="text-lg mb-1">🎯</div>
-              <div className="text-sm">Spec4</div>
-              <div className="text-xs opacity-75">Multiple choice</div>
-            </button>
-            <button
-              onClick={() => onModeSelect('lingvist')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
-                selectedMode === 'lingvist'
-                  ? 'bg-primary-600 text-white shadow-lg'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              <div className="text-lg mb-1">✍️</div>
-              <div className="text-sm">Lingvist</div>
-              <div className="text-xs opacity-75">Cloze + hints</div>
-            </button>
+        {/* Hint about Lingvist mode */}
+        <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">✍️</span>
+            <div>
+              <div className="font-semibold text-blue-200 mb-1">Prefere treinar digitando?</div>
+              <div className="text-sm text-blue-300">
+                Escolha <strong>Lingvist</strong> ao iniciar um perfil para treinar com preenchimento de lacunas, hints progressivos e áudio pós-acerto.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -266,6 +260,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
                     onEdit={handleEditProfile}
                     onDelete={handleDeleteProfile}
                     isFocused={focusedIndex === index}
+                    selectedMode={selectedMode}
                   />
                 ))}
               </div>
