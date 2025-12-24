@@ -7,8 +7,10 @@ Creates initial languages, words, sentences, cards, and demo user with proper UU
 import sys
 import os
 import uuid
+import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from typing import List, Tuple
 
 # Add the parent directory to the path to import app modules
 sys.path.append('/app')
