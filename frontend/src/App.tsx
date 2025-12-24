@@ -1,6 +1,6 @@
 /** Main App Component */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import StudySession from './components/StudySession';
 import LingvistSession from './components/LingvistSession';
 import UserSelection from './components/UserSelection';
