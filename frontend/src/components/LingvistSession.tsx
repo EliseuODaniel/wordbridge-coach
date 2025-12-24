@@ -30,6 +30,9 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
   // Track if audio is playing after correct
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
+  // Track manual audio playback errors
+  const [audioError, setAudioError] = useState<string | null>(null);
+
   // Load next card
   const loadNextCard = useCallback(async (excludeCardId?: string) => {
     try {
@@ -62,6 +65,18 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
 
       setCurrentCard(card);
 
+      // Preload audio files (non-blocking)
+      if (card.audio_word_url) {
+        audioService.preloadFromUrl(card.audio_word_url).catch(err => {
+          console.warn('Failed to preload word audio:', err);
+        });
+      }
+      if (card.audio_sentence_url) {
+        audioService.preloadFromUrl(card.audio_sentence_url).catch(err => {
+          console.warn('Failed to preload sentence audio:', err);
+        });
+      }
+
     } catch (error) {
       console.error('❌ Error loading Lingvist card:', error);
       setCurrentCard(null);
@@ -73,6 +88,38 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
     setFeedback(null);
     setErrorMessage(null);
   }, []);
+
+  // Handle manual word audio playback
+  const handlePlayWordAudio = useCallback(async () => {
+    if (!currentCard?.audio_word_url) {
+      setAudioError('Word audio not available');
+      return;
+    }
+
+    setAudioError(null);
+    try {
+      await audioService.playFromUrl(currentCard.audio_word_url);
+    } catch (error) {
+      console.error('Failed to play word audio:', error);
+      setAudioError('Failed to play word audio');
+    }
+  }, [currentCard]);
+
+  // Handle manual sentence audio playback
+  const handlePlaySentenceAudio = useCallback(async () => {
+    if (!currentCard?.audio_sentence_url) {
+      setAudioError('Sentence audio not available');
+      return;
+    }
+
+    setAudioError(null);
+    try {
+      await audioService.playFromUrl(currentCard.audio_sentence_url);
+    } catch (error) {
+      console.error('Failed to play sentence audio:', error);
+      setAudioError('Failed to play sentence audio');
+    }
+  }, [currentCard]);
 
   // Handle answer submission
   const handleSubmit = useCallback(async (answer: string) => {
@@ -281,6 +328,26 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
                   Source: {currentCard.sentence_source}
                 </div>
               )}
+
+              {/* Audio Buttons (Manual playback) */}
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={handlePlayWordAudio}
+                  className="px-4 py-2 bg-blue-900 text-blue-200 rounded hover:bg-blue-800 transition text-sm flex items-center gap-2"
+                  disabled={isPlayingAudio}
+                >
+                  <span>🔊</span>
+                  <span>Play Word</span>
+                </button>
+                <button
+                  onClick={handlePlaySentenceAudio}
+                  className="px-4 py-2 bg-purple-900 text-purple-200 rounded hover:bg-purple-800 transition text-sm flex items-center gap-2"
+                  disabled={isPlayingAudio}
+                >
+                  <span>🔊</span>
+                  <span>Play Sentence</span>
+                </button>
+              </div>
             </div>
 
             {/* Hint Panel */}
@@ -360,6 +427,19 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
                   <div>
                     <div className="text-yellow-400 font-semibold text-lg">Error</div>
                     <div className="text-gray-400 text-sm">{errorMessage}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Audio Error Message (non-blocking) */}
+            {audioError && (
+              <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-orange-500">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🔇</span>
+                  <div>
+                    <div className="text-orange-400 font-semibold text-sm">Audio Error</div>
+                    <div className="text-gray-400 text-xs">{audioError}</div>
                   </div>
                 </div>
               </div>

@@ -129,6 +129,38 @@ export class AudioService {
     return Math.abs(hash).toString(16).substring(0, 12);
   }
 
+  // Preload audio from URL (non-blocking, for future playback)
+  async preloadFromUrl(url: string): Promise<void> {
+    try {
+      // Check if already cached
+      if (this.audioCache.has(url)) {
+        return;
+      }
+
+      // Resolve absolute URL
+      const resolved = new URL(url, window.location.origin).toString();
+
+      // Create audio element
+      const audio = new Audio(resolved);
+      audio.preload = 'auto';
+
+      // Cache immediately (will load in background)
+      this.audioCache.set(url, audio);
+
+      // Start loading (non-blocking)
+      audio.load();
+
+      // Log when ready
+      audio.addEventListener('canplaythrough', () => {
+        console.log(`✅ Audio preloaded and ready: ${url.substring(0, 50)}...`);
+      }, { once: true });
+
+    } catch (error) {
+      console.error('Error preloading audio:', error);
+      // Don't throw - preload failures are non-critical
+    }
+  }
+
   // Play audio directly from URL (preserves user gesture)
   async playFromUrl(url: string): Promise<void> {
     try {
