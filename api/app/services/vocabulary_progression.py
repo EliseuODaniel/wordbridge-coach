@@ -184,10 +184,15 @@ class VocabularyProgressionService:
 
         return basic_sentence
 
-    def get_next_new_word_rank(self, user_id: str, progress: UserFrequencyProgress) -> Optional[int]:
+    def get_next_new_word_rank(self, user_id: str, progress: UserFrequencyProgress, target_language_code: str) -> Optional[int]:
         """
         Get the rank of the next new word to introduce
         Implements getNextNewWordRank(userId, progress) from Spec4
+
+        Args:
+            user_id: User ID
+            progress: User's frequency progress
+            target_language_code: User's target language code (e.g., 'en', 'fr')
         """
         if progress.max_contiguous_mastered_rank == 0:
             # For new users, find the first rank that has an available word
@@ -203,7 +208,7 @@ class VocabularyProgressionService:
             word = self.db.query(Word).join(WordFrequency,
                 and_(
                     func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                    WordFrequency.language_code == "en"  # TODO: Get from user's target language
+                    WordFrequency.language_code == target_language_code  # Use user's target language
                 )
             ).filter(
                 WordFrequency.rank == candidate_rank
@@ -215,10 +220,15 @@ class VocabularyProgressionService:
         # No available words found in the current window
         return None
 
-    def update_contiguous_mastered_rank(self, user_id: str, word_rank: int):
+    def update_contiguous_mastered_rank(self, user_id: str, word_rank: int, target_language_code: str):
         """
         Update maxContiguousMasteredRank when user gets word correct for first time
         Implements the prefix advancement logic from Spec4
+
+        Args:
+            user_id: User ID
+            word_rank: Rank of the word just mastered
+            target_language_code: User's target language code (e.g., 'en', 'fr')
         """
         progress = self.get_or_create_user_progress(user_id)
 
@@ -246,7 +256,7 @@ class VocabularyProgressionService:
                         ReviewEvent.user_id == user_id,
                         ReviewEvent.was_correct == True,
                         WordFrequency.rank == next_rank_candidate,
-                        WordFrequency.language_code == "en"  # TODO: Get from user's target language
+                        WordFrequency.language_code == target_language_code  # Use user's target language
                     )
                 ).first()
 
@@ -267,14 +277,21 @@ class VocabularyProgressionService:
 
             self.db.commit()
 
-    def get_due_review_words(self, user_id: str, max_rank: int) -> List[Word]:
-        """Get words that are due for review within the current window"""
+    def get_due_review_words(self, user_id: str, max_rank: int, target_language_code: str) -> List[Word]:
+        """
+        Get words that are due for review within the current window
+
+        Args:
+            user_id: User ID
+            max_rank: Maximum rank to consider
+            target_language_code: User's target language code (e.g., 'en', 'fr')
+        """
         # This would integrate with the existing SRS system
         # For now, return a simplified list
         return self.db.query(Word).join(WordFrequency).filter(
             and_(
                 WordFrequency.rank <= max_rank,
-                WordFrequency.language_code == "en"  # TODO: Get from user's target language
+                WordFrequency.language_code == target_language_code  # Use user's target language
             )
         ).limit(50).all()
 

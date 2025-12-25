@@ -216,31 +216,47 @@ class CardSelectionService:
         if excluded_word_id:
             exclusions.add(excluded_word_id)
 
-        # Try without excluded/recent words first
-        words_without_recent = query.filter(
-            ~Word.id.in_(exclusions | recent_word_ids)
-        ).all()
+        # Filter for truly new words (no UserCardState for this user+word)
+        # This ensures we don't re-use words the user has already seen
+        truly_new_words_query = query.filter(
+            ~Word.id.in_(
+                self.db.query(UserCardState.word_id).filter(
+                    UserCardState.user_id == user_id
+                )
+            )
+        )
 
-        # Use words without recent if we have enough alternatives (threshold: 10)
-        if len(words_without_recent) >= 10:
-            word = random.choice(words_without_recent)
+        # Try without excluded/recent words first (DB-side random)
+        words_without_recent = truly_new_words_query.filter(
+            ~Word.id.in_(exclusions | recent_word_ids)
+        )
+
+        # Check if we have enough alternatives without hitting the DB
+        # We do this by counting before fetching
+        count_without_recent = words_without_recent.count()
+
+        if count_without_recent >= 10:
+            # Use DB-side random selection (PostgreSQL)
+            word = words_without_recent.order_by(func.random()).limit(1).first()
+        elif count_without_recent > 0:
+            # Fallback 1: fewer than 10 alternatives, but still use them
+            word = words_without_recent.order_by(func.random()).limit(1).first()
         else:
-            # Fallback: include recent words (but still exclude current card)
+            # Fallback 2: include recent words (but still exclude current card)
             if excluded_word_id:
-                words_without_current = query.filter(Word.id != excluded_word_id).all()
-                if words_without_current:
-                    word = random.choice(words_without_current)
-                else:
+                words_without_current = truly_new_words_query.filter(
+                    Word.id != excluded_word_id
+                )
+                word = words_without_current.order_by(func.random()).limit(1).first()
+
+                if not word:
                     # Last resort: include current card (will show different sentence)
-                    words = query.all()
-                    if not words:
-                        return None
-                    word = random.choice(words)
+                    word = truly_new_words_query.order_by(func.random()).limit(1).first()
             else:
-                words = query.all()
-                if not words:
-                    return None
-                word = random.choice(words)
+                word = truly_new_words_query.order_by(func.random()).limit(1).first()
+
+        if not word:
+            return None
 
         # Get sentence (variety K=10 handled by get_sentence_for_word)
         sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
@@ -654,7 +670,7 @@ class CardSelectionService:
 
                 # Update contiguous mastered rank
                 print(f"DEBUG: Updating progression for user={user_id}, rank={wf.rank}")
-                self.progression_service.update_contiguous_mastered_rank(user_id, wf.rank)
+                self.progression_service.update_contiguous_mastered_rank(user_id, wf.rank, target_lang_code)
                 print(f"DEBUG: Updated max_contiguous_mastered_rank for user={user_id} to rank {wf.rank}")
                 return {"success": True, "rank": wf.rank}
 
