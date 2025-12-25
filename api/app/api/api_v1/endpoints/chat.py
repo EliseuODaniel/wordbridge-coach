@@ -64,6 +64,52 @@ def get_default_student_profile() -> dict:
     }
 
 
+def _build_context_messages(conversation_id: str, db: Session, limit: int = 10) -> List[dict]:
+    """
+    Build context messages for LLM, ensuring the most recent user message is included.
+
+    Strategy:
+    1. Fetch the system message (first one) separately
+    2. Fetch the last N non-system messages in descending order
+    3. Reverse in memory to get chronological order
+    4. Combine: [system] + reversed(last_non_system)
+
+    Args:
+        conversation_id: UUID of the conversation
+        db: Database session
+        limit: Maximum number of non-system messages to include (default: 10)
+
+    Returns:
+        List of message dicts with 'role' and 'content' keys
+    """
+    # 1. Get system message (if exists)
+    system_msg = db.query(ChatMessage).filter(
+        ChatMessage.conversation_id == conversation_id,
+        ChatMessage.role == "system"
+    ).first()
+
+    # 2. Get last N non-system messages in descending order
+    last_non_system = db.query(ChatMessage).filter(
+        ChatMessage.conversation_id == conversation_id,
+        ChatMessage.role != "system"
+    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
+
+    # 3. Reverse to get chronological order
+    last_non_system.reverse()
+
+    # 4. Build messages list
+    messages = []
+    if system_msg:
+        messages.append({"role": system_msg.role, "content": system_msg.content})
+
+    messages.extend([
+        {"role": m.role, "content": m.content}
+        for m in last_non_system
+    ])
+
+    return messages
+
+
 # ============================================================================
 # REST Endpoints
 # ============================================================================
@@ -464,15 +510,8 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
     db.add(user_message)
     db.commit()
 
-    # Build messages for LLM (last 10 messages for context)
-    recent_messages = db.query(ChatMessage).filter(
-        ChatMessage.conversation_id == conversation.id
-    ).order_by(ChatMessage.created_at.asc()).limit(10).all()
-
-    messages = [
-        {"role": msg.role, "content": msg.content}
-        for msg in recent_messages
-    ]
+    # Build messages for LLM using the helper function (ensures latest messages are included)
+    messages = _build_context_messages(str(conversation.id), db, limit=10)
 
     # Stream assistant response
     system_prompt = f"You are an English teacher helping a {conversation.lesson_frame_json.get('cefr_target', 'A2')} level student."
