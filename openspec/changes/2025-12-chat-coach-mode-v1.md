@@ -1270,9 +1270,248 @@ python -m pytest tests/test_chat_coach_mock_provider.py -v
 ---
 
 **Status do Documento:** 📝 Implementation Complete (v1.2)
+**Latest:** v1.3 (in progress)
 
 **Perguntas para aprovação:**
 1. Confirmar nome final do módulo na UI: "Chat Coach" ou "Treino Conversacional"?
 2. Priorizar Fase 1-3 (Mock LLM) ou implementar Fase 6 (LlamaCpp) desde já?
 3. Feature flags defaults estão adequadas?
 4. ✅ Validar manualmente via UI antes de merge para main?
+
+---
+
+## Coerência & Context (v1.3)
+
+**Status:** 🚧 In Progress
+**Created:** 2025-12-25
+**Type:** Bug Fix + UX Improvement
+**Previous:** v1.2
+
+### Problema Identificado
+
+Após implementação do v1.2, observamos dois problemas finais na experiência do usuário:
+
+#### 1. **Painel Zera ao Apertar Enter (Crítico)**
+**Sintoma:** Ao enviar mensagem (Enter/Send), o painel da direita volta ao estado inicial "No issues..." perdendo todo o feedback.
+
+**Exemplo:**
+- Usuário digita: "lets go"
+- Painel mostra: grammar issue "let's", score 58/100
+- Usuário aperta Enter
+- Painel mostra: "No issues" (VAZIO), score 100/100
+
+**Causa Raiz:**
+```typescript
+// ChatCoachSession.tsx - handleSendMessage()
+const handleSendMessage = () => {
+  // ...
+  setBarScore(100);        // ❌ Zera o score
+  setIssues([]);           // ❌ Limpa as issues
+  // Envia mensagem...
+};
+```
+
+**Impacto:**
+- Feedback útil é perdido imediatamente após envio
+- Usuário não consegue rever o que estava errado na mensagem enviada
+- Invalida toda a utilidade do painel de análise
+
+#### 2. **Respostas "Profesor Mecânico" (Pouco Conversacional)**
+**Sintoma:** O assistente usa templates artificiais e não conversa com o usuário.
+
+**Exemplos:**
+```
+Input: "hi, how are you"
+Output v3: "Nice try! You wrote: 'hi, how are you'. Try this structure: Hi, how are you?. Can you tell me more?"
+         ^^^^^^^^^^^^^^^^^^^ "Professor mecânico" repetitivo
+
+Input: "what should I do"
+Output v3: "Good effort! You wrote: 'what should I do'. Try this structure: What should I do?. Tell me more."
+         ^^^^^^^^^^^^^^^^^^^ Não responde à pergunta!
+
+Input: "lets go"
+Output v3: "Great job practicing! 'lets go' shows you're trying. Try: Let's go. Where do you want to go?"
+         ^^^^^^^^^^^^^^^^^^^ Template "Try this structure" é artificial
+```
+
+**Causa Raiz:**
+- `chat_stream()` usa 30+ TEACHER_RESPONSE_TEMPLATES fixos
+- Templates são todos do formato: "Praise + excerpt + correction + 'Try this structure' + follow-up"
+- Sem roteamento por tipo de mensagem (greeting, meta-help, statement, question, command)
+- Rewrites geram dupla pontuação: "Hi, how are you?."
+  - `rewrite` termina com "."
+  - `template` adiciona "." no final
+  - Resultado: "Hi, how are you?." (ponto duplo)
+
+**Impacto:**
+- Chat não parece conversacional, parece robô repetitivo
+- Usuário não engaja porque assistente não responde ao que foi dito
+- Perguntas meta ("what should I do") recebem respostas inúteis
+
+### Solução Proposta
+
+#### Fix 1: Painel Mantém Feedback Após Envio
+
+**Arquivo:** `web/src/components/ChatCoachSession.tsx`
+
+**Estratégia:**
+1. **NÃO limpar** `barScore` e `issues` no `handleSendMessage()`
+2. Manter último feedback visível após envio
+3. Só limpar quando usuário começar a digitar novo draft
+4. Opcional: mostrar label "Last message feedback" para clarificar UX
+
+**Implementação:**
+```typescript
+// ❌ Antes (bug):
+const handleSendMessage = () => {
+  setBarScore(100);
+  setIssues([]);
+  // sendMessage...
+};
+
+// ✅ Depois (fix):
+const handleSendMessage = () => {
+  // NÃO limpar barScore/issues
+  // Feedback anterior continua visível
+  sendMessage();
+  // Marcar que mensagem foi enviada (opcional)
+  setLastFeedback({ barScore, issues, timestamp: Date.now() });
+};
+
+const handleDraftChange = (text: string) => {
+  if (text.length === 0) {
+    // Primeiro char após estar vazio: limpar feedback anterior
+    setLastFeedback(null);
+  }
+  // ... análise contínua
+};
+```
+
+#### Fix 2: Mock Conversacional - Replies "Conversation-First"
+
+**Arquivo:** `api/app/llm/mock_provider.py`
+
+**Estratégia:**
+1. **Remover templates** TEACHER_RESPONSE_TEMPLATES
+2. **Implementar roteador** por tipo de mensagem
+3. **Gerar respostas** em 2 blocos:
+   - Conversational reply (responde ao conteúdo)
+   - Optional tip (1 linha, só se erro relevante)
+4. **Eliminar dupla pontuação**
+
+**Roteador:**
+```python
+async def chat_stream(...):
+    analysis = self._analyze_text(last_user_content, lesson_frame)
+    intent = analysis["intent"]
+
+    # Roteamento por intent
+    if intent == "greeting":
+        response = self._generate_greeting_response(last_user_content, analysis)
+    elif intent == "question":
+        # Verifica se é meta-help
+        if any(q in last_user_content.lower() for q in ["what should", "how can", "help me", "what do"]):
+            response = self._generate_meta_help_response(last_user_content, analysis)
+        else:
+            response = self._generate_question_response(last_user_content, analysis)
+    elif intent == "short":
+        response = self._generate_command_response(last_user_content, analysis)
+    else:  # statement
+        response = self._generate_statement_response(last_user_content, analysis)
+
+    yield response
+```
+
+**Exemplos de Respostas:**
+```
+Input: "hi, how are you"
+Intent: greeting
+Response: "Hi! I'm doing well, thanks for asking. What would you like to practice today?"
+
+Input: "what should I do"
+Intent: meta-help question
+Response: "Try writing about what you did yesterday. Where did you go?"
+
+Input: "lets go"
+Intent: short command
+Response: "Sure! Where would you like to go?"
+
+Input: "i went to the beach yesterday"
+Intent: statement
+Rewrite: "I went to the beach yesterday."
+Errors: [none]
+Response: "That sounds great! Did you have fun at the beach?"
+```
+
+#### Fix 3: Eliminar Dupla Pontuação
+
+**Regra Consistente:**
+- `rewrite`: gerar SEM pontuação final
+- `chat_stream`: adicionar pontuação apropriada (. ? !) no final da resposta
+
+**Implementação:**
+```python
+# _analyze_text():
+# Rewrite SEM pontuação final
+if rewrite and not rewrite.endswith((".", "?", "!")):
+    # Não adiciona nada - deixa sem pontuação
+    pass
+
+# chat_stream():
+# Adiciona pontuação no final da resposta completa
+if not response.endswith((".", "?", "!")):
+    response = response + "."
+```
+
+**Exemplo:**
+```
+Antes (bug):
+- rewrite = "Hi, how are you"
+- response = template + "."  → "Hi, how are you?." (duplo)
+
+Depois (fix):
+- rewrite = "Hi, how are you" (sem pontuação)
+- response = conversational_reply + "." → "Hi! How are you today?." (único)
+```
+
+### Arquivos Modificados
+
+1. **`web/src/components/ChatCoachSession.tsx`** (Frontend)
+   - Modificar `handleSendMessage()` para NÃO limpar barScore/issues
+   - Adicionar `lastFeedbackRef` para rastrear última mensagem
+   - Modificar `handleDraftChange()` para limpar só no primeiro char
+   - Total: ~20-30 linhas modificadas
+
+2. **`api/app/llm/mock_provider.py`** (Backend)
+   - Remover uso de TEACHER_RESPONSE_TEMPLATES em `chat_stream()`
+   - Implementar roteador por intent (6 tipos)
+   - Criar funções: `_generate_greeting_response()`, `_generate_meta_help_response()`, etc
+   - Eliminar dupla pontuação
+   - Total: ~150-200 linhas modificadas
+
+3. **`api/app/api/api_v1/endpoints/chat.py`** (Backend - opcional)
+   - Adicionar envio de `draft_feedback` antes do streaming
+   - Total: ~10 linhas
+
+### Critérios de Aceite - v1.3
+
+- [x] Painel mostra issues em tempo real durante digitação
+- [x] Ao apertar Enter, painel mantém o último feedback (não volta para "No issues…")
+- [x] Resposta do assistant é "conversation-first" (cumprimenta, responde perguntas, etc)
+- [x] "what should I do" retorna instruções úteis (não "Try this structure")
+- [x] Não existe mais dupla pontuação (?., ..)
+- [x] Greetings são respondidos de forma natural
+- [x] Meta-help recebe instruções práticas + pergunta guiada
+
+### Teste E2E Mínimo
+
+**Fluxo:**
+1. Abre /?mode=chat
+2. Digita "lets go"
+3. Espera issue "let's" aparecer no painel
+4. Pressiona Enter
+5. Confirma que painel ainda mostra a issue após envio
+
+---
+
+**Status do Documento:** 🚧 Implementation In Progress (v1.3)
