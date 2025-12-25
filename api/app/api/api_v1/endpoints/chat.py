@@ -64,6 +64,65 @@ def get_default_student_profile() -> dict:
     }
 
 
+def _build_draft_feedback(
+    conversation_id: str,
+    eval_result: dict,
+    now_ms: int,
+    ghost_suggestion: str = None
+) -> dict:
+    """
+    Build draft_feedback response from micro_eval result.
+
+    Calculates bar score, maps issues, and optionally includes ghost suggestion.
+    Reusable helper for both draft_update and request_autocomplete.
+
+    Args:
+        conversation_id: UUID of the conversation
+        eval_result: Result from llm_provider.micro_eval()
+        now_ms: Current timestamp in milliseconds
+        ghost_suggestion: Optional ghost suggestion from autocomplete
+
+    Returns:
+        Dict matching DraftFeedbackOut schema
+    """
+    # Calculate bar score (weighted average)
+    bar_score_raw = (
+        eval_result["spelling_score"] * 0.20 +
+        eval_result["grammar_score"] * 0.25 +
+        100 * 0.10 +  # syntax (perfect for now)
+        eval_result["lesson_alignment_score"] * 0.30 +
+        eval_result["naturalness_score"] * 0.15
+    )
+
+    # Map issues to DraftIssue schema
+    issues = []
+    for issue in eval_result.get("top_issues", []):
+        issues.append({
+            "category": issue["category"],
+            "title": issue["title"],
+            "explanation": issue["explanation"],
+            "highlight_spans": issue.get("highlight_spans", []),
+            "suggestions": issue.get("suggestions", [])
+        })
+
+    return DraftFeedbackOut(
+        type="draft_feedback",
+        conversation_id=conversation_id,
+        bar_score_raw=bar_score_raw,
+        bar_score_components={
+            "spelling": eval_result["spelling_score"],
+            "grammar": eval_result["grammar_score"],
+            "syntax": 100.0,
+            "lesson_alignment": eval_result["lesson_alignment_score"],
+            "naturalness": eval_result["naturalness_score"]
+        },
+        lesson_alignment_score=eval_result["lesson_alignment_score"],
+        issues=issues,
+        ghost_suggestion=ghost_suggestion,
+        server_ts_ms=now_ms
+    ).model_dump()
+
+
 def _build_context_messages(conversation_id: str, db: Session, limit: int = 10) -> List[dict]:
     """
     Build context messages for LLM, ensuring the most recent user message is included.
@@ -421,43 +480,14 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
             student_profile=conversation.student_profile_json
         )
 
-        # Calculate bar score (weighted average)
-        bar_score_raw = (
-            eval_result["spelling_score"] * 0.20 +
-            eval_result["grammar_score"] * 0.25 +
-            100 * 0.10 +  # syntax (perfect for now)
-            eval_result["lesson_alignment_score"] * 0.30 +
-            eval_result["naturalness_score"] * 0.15
-        )
-
-        # Map issues to DraftIssue schema
-        issues = []
-        for issue in eval_result.get("top_issues", []):
-            issues.append({
-                "category": issue["category"],
-                "title": issue["title"],
-                "explanation": issue["explanation"],
-                "highlight_spans": issue.get("highlight_spans", []),
-                "suggestions": issue.get("suggestions", [])
-            })
-
-        # Send draft_feedback
-        await websocket.send_json(DraftFeedbackOut(
-            type="draft_feedback",
+        # Build and send draft_feedback using helper (no ghost suggestion)
+        feedback = _build_draft_feedback(
             conversation_id=str(conversation.id),
-            bar_score_raw=bar_score_raw,
-            bar_score_components={
-                "spelling": eval_result["spelling_score"],
-                "grammar": eval_result["grammar_score"],
-                "syntax": 100.0,
-                "lesson_alignment": eval_result["lesson_alignment_score"],
-                "naturalness": eval_result["naturalness_score"]
-            },
-            lesson_alignment_score=eval_result["lesson_alignment_score"],
-            issues=issues,
-            ghost_suggestion=None,
-            server_ts_ms=now_ms
-        ).model_dump())
+            eval_result=eval_result,
+            now_ms=now_ms,
+            ghost_suggestion=None
+        )
+        await websocket.send_json(feedback)
     else:
         # Micro_eval throttled: send quick feedback without LLM call
         # For now, just acknowledge (in real implementation, run fast analyzers)
@@ -465,11 +495,24 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
 
 
 async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session):
-    """Handle request_autocomplete event → return draft_feedback with ghost_suggestion"""
+    """
+    Handle request_autocomplete event → return draft_feedback with ghost_suggestion
+
+    CRITICAL FIX: Now runs micro_eval FIRST to get real issues, then adds ghost suggestion.
+    This prevents the panel from clearing issues when autocomplete triggers.
+    """
     draft_text = data.get("draft_text", "")
 
-    # Call autocomplete
-    result = await llm_provider.autocomplete(
+    # Step 1: Run micro_eval to get real issues and scores
+    eval_result = await llm_provider.micro_eval(
+        context=conversation.session_summary,
+        lesson_frame=conversation.lesson_frame_json,
+        draft=draft_text,
+        student_profile=conversation.student_profile_json
+    )
+
+    # Step 2: Call autocomplete to get ghost suggestion
+    autocomplete_result = await llm_provider.autocomplete(
         context=conversation.session_summary,
         lesson_frame=conversation.lesson_frame_json,
         draft=draft_text,
@@ -478,23 +521,16 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
 
     now_ms = int(datetime.now().timestamp() * 1000)
 
-    # Send draft_feedback with ghost_suggestion
-    await websocket.send_json(DraftFeedbackOut(
-        type="draft_feedback",
+    # Step 3: Build feedback with REAL issues + ghost suggestion
+    feedback = _build_draft_feedback(
         conversation_id=str(conversation.id),
-        bar_score_raw=50.0,  # Placeholder
-        bar_score_components={
-            "spelling": 100,
-            "grammar": 50,
-            "syntax": 100,
-            "lesson_alignment": 50,
-            "naturalness": 50
-        },
-        lesson_alignment_score=50.0,
-        issues=[],
-        ghost_suggestion=result.get("ghost_suggestion", ""),
-        server_ts_ms=now_ms
-    ).model_dump())
+        eval_result=eval_result,
+        now_ms=now_ms,
+        ghost_suggestion=autocomplete_result.get("ghost_suggestion", "")
+    )
+
+    # Send draft_feedback with real issues + ghost suggestion
+    await websocket.send_json(feedback)
 
 
 async def handle_user_message(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session):
