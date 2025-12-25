@@ -1,12 +1,15 @@
 """Chat Coach endpoints for real-time conversational training"""
 
 import os
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import uuid
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.models import User, ChatConversation, ChatMessage
@@ -20,16 +23,19 @@ from app.schemas.chat import (
     ErrorOut,
     Pong,
 )
-from app.llm.factory import get_llm_provider_from_env
+from app.llm.factory import get_llm_provider_from_env, get_provider_name
 
 # Feature flags (environment variables)
-CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "mock")
+CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "llamacpp")
 CHAT_MICRO_EVAL_MIN_INTERVAL_MS = int(os.getenv("CHAT_MICRO_EVAL_MIN_INTERVAL_MS", "90"))
 
 router = APIRouter()
 
-# Initialize LLM provider from environment variables (supports Mock, OpenAI, etc.)
+# Initialize LLM provider from environment variables (supports Mock, OpenAI, LlamaCpp)
 llm_provider = get_llm_provider_from_env()
+
+# Log which provider is being used (for debugging)
+logger.info(f"Chat Coach LLM provider: {get_provider_name(llm_provider)}")
 
 # In-memory tracking for throttling micro_eval (conversation_id -> last_eval_ts)
 _micro_eval_timestamps = {}
@@ -661,13 +667,25 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
     # Build messages for LLM using the helper function (ensures latest messages are included)
     messages = _build_context_messages(str(conversation.id), db, limit=10)
 
-    # Stream assistant response
-    system_prompt = f"You are an English teacher helping a {conversation.lesson_frame_json.get('cefr_target', 'A2')} level student."
+    # Build system prompt from lesson_frame
+    lesson_frame = conversation.lesson_frame_json
+    system_prompt = f"""You are an English conversation tutor helping a {lesson_frame.get('cefr_target', 'A2')} level student.
+
+Learning Goal: {lesson_frame.get('learning_goal', 'conversation practice')}
+Topic: {lesson_frame.get('topic', 'general conversation')}
+Expected Intent: {lesson_frame.get('expected_intent', 'general conversation')}
+
+Keep responses conversational and natural. Respond to what the user actually says.
+"""
     full_response = ""
 
-    # Pass lesson_frame for contextual responses
+    # Generation config (standard LLM params only, no internal objects)
     generation_config = {
-        "lesson_frame": conversation.lesson_frame_json
+        "temperature": 0.7,
+        "max_tokens": 500,
+        "top_p": 0.9,
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0
     }
 
     async for token in llm_provider.chat_stream(messages, system_prompt, generation_config):
