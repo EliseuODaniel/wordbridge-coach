@@ -478,7 +478,12 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
     system_prompt = f"You are an English teacher helping a {conversation.lesson_frame_json.get('cefr_target', 'A2')} level student."
     full_response = ""
 
-    async for token in llm_provider.chat_stream(messages, system_prompt, {}):
+    # Pass lesson_frame for contextual responses
+    generation_config = {
+        "lesson_frame": conversation.lesson_frame_json
+    }
+
+    async for token in llm_provider.chat_stream(messages, system_prompt, generation_config):
         full_response += token
         await websocket.send_json(AssistantStreamTokenOut(
             type="assistant_stream_token",
