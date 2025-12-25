@@ -216,14 +216,20 @@ class CardSelectionService:
         if excluded_word_id:
             exclusions.add(excluded_word_id)
 
-        # Filter for truly new words (no UserCardState for this user+word)
+        # Filter for truly new words (no ReviewEvent for this user+word)
         # This ensures we don't re-use words the user has already seen
+        # Join path: ReviewEvent -> Card -> Sentence -> word_id
+        from sqlalchemy import select
+        seen_word_ids_subq = select(Sentence.word_id).join(
+            Card, Card.sentence_id == Sentence.id
+        ).join(
+            ReviewEvent, ReviewEvent.card_id == Card.id
+        ).filter(
+            ReviewEvent.user_id == user_id
+        ).distinct()
+
         truly_new_words_query = query.filter(
-            ~Word.id.in_(
-                self.db.query(UserCardState.word_id).filter(
-                    UserCardState.user_id == user_id
-                )
-            )
+            ~Word.id.in_(seen_word_ids_subq)
         )
 
         # Try without excluded/recent words first (DB-side random)
@@ -250,10 +256,22 @@ class CardSelectionService:
                 word = words_without_current.order_by(func.random()).limit(1).first()
 
                 if not word:
-                    # Last resort: include current card (will show different sentence)
-                    word = truly_new_words_query.order_by(func.random()).limit(1).first()
+                    # Fallback 3: give up on "truly new" filter, use any word
+                    # (prefer without current card, but allow it if necessary)
+                    words_any = query.filter(Word.id != excluded_word_id)
+                    word = words_any.order_by(func.random()).limit(1).first()
+
+                    if not word:
+                        # Last resort: absolutely any word in the query
+                        word = query.order_by(func.random()).limit(1).first()
             else:
-                word = truly_new_words_query.order_by(func.random()).limit(1).first()
+                # No excluded card, try giving up on "truly new" filter
+                words_any = query.filter(~Word.id.in_(recent_word_ids))
+                word = words_any.order_by(func.random()).limit(1).first()
+
+                if not word:
+                    # Absolute last resort: any word in the query
+                    word = query.order_by(func.random()).limit(1).first()
 
         if not word:
             return None
