@@ -160,144 +160,216 @@ class MockLLMProvider(LLMProvider):
 
     def _analyze_text(self, text: str, lesson_frame: dict) -> dict:
         """
-        Unified text analysis for consistent feedback across methods.
+        Unified text analysis v4 for consistent, plausible feedback.
 
-        Extracts keywords, infers topic, detects errors, and generates corrections.
-        Uses simple heuristics (no NLP dependencies) for speed and determinism.
+        Detects intent (greeting, question, statement), specific errors
+        (punctuation, contraction, agreement), and generates minimal rewrites.
 
         Args:
             text: User's input text
             lesson_frame: Current lesson frame with topic/goal
 
         Returns:
-            Dict with:
-            - keywords: List of relevant words from text
-            - topic: Inferred grammatical topic
-            - detected_errors: List of error dicts with spans
-            - correction_text: One-sentence correction
-            - rewrite: Improved version using user's keywords
-            - follow_up: Follow-up question
+            Dict with keywords, intent, detected_errors, correction, rewrite, follow_up
         """
-        # 1. Extract keywords (remove stopwords, keep words >= 4 chars)
-        words = text.lower().replace(".", "").replace(",", "").replace("?", "").split()
+        text_lower = text.lower().strip()
+        text_original = text  # Keep original for rewrite generation
+
+        # ============================================================================
+        # 1. Intent Detection
+        # ============================================================================
+        intent = "statement"
+
+        # Greeting patterns
+        greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+        if any(text_lower.startswith(g) for g in greetings):
+            intent = "greeting"
+        # Question patterns (starts with wh- or ends with ?)
+        elif any(text_lower.startswith(q) for q in ["how", "what", "where", "why", "when", "who", "which", "is", "are", "do", "does", "can"]):
+            intent = "question"
+        elif text_lower.endswith("?"):
+            intent = "question"
+        # Imperative/short patterns
+        elif len(text_lower.split()) <= 3:
+            intent = "short"
+
+        # ============================================================================
+        # 2. Error Detection (prioritize specific errors)
+        # ============================================================================
+        detected_errors = []
+
+        # 2.1. Punctuation: questions should end with ?
+        if intent == "question" and not text_original.endswith("?"):
+            detected_errors.append({
+                "type": "punctuation",
+                "category": "style",
+                "original": text_original,
+                "correction": text_original + "?",
+                "span": {},  # No specific span for missing punctuation
+                "explanation": "Questions should end with a question mark."
+            })
+
+        # 2.2. Contraction: "lets go" → "Let's go"
+        if "lets go" in text_lower or " let's " in text_lower:
+            idx = text_lower.find("lets")
+            if idx >= 0:
+                detected_errors.append({
+                    "type": "contraction",
+                    "category": "grammar",
+                    "original": "lets",
+                    "correction": "let's",
+                    "span": {"start": idx, "end": idx + 4},
+                    "explanation": "Use 'let's' with an apostrophe for 'let us'."
+                })
+
+        # 2.3. Subject-verb agreement: "I lets" → "I let"
+        if " i lets " in text_lower or text_lower.startswith("i lets "):
+            idx = text_lower.find("i lets")
+            detected_errors.append({
+                "type": "agreement",
+                "category": "grammar",
+                "original": "I lets",
+                "correction": "I let",
+                "span": {"start": idx, "end": idx + 6},
+                "explanation": "The verb form should be 'let' after 'I'."
+            })
+
+        # 2.4. Verb tense (for past context)
+        if any(w in text_lower for w in ["yesterday", "last", "ago"]):
+            for verb_base, verb_past in self.IRREGULAR_VERBS.items():
+                if f" {verb_base} " in f" {text_lower} ":
+                    idx = text_lower.find(verb_base)
+                    detected_errors.append({
+                        "type": "verb_tense",
+                        "category": "grammar",
+                        "original": verb_base,
+                        "correction": verb_past,
+                        "span": {"start": idx, "end": idx + len(verb_base)},
+                        "explanation": f"Use past tense '{verb_past}' for past events."
+                    })
+                    break
+
+        # 2.5. Greeting punctuation/comma: "hi" → "Hi,"
+        if intent == "greeting":
+            # Check if greeting needs comma after first word
+            first_word = text_lower.split()[0] if text_lower else ""
+            if first_word in ["hi", "hello", "hey"]:
+                if "," not in text_original[:10]:  # Check first 10 chars for comma
+                    detected_errors.append({
+                        "type": "greeting_format",
+                        "category": "style",
+                        "original": first_word,
+                        "correction": first_word.capitalize() + ",",
+                        "span": {"start": 0, "end": len(first_word)},
+                        "explanation": "Greetings are usually followed by a comma."
+                    })
+
+            # Check if greeting contains a question without ?
+            if any(q in text_lower for q in ["how are you", "how's it going", "what's up"]):
+                if not text_original.endswith("?"):
+                    detected_errors.append({
+                        "type": "punctuation",
+                        "category": "style",
+                        "original": text_original,
+                        "correction": text_original + "?",
+                        "span": {},
+                        "explanation": "Questions should end with a question mark."
+                    })
+
+        # ============================================================================
+        # 3. Generate Rewrite (minimal correction of original text)
+        # ============================================================================
+        rewrite = text_original  # Start with original
+
+        # Apply corrections in reverse order (to maintain index positions)
+        for error in reversed(detected_errors):
+            if error["type"] == "contraction":
+                rewrite = rewrite.replace("lets", "let's")
+            elif error["type"] == "agreement":
+                rewrite = rewrite.replace("I lets", "I let")
+            elif error["type"] == "verb_tense":
+                rewrite = rewrite.replace(error["original"], error["correction"])
+            elif error["type"] == "punctuation":
+                if not rewrite.endswith("?"):
+                    rewrite = rewrite + "?"
+            elif error["type"] == "greeting_format":
+                # Capitalize first letter and add comma
+                words = rewrite.split()
+                if words:
+                    words[0] = words[0].capitalize()
+                    if not words[0].endswith(","):
+                        words[0] = words[0] + ","
+                    rewrite = " ".join(words)
+
+        # Ensure rewrite is capitalized and ends with proper punctuation
+        if rewrite and not rewrite[0].isupper():
+            rewrite = rewrite[0].capitalize() + rewrite[1:]
+        if rewrite and not rewrite.endswith((".", "?", "!")):
+            # Add period only if it's not a question
+            if intent != "question" or "?" not in rewrite:
+                rewrite = rewrite + "."
+
+        # Fallback if rewrite is too short (e.g., just "hi")
+        if len(rewrite) < 5:
+            rewrite = text_original + "."
+
+        # ============================================================================
+        # 4. Extract keywords (for topic/follow-up)
+        # ============================================================================
+        words = [w.strip(".,?!") for w in text_lower.split()]
         keywords = [w for w in words if w not in self.STOPWORDS and len(w) >= 4][:3]
 
-        # Fallback if no keywords found
-        if not keywords:
-            keywords = ["practice", "sentence"]
-
-        # 2. Infer topic from text (simple heuristics)
-        text_lower = text.lower()
-
-        # Topic inference by keywords
-        if any(w in text_lower for w in ["yesterday", "last", "ago", "earlier"]):
+        # ============================================================================
+        # 5. Infer topic (for follow-up questions)
+        # ============================================================================
+        if any(w in text_lower for w in ["yesterday", "last", "ago"]):
             topic = "past_simple"
-        elif any(w in text_lower for w in ["tomorrow", "next", "will", "going to"]):
+        elif any(w in text_lower for w in ["tomorrow", "next", "will"]):
             topic = "future"
-        elif any(w in text_lower for w in ["now", "currently", "at the moment"]) or text_lower.strip().endswith("ing"):
+        elif any(w in text_lower for w in ["now", "currently"]) or text_lower.strip().endswith("ing"):
             topic = "present_continuous"
         elif any(w in text_lower for w in ["like", "enjoy", "love", "hobbies", "free time"]):
             topic = "hobbies"
         elif any(w in text_lower for w in ["work", "job", "office", "company"]):
             topic = "work"
-        elif any(w in text_lower for w in ["weekend", "saturday", "sunday", "holiday"]):
-            topic = "weekend_plans"
+        elif intent == "greeting":
+            topic = "getting_started"
         else:
-            # Use lesson frame topic as fallback
-            topic = lesson_frame.get("topic", "getting_started")
+            topic = lesson_frame.get("topic", "general")
 
-        # 3. Detect errors (deterministic based on text)
-        detected_errors = []
+        # ============================================================================
+        # 6. Generate follow-up question
+        # ============================================================================
+        follow_ups_by_topic = {
+            "past_simple": ["What did you do next?", "Tell me more about it.", "How was it?"],
+            "future": ["What are your plans?", "Who will go with you?", "What do you need?"],
+            "present_continuous": ["How long have you been doing that?", "How is it going?"],
+            "getting_started": ["How are you today?", "What would you like to practice?", "Ready to start?"],
+            "general": ["Can you tell me more?", "What else?", "How does that sound?"]
+        }
 
-        # Check for verb tense errors when topic is past_simple
-        if topic == "past_simple":
-            # Look for common verbs that should be in past tense
-            for verb_base, verb_past in self.IRREGULAR_VERBS.items():
-                if verb_base in text_lower:
-                    # Found base form used in past context
-                    idx = text_lower.find(verb_base)
-                    detected_errors.append({
-                        "type": "verb_tense",
-                        "original": verb_base,
-                        "correction": verb_past,
-                        "span": {"start": idx, "end": idx + len(verb_base)},
-                        "explanation": f"Use past tense '{verb_past}' instead of '{verb_base}' for past actions."
-                    })
-                    break  # Only detect one error per call for simplicity
+        topic_follow_ups = follow_ups_by_topic.get(topic, follow_ups_by_topic["general"])
+        # Use deterministic selection (sum of ord instead of hash for stability)
+        seed = sum(ord(c) for c in text_lower) % len(topic_follow_ups)
+        follow_up = topic_follow_ups[seed]
 
-        # If no errors detected but topic suggests past tense, add a generic one
-        if not detected_errors and topic == "past_simple":
-            detected_errors.append({
-                "type": "time_marker",
-                "original": "present tense",
-                "correction": "past tense",
-                "span": {},
-                "explanation": "Remember to use past tense for past events."
-            })
-
-        # 4. Generate correction text (uses detected error or generic)
+        # ============================================================================
+        # 7. Generate correction text (one-sentence explanation)
+        # ============================================================================
         if detected_errors:
             first_error = detected_errors[0]
             correction_text = first_error["explanation"]
         else:
-            correction_text = "Your sentence structure is good. Let's make it even better."
-
-        # 5. Generate rewrite using user's keywords
-        # Create a coherent sentence using keywords from user's text
-        if keywords:
-            main_keyword = keywords[0]
-            if topic == "past_simple":
-                # Convert to past form if it's a common irregular verb
-                verb_past = self.IRREGULAR_VERBS.get(main_keyword, main_keyword + "ed")
-                rewrite = f"I {verb_past} {keywords[1] if len(keywords) > 1 else 'there'} yesterday."
-            elif topic == "hobbies":
-                rewrite = f"I really enjoy {main_keyword}ing in my free time."
-            elif topic == "work":
-                rewrite = f"I work as a {main_keyword} in a big company."
+            if intent == "greeting":
+                correction_text = "Great to hear from you!"
+            elif intent == "question":
+                correction_text = "Good question!"
             else:
-                rewrite = f"I {main_keyword} every day."
-        else:
-            rewrite = "I practiced this yesterday."
-
-        # 6. Generate follow-up question based on topic
-        follow_ups = {
-            "past_simple": [
-                "What did you do next?",
-                "Tell me more about it.",
-                "How was your experience?"
-            ],
-            "future": [
-                "What are your plans?",
-                "Who will you go with?",
-                "What do you need to prepare?"
-            ],
-            "present_continuous": [
-                "How long have you been doing that?",
-                "What else are you working on?",
-                "How is it going?"
-            ],
-            "hobbies": [
-                "How often do you practice?",
-                "Do you have any other hobbies?",
-                "What do you enjoy most about it?"
-            ],
-            "work": [
-                "What do you like about your job?",
-                "What are your responsibilities?",
-                "Do you have a busy schedule?"
-            ],
-            "weekend_plans": [
-                "What are your plans for this weekend?",
-                "Do you prefer relaxing or being active?",
-                "What did you do last weekend?"
-            ]
-        }
-
-        topic_follow_ups = follow_ups.get(topic, ["Tell me more.", "Can you elaborate?"])
-        follow_up = topic_follow_ups[hash(text) % len(topic_follow_ups)]
+                correction_text = "Your sentence looks good."
 
         return {
             "keywords": keywords,
+            "intent": intent,
             "topic": topic,
             "detected_errors": detected_errors,
             "correction_text": correction_text,
@@ -401,8 +473,12 @@ class MockLLMProvider(LLMProvider):
         issues = []
 
         for error in analysis["detected_errors"][:3]:  # Max 3 issues
+            # Use canonical category from analysis (grammar, style, etc)
+            # NOT the error type (contraction, punctuation, etc.)
+            category = error.get("category", "grammar")
+
             issue = {
-                "category": error["type"],
+                "category": category,
                 "title": error.get("original", "Error").capitalize(),
                 "explanation": error["explanation"],
                 "highlight_spans": [error.get("span", {})] if error.get("span") else [],
