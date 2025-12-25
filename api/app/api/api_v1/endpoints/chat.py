@@ -40,6 +40,10 @@ logger.info(f"Chat Coach LLM provider: {get_provider_name(llm_provider)}")
 # In-memory tracking for throttling micro_eval (conversation_id -> last_eval_ts)
 _micro_eval_timestamps = {}
 
+# Cache for last feedback (conversation_id -> last_feedback_dict)
+# Used to prevent "dead" panel when throttled
+_feedback_cache = {}
+
 
 def get_default_lesson_frame() -> dict:
     """Get default lesson frame for new conversations"""
@@ -637,11 +641,19 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
             draft=draft_text,
             lesson_frame=conversation.lesson_frame_json
         )
+
+        # Cache feedback for reuse when throttled
+        _feedback_cache[str(conversation.id)] = feedback
+
         await websocket.send_json(feedback)
     else:
-        # Micro_eval throttled: send quick feedback without LLM call
-        # For now, just acknowledge (in real implementation, run fast analyzers)
-        pass
+        # Micro_eval throttled: reuse last feedback to prevent "dead" panel
+        last_feedback = _feedback_cache.get(str(conversation.id))
+        if last_feedback:
+            # Update timestamp and draft text to keep panel alive
+            last_feedback["server_ts_ms"] = now_ms
+            await websocket.send_json(last_feedback)
+        # else: first draft, no cache yet, just skip (rare case)
 
 
 async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session):
