@@ -1,10 +1,12 @@
 """
-Test for MockLLMProvider v2 - Contextual, Non-Repetitive Responses
+Test for MockLLMProvider v3 - Contextual, Coherent Responses
 
 This test ensures that:
 1. Responses are contextual (contain user input excerpt)
 2. Responses are different for different inputs
 3. Responses are deterministic (same input = same output)
+4. v3: Responses use keywords extracted from user input (not generic)
+5. v3: chat_stream and micro_eval are coherent (mention same errors)
 """
 
 import pytest
@@ -133,13 +135,135 @@ async def test_mock_provider_contextual_elements():
 if __name__ == "__main__":
     # Run tests manually
     print("=" * 60)
-    print("Testing MockLLMProvider v2")
+    print("Testing MockLLMProvider v3")
     print("=" * 60)
 
     asyncio.run(test_mock_provider_variety())
     asyncio.run(test_mock_provider_deterministic())
     asyncio.run(test_mock_provider_contextual_elements())
+    asyncio.run(test_mock_provider_v3_keywords_extraction())
+    asyncio.run(test_mock_provider_v3_coherence())
+    asyncio.run(test_mock_provider_v3_topic_inference())
 
     print("\n" + "=" * 60)
     print("✅ All tests passed!")
     print("=" * 60)
+
+
+# ============================================================================
+# v3 Regression Tests: Coherence and Context
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_mock_provider_v3_keywords_extraction():
+    """Test that _analyze_text extracts keywords from user input (v3)."""
+    provider = MockLLMProvider()
+
+    # Test 1: Extract keywords from sentence
+    text1 = "I go to the beach yesterday with friends"
+    lesson_frame = {"topic": "past_simple"}
+
+    analysis1 = provider._analyze_text(text1, lesson_frame)
+
+    # Should extract meaningful keywords (not stopwords)
+    assert "beach" in analysis1["keywords"] or "yesterday" in analysis1["keywords"], \
+        f"Should extract keywords like 'beach' or 'yesterday'. Got: {analysis1['keywords']}"
+
+    # Should infer topic from text
+    assert analysis1["topic"] == "past_simple", \
+        f"Should infer 'past_simple' topic from 'yesterday'. Got: {analysis1['topic']}"
+
+    # Should detect error (go -> went)
+    assert len(analysis1["detected_errors"]) > 0, \
+        "Should detect verb tense error for 'go' in past context"
+
+    # Test 2: Different text, different keywords
+    text2 = "I work as a teacher in big school"
+    analysis2 = provider._analyze_text(text2, {})
+
+    assert "work" in analysis2["keywords"] or "teacher" in analysis2["keywords"], \
+        f"Should extract keywords like 'work' or 'teacher'. Got: {analysis2['keywords']}"
+
+    assert analysis2["topic"] == "work", \
+        f"Should infer 'work' topic. Got: {analysis2['topic']}"
+
+    print(f"\n✅ Keywords extraction test passed")
+    print(f"   Text1 keywords: {analysis1['keywords']}")
+    print(f"   Text1 topic: {analysis1['topic']}")
+    print(f"   Text2 keywords: {analysis2['keywords']}")
+    print(f"   Text2 topic: {analysis2['topic']}")
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_v3_coherence():
+    """Test that chat_stream and micro_eval mention the same error (v3)."""
+    provider = MockLLMProvider()
+
+    # User message with clear error
+    user_text = "I go to the park yesterday"
+    messages = [
+        {"role": "system", "content": "You are a teacher."},
+        {"role": "user", "content": user_text}
+    ]
+
+    # Get chat_stream response
+    chat_response_tokens = []
+    async for token in provider.chat_stream(messages, "system", {}):
+        chat_response_tokens.append(token)
+    chat_response = "".join(chat_response_tokens)
+
+    # Get micro_eval analysis
+    eval_result = await provider.micro_eval(
+        context="",
+        lesson_frame={},
+        draft=user_text,
+        student_profile={}
+    )
+
+    # Both should mention the same error (verb tense: go -> went)
+    # Check chat_stream mentions it
+    assert "went" in chat_response.lower() or "past" in chat_response.lower(), \
+        f"chat_stream should mention the correction. Got: {chat_response[:200]}"
+
+    # Check micro_eval mentions it
+    issues = eval_result["top_issues"]
+    assert len(issues) > 0, "micro_eval should detect errors"
+
+    # The issue should be about verb_tense or grammar
+    error_types = [issue["category"] for issue in issues]
+    assert "verb_tense" in error_types or "grammar" in error_types, \
+        f"Should detect verb_tense error. Got types: {error_types}"
+
+    print(f"\n✅ Coherence test passed")
+    print(f"   chat_stream mentions correction: {'went' in chat_response.lower()}")
+    print(f"   micro_eval issues: {[i['category'] for i in issues]}")
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_v3_topic_inference():
+    """Test that autocomplete uses inferred topic (v3)."""
+    provider = MockLLMProvider()
+
+    # Test 1: Past simple context
+    text1 = "Yesterday I went to"
+    result1 = await provider.autocomplete("", {}, text1, {})
+
+    # Suggestion should be past tense related
+    suggestion1 = result1["ghost_suggestion"].lower()
+    assert "past" in result1["reason"] or "yesterday" in result1["reason"] or \
+           any(word in suggestion1 for word in ["went", "visited", "stayed", "traveled"]), \
+        f"Suggestion should be past tense related. Got: {suggestion1}, reason: {result1['reason']}"
+
+    # Test 2: Future context
+    text2 = "Tomorrow I will"
+    result2 = await provider.autocomplete("", {}, text2, {})
+
+    # Suggestion should be future related
+    suggestion2 = result2["ghost_suggestion"].lower()
+    assert "future" in result2["reason"] or "tomorrow" in result2["reason"] or \
+           "will" in suggestion2 or "going to" in suggestion2, \
+        f"Suggestion should be future related. Got: {suggestion2}, reason: {result2['reason']}"
+
+    print(f"\n✅ Topic inference test passed")
+    print(f"   Text1 suggestion: {result1['ghost_suggestion']} (reason: {result1['reason']})")
+    print(f"   Text2 suggestion: {result2['ghost_suggestion']} (reason: {result2['reason']})")
