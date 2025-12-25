@@ -6,7 +6,7 @@ import type { CardResponse, AnswerResponse } from '../services/api';
 import { audioService } from '../services/audio';
 import { statsService, type StatsData, type SettingsData } from '../services/stats';
 import CardDisplay from './CardDisplay';
-import AnswerInput from './AnswerInput';
+import InlineGapInput from './InlineGapInput';
 import FeedbackMessage from './FeedbackMessage';
 import SessionCounter from './SessionCounter';
 import InsightsSection from './InsightsSection';
@@ -378,30 +378,29 @@ return (
         {/* Main Content */}
         {currentCard ? (
           <div className="space-y-8">
-            {/* Card Display */}
+            {/* Card Display with Inline Gap Input */}
             <CardDisplay
               card={currentCard}
               onPlayWordAudio={handlePlayWordAudio}
               onPlaySentenceAudio={handlePlaySentenceAudio}
               loadingAudio={loadingAudio}
+              sentenceNode={
+                <InlineGapInput
+                  sentence={currentCard.sentence}
+                  gap={currentCard.gap}
+                  correctAnswer={currentCard.word}
+                  onSubmit={handleSubmit}
+                  disabled={isSubmitting}
+                  isCorrect={feedback?.correct === true}
+                  isIncorrect={feedback?.correct === false}
+                  onUserEdit={() => setFeedback(null)}
+                />
+              }
             />
 
-            {/* Answer Input and Feedback */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Answer Input - Always visible */}
-              <AnswerInput
-                onSubmit={handleSubmit}
-                isSubmitting={isSubmitting}
-                placeholder="Type the missing word..."
-                feedback={feedback ? {
-                  correct: feedback.correct,
-                  correctAnswer: feedback.correct_answer
-                } : null}
-                cardId={currentCard?.card_id}
-              />
-
-              {/* Feedback Message - Visible when available */}
-              {feedback && (
+            {/* Feedback Message - Visible when available */}
+            {feedback && (
+              <div className="max-w-2xl mx-auto">
                 <FeedbackMessage
                   feedback={{
                     correct: feedback.correct,
@@ -413,8 +412,8 @@ return (
                   hint={currentCard.grammar_hint}
                   attempts={attempts}
                 />
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ) : (
           /* Loading State */
@@ -443,7 +442,7 @@ return (
 
         {/* Keyboard Shortcuts Help */}
         <div className="text-center mt-8 text-sm text-gray-400">
-          <p>Press <kbd className="px-2 py-1 bg-gray-700 text-gray-100 rounded">Enter</kbd> to submit answer</p>
+          <p>Digite na lacuna e pressione <kbd className="px-2 py-1 bg-gray-700 text-gray-100 rounded">Enter</kbd> para conferir</p>
         </div>
       </div>
 

@@ -10,6 +10,7 @@ interface CardDisplayProps {
   onPlayWordAudio: () => void;
   onPlaySentenceAudio: () => void;
   loadingAudio?: boolean;
+  sentenceNode?: React.ReactNode;  // Optional inline gap input component
 }
 
 const CardDisplay: React.FC<CardDisplayProps> = ({
@@ -17,13 +18,24 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
   onPlayWordAudio,
   onPlaySentenceAudio,
   loadingAudio = false,
+  sentenceNode,
 }) => {
   // Render sentence with gap
   const renderSentenceWithGap = () => {
+    // If sentenceNode is provided (inline input), render it directly
+    if (sentenceNode) {
+      return (
+        <div className="text-2xl md:text-3xl font-medium text-center mb-6" data-testid="card-sentence">
+          {sentenceNode}
+        </div>
+      );
+    }
+
+    // Otherwise, render static gap (default behavior)
     const { sentence, gap } = card;
     const beforeGap = sentence.substring(0, gap.start);
     const afterGap = sentence.substring(gap.end);
-    
+
     return (
       <div className="text-2xl md:text-3xl font-medium text-center mb-6" data-testid="card-sentence">
         <span>{beforeGap}</span>

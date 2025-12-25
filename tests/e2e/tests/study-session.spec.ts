@@ -37,10 +37,9 @@ test.describe('Study Session (Spec4)', () => {
     const hasCards = await page.locator('[data-testid="study-card"]').isVisible().catch(() => false);
 
     if (hasCards) {
-      // Should have a card with sentence
+      // Should have a card with sentence and inline gap input
       await expect(page.locator('[data-testid="study-card"]')).toBeVisible();
-      await expect(page.locator('[data-testid="answer-input"]')).toBeVisible();
-      await expect(page.locator('[data-testid="answer-submit"]')).toBeVisible();
+      await expect(page.locator('[data-testid="gap-input"]')).toBeVisible();
     } else {
       // Check for no cards message
       const hasNoCards = await page.locator('text=No cards available').isVisible().catch(() => false);
@@ -81,22 +80,20 @@ test.describe('Study Session (Spec4)', () => {
 
   test('submits answer and shows feedback', async ({ page }) => {
     // Check if we have cards available
-    const hasCards = await page.locator('[data-testid="answer-input"]').isVisible().catch(() => false);
+    const hasCards = await page.locator('[data-testid="gap-input"]').isVisible().catch(() => false);
 
     if (!hasCards) {
       console.log('No cards available - skipping answer submission test');
       return;
     }
 
-    // Wait for answer input
-    await page.waitForSelector('[data-testid="answer-input"]', { timeout: 5000 });
+    // Wait for inline gap input
+    await page.waitForSelector('[data-testid="gap-input"]', { timeout: 5000 });
 
-    // Submit a test answer
-    const answerInput = page.locator('[data-testid="answer-input"]');
-    await answerInput.fill('test');
-
-    const checkButton = page.locator('[data-testid="answer-submit"]');
-    await checkButton.click();
+    // Submit a test answer using Enter
+    const gapInput = page.locator('[data-testid="gap-input"]');
+    await gapInput.fill('test');
+    await gapInput.press('Enter');
 
     // Should show feedback
     await expect(page.locator('[data-testid="feedback"], .feedback-message')).toBeVisible({ timeout: 5000 });
@@ -104,30 +101,29 @@ test.describe('Study Session (Spec4)', () => {
 
   test('input maintains focus after submission', async ({ page }) => {
     // Check if we have cards available
-    const hasCards = await page.locator('[data-testid="answer-input"]').isVisible().catch(() => false);
+    const hasCards = await page.locator('[data-testid="gap-input"]').isVisible().catch(() => false);
 
     if (!hasCards) {
       console.log('No cards available - skipping focus test');
       return;
     }
 
-    // Wait for answer input
-    await page.waitForSelector('[data-testid="answer-input"]', { timeout: 5000 });
+    // Wait for inline gap input
+    await page.waitForSelector('[data-testid="gap-input"]', { timeout: 5000 });
 
-    const answerInput = page.locator('[data-testid="answer-input"]');
-    await answerInput.fill('test');
+    const gapInput = page.locator('[data-testid="gap-input"]');
+    await gapInput.fill('test');
 
-    // Submit answer
-    const checkButton = page.locator('[data-testid="answer-submit"]');
-    await checkButton.click();
+    // Submit answer using Enter
+    await gapInput.press('Enter');
 
     // Wait for feedback then next card
     await page.waitForTimeout(1000);
 
     // Input should be focused for next answer (if we still have cards)
-    const stillHasCards = await answerInput.isVisible().catch(() => false);
+    const stillHasCards = await gapInput.isVisible().catch(() => false);
     if (stillHasCards) {
-      await expect(answerInput).toBeFocused();
+      await expect(gapInput).toBeFocused();
     }
   });
 
@@ -151,10 +147,10 @@ test.describe('Study Session (Spec4)', () => {
       // Continue test even if can't get sentence
     }
 
-    // Submit correct answer (try common words)
-    const answerInput = page.locator('[data-testid="answer-input"]');
-    await answerInput.fill('there'); // Common test answer
-    await page.click('[data-testid="answer-submit"]');
+    // Submit correct answer using Enter (try common words)
+    const gapInput = page.locator('[data-testid="gap-input"]');
+    await gapInput.fill('there'); // Common test answer
+    await gapInput.press('Enter');
 
     // Wait for next card (after feedback)
     await page.waitForTimeout(2000);
@@ -299,20 +295,20 @@ test.describe('Study Session (Spec4)', () => {
 
   test('handles keyboard navigation properly', async ({ page }) => {
     // Check if we have cards available
-    const hasCards = await page.locator('[data-testid="answer-input"]').isVisible().catch(() => false);
+    const hasCards = await page.locator('[data-testid="gap-input"]').isVisible().catch(() => false);
 
     if (!hasCards) {
       console.log('No cards available - skipping keyboard navigation test');
       return;
     }
 
-    // Focus on input field
-    const answerInput = page.locator('[data-testid="answer-input"]');
-    await answerInput.focus();
+    // Focus on inline gap input
+    const gapInput = page.locator('[data-testid="gap-input"]');
+    await gapInput.focus();
 
     // Test Enter key submission
-    await answerInput.fill('test');
-    await page.keyboard.press('Enter');
+    await gapInput.fill('test');
+    await gapInput.press('Enter');
 
     // Should trigger form submission
     await page.waitForTimeout(1000);
@@ -321,6 +317,49 @@ test.describe('Study Session (Spec4)', () => {
     const feedback = page.locator('[data-testid="feedback"], .feedback-message');
     const hasFeedback = await feedback.count() > 0;
 
-    expect(hasFeedback || await answerInput.isVisible()).toBeTruthy();
+    expect(hasFeedback || await gapInput.isVisible()).toBeTruthy();
+  });
+
+  test('não tem botão Check no Spec4', async ({ page }) => {
+    // Wait for page to stabilize
+    await page.waitForTimeout(2000);
+
+    // Check if we have cards
+    const hasCards = await page.locator('[data-testid="study-card"]').isVisible().catch(() => false);
+    if (!hasCards) {
+      test.skip(true, 'No cards available');
+      return;
+    }
+
+    // Verify that Check button does NOT exist
+    const checkButton = page.getByText('Check');
+    await expect(checkButton).not.toBeVisible();
+
+    // Verify inline gap input exists
+    await expect(page.locator('[data-testid="gap-input"]')).toBeVisible();
+  });
+
+  test('inline gap input funciona com Enter', async ({ page }) => {
+    // Wait for page to stabilize
+    await page.waitForTimeout(2000);
+
+    // Check if we have cards
+    const hasCards = await page.locator('[data-testid="gap-input"]').isVisible().catch(() => false);
+    if (!hasCards) {
+      test.skip(true, 'No cards available');
+      return;
+    }
+
+    // Fill inline gap input and press Enter
+    const gapInput = page.locator('[data-testid="gap-input"]');
+    await gapInput.fill('test');
+    await gapInput.press('Enter');
+
+    // Should show feedback (correct or incorrect)
+    await page.waitForTimeout(1000);
+    const feedback = page.locator('[data-testid="feedback"], .feedback-message');
+    const hasFeedback = await feedback.count() > 0;
+
+    expect(hasFeedback).toBeTruthy();
   });
 });

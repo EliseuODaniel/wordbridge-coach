@@ -102,6 +102,7 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         disabled={disabled || isLocked}
+        data-testid="gap-input"
         className={`
           inline-block px-2 py-1 mx-1 rounded border-b-2 bg-transparent
           text-center font-semibold transition-all duration-200
