@@ -48,6 +48,10 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   const [issues, setIssues] = useState<any[]>([]);
   const [ghostSuggestion, setGhostSuggestion] = useState<string | null>(null);
 
+  // Track if we're showing feedback from a sent message
+  const [isShowingLastFeedback, setIsShowingLastFeedback] = useState<boolean>(false);
+  const lastFeedbackRef = useRef<{ barScore: number; issues: any[] } | null>(null);
+
   // Streaming state
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAssistantResponse, setCurrentAssistantResponse] = useState('');
@@ -179,6 +183,12 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     const newText = e.target.value;
     setDraftText(newText);
 
+    // Clear "last message feedback" when user starts typing new message
+    if (isShowingLastFeedback && newText.length > 0) {
+      setIsShowingLastFeedback(false);
+      lastFeedbackRef.current = null;
+    }
+
     // Send draft_update via WebSocket
     if (chatWsRef.current && conversation) {
       chatWsRef.current.sendDraftUpdate(newText, e.target.selectionStart);
@@ -232,14 +242,16 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
     setMessages((prev) => [...prev, userMessage]);
 
+    // Store current feedback as "last message feedback"
+    lastFeedbackRef.current = { barScore, issues };
+    setIsShowingLastFeedback(true);
+
     // Send via WebSocket
     chatWsRef.current.sendUserMessage(trimmedText);
 
-    // Clear input
+    // Clear input (but KEEP barScore and issues!)
     setDraftText('');
     setGhostSuggestion(null);
-    setBarScore(100);
-    setIssues([]);
 
     // Clear autocomplete timeout
     if (autocompleteTimeoutRef.current) {
