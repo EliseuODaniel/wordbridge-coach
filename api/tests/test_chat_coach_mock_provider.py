@@ -135,7 +135,7 @@ async def test_mock_provider_contextual_elements():
 if __name__ == "__main__":
     # Run tests manually
     print("=" * 60)
-    print("Testing MockLLMProvider v3")
+    print("Testing MockLLMProvider v4")
     print("=" * 60)
 
     asyncio.run(test_mock_provider_variety())
@@ -144,10 +144,202 @@ if __name__ == "__main__":
     asyncio.run(test_mock_provider_v3_keywords_extraction())
     asyncio.run(test_mock_provider_v3_coherence())
     asyncio.run(test_mock_provider_v3_topic_inference())
+    asyncio.run(test_mock_provider_v4_greeting_detection())
+    asyncio.run(test_mock_provider_v4_contraction_error())
+    asyncio.run(test_mock_provider_v4_question_punctuation())
+    asyncio.run(test_mock_provider_v4_rewrite_coherence())
 
     print("\n" + "=" * 60)
     print("✅ All tests passed!")
     print("=" * 60)
+
+
+# ============================================================================
+# v4 Regression Tests: Greeting, Contraction, Autocomplete
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_mock_provider_v4_greeting_detection():
+    """Test that greetings are detected and handled correctly (v4)."""
+    provider = MockLLMProvider()
+
+    # Test 1: Greeting without punctuation
+    text1 = "hi, how are you"
+    lesson_frame = {}
+
+    analysis1 = provider._analyze_text(text1, lesson_frame)
+
+    # Should detect intent as greeting (or greeting-like)
+    assert analysis1["intent"] == "greeting", \
+        f"Should detect greeting intent. Got: {analysis1['intent']}"
+
+    # Should detect punctuation/style issue (missing ? for question)
+    # Note: "how are you" is a question inside the greeting
+    detected_errors = analysis1["detected_errors"]
+    assert len(detected_errors) > 0, "Should detect at least one issue"
+
+    # One of the errors should be style or punctuation related
+    error_categories = [e.get("category") for e in detected_errors]
+    assert "style" in error_categories or "grammar" in error_categories, \
+        f"Should have style or grammar issue. Got categories: {error_categories}"
+
+    # Rewrite should be plausible (capitalized, punctuated)
+    rewrite1 = analysis1["rewrite"]
+    assert rewrite1[0].isupper(), f"Rewrite should be capitalized. Got: {rewrite1}"
+    assert rewrite1.endswith((".", "?", "!")), f"Rewrite should end with punctuation. Got: {rewrite1}"
+
+    # Test 2: Greeting with proper punctuation
+    text2 = "Hello, how are you?"
+    analysis2 = provider._analyze_text(text2, lesson_frame)
+
+    # Should detect as greeting or question
+    assert analysis2["intent"] in ["greeting", "question"], \
+        f"Should detect greeting/question intent. Got: {analysis2['intent']}"
+
+    # Rewrite should maintain the question mark
+    rewrite2 = analysis2["rewrite"]
+    assert "?" in rewrite2, f"Rewrite should keep question mark. Got: {rewrite2}"
+
+    print(f"\n✅ Greeting detection test passed")
+    print(f"   Text1: '{text1}'")
+    print(f"   Intent: {analysis1['intent']}")
+    print(f"   Errors: {error_categories}")
+    print(f"   Rewrite: '{rewrite1}'")
+    print(f"   Text2: '{text2}'")
+    print(f"   Rewrite: '{rewrite2}'")
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_v4_contraction_error():
+    """Test that contraction errors are detected and corrected (v4)."""
+    provider = MockLLMProvider()
+
+    # Test 1: "lets go" without apostrophe
+    text1 = "lets go"
+    lesson_frame = {}
+
+    analysis1 = provider._analyze_text(text1, lesson_frame)
+
+    # Should detect contraction error
+    detected_errors = analysis1["detected_errors"]
+    assert len(detected_errors) > 0, "Should detect contraction error"
+
+    # Check for contraction type
+    error_types = [e.get("type") for e in detected_errors]
+    assert "contraction" in error_types, \
+        f"Should detect 'contraction' type. Got types: {error_types}"
+
+    # Category should be grammar
+    contraction_error = next(e for e in detected_errors if e.get("type") == "contraction")
+    assert contraction_error.get("category") == "grammar", \
+        f"Contraction error should be 'grammar' category. Got: {contraction_error.get('category')}"
+
+    # Correction should be "let's"
+    assert contraction_error.get("correction") == "let's", \
+        f"Correction should be 'let's'. Got: {contraction_error.get('correction')}"
+
+    # Rewrite should apply the correction
+    rewrite1 = analysis1["rewrite"]
+    assert "let's" in rewrite1.lower(), \
+        f"Rewrite should contain 'let's'. Got: {rewrite1}"
+
+    print(f"\n✅ Contraction error test passed")
+    print(f"   Text: '{text1}'")
+    print(f"   Error types: {error_types}")
+    print(f"   Correction: {contraction_error.get('correction')}")
+    print(f"   Rewrite: '{rewrite1}'")
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_v4_question_punctuation():
+    """Test that questions without ? are detected (v4)."""
+    provider = MockLLMProvider()
+
+    # Test 1: Question without question mark
+    text1 = "how are you"
+    lesson_frame = {}
+
+    analysis1 = provider._analyze_text(text1, lesson_frame)
+
+    # Should detect as question intent
+    assert analysis1["intent"] == "question", \
+        f"Should detect question intent. Got: {analysis1['intent']}"
+
+    # Should detect punctuation error
+    detected_errors = analysis1["detected_errors"]
+    assert len(detected_errors) > 0, "Should detect punctuation error"
+
+    # Check for punctuation type
+    error_types = [e.get("type") for e in detected_errors]
+    assert "punctuation" in error_types, \
+        f"Should detect 'punctuation' type. Got types: {error_types}"
+
+    # Category should be style
+    punct_error = next(e for e in detected_errors if e.get("type") == "punctuation")
+    assert punct_error.get("category") == "style", \
+        f"Punctuation error should be 'style' category. Got: {punct_error.get('category')}"
+
+    # Rewrite should add the question mark
+    rewrite1 = analysis1["rewrite"]
+    assert rewrite1.endswith("?"), \
+        f"Rewrite should end with '?'. Got: {rewrite1}"
+
+    # Correction explanation should mention question mark
+    assert "question mark" in punct_error.get("explanation", "").lower(), \
+        f"Explanation should mention 'question mark'. Got: {punct_error.get('explanation')}"
+
+    print(f"\n✅ Question punctuation test passed")
+    print(f"   Text: '{text1}'")
+    print(f"   Intent: {analysis1['intent']}")
+    print(f"   Error types: {error_types}")
+    print(f"   Rewrite: '{rewrite1}'")
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_v4_rewrite_coherence():
+    """Test that rewrites are coherent with original text (v4)."""
+    provider = MockLLMProvider()
+
+    # Test various inputs
+    test_cases = [
+        ("hi, how are you", "greeting"),
+        ("lets go to the park", "statement"),
+        ("how was your weekend", "question"),
+        ("i went to the beach yesterday", "statement"),
+    ]
+
+    for text, expected_intent in test_cases:
+        analysis = provider._analyze_text(text, {})
+
+        # Rewrite should be based on original text
+        rewrite = analysis["rewrite"]
+
+        # Rewrite should be capitalized
+        assert rewrite[0].isupper(), \
+            f"Rewrite should be capitalized for '{text}'. Got: '{rewrite}'"
+
+        # Rewrite should end with proper punctuation
+        assert rewrite.endswith((".", "?", "!")), \
+            f"Rewrite should end with punctuation for '{text}'. Got: '{rewrite}'"
+
+        # Rewrite should not be generic nonsense like "I keyword every day"
+        assert "every day" not in rewrite.lower(), \
+            f"Rewrite should not contain generic 'every day' pattern. Got: '{rewrite}'"
+
+        # If there are errors, rewrite should apply corrections
+        if analysis["detected_errors"]:
+            for error in analysis["detected_errors"]:
+                correction = error.get("correction", "")
+                if correction:
+                    # Rewrite should contain the correction
+                    assert correction.lower() in rewrite.lower(), \
+                        f"Rewrite should contain correction '{correction}'. Got: '{rewrite}'"
+
+        print(f"   ✅ '{text}' → '{rewrite}'")
+
+    print(f"\n✅ Rewrite coherence test passed")
+    print(f"   All {len(test_cases)} test cases passed")
+
 
 
 # ============================================================================
