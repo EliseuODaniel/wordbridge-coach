@@ -537,9 +537,505 @@ Este módulo é fortemente inspirado em:
 
 ---
 
-**Status do Documento:** 📝 Ready for Review
+---
+
+## Coerência & Context (v1.1)
+
+**Status:** 🚧 Work in Progress
+**Created:** 2025-12-25
+**Type:** Bug Fix + Refactoring (Hotfix)
+
+### Problema Identificado
+
+Após implementação inicial do Chat Coach MVP, observamos dois problemas críticos que afetam a experiência do usuário:
+
+#### 1. **Non Sequitur no Assistente** (Crítico)
+**Sintoma:** O assistente frequentemente responde com feedback que **não corresponde** à última mensagem do usuário.
+
+**Exemplo:**
+- Usuário envia: "I go to the beach yesterday"
+- Assistente responde com feedback sobre: "Nice try! Your sentence was 'I like pizza'..." (mensagem de 5 turnos atrás)
+
+**Impacto:**
+- Quebra completamente a imersão conversacional
+- Usuário confuso tenta corrigir algo que já não é mais relevante
+- Parece que o assistente "não está ouvindo"
+
+#### 2. **Feedback Artificial e Desconectado** (Alta)
+**Sintoma:** Correções e sugestões parecem "robóticas" e inconsistentes:
+- `micro_eval()` detecta erro de verbo em "I go"
+- `chat_stream()` sugere correção de artigo em "the beach"
+- Feedback entre funções não conversa
+
+**Exemplo:**
+```
+Usuário digita: "I go to work yesterday"
+→ micro_eval: "Grammar: 45/100, issue: 'go' → 'went'"
+→ chat_stream: "Nice try! 'I go to work' needs a small fix.
+                Use articles correctly. Try: 'I went to the market'"
+```
+
+**Impacto:**
+- Perda de credibilidade pedagógica
+- Usuário perde confiança no feedback
+- Reduz utilidade do módulo para aprendizado real
+
+### Causa Raiz
+
+#### Problema 1: Contexto Incorreto no WebSocket
+**Arquivo:** `api/app/api/api_v1/endpoints/chat.py:468-470`
+
+```python
+# BUG: order_by(asc).limit(10) pega as 10 PRIMEIRAS mensagens (mais antigas)
+recent_messages = db.query(ChatMessage).filter(
+    ChatMessage.conversation_id == conversation.id
+).order_by(ChatMessage.created_at.asc()).limit(10).all()
+```
+
+**Explicação:**
+- `.order_by(created_at.asc())` ordena da mais antiga para a mais recente
+- `.limit(10)` corta nas primeiras 10
+- Após 10+ mensagens na conversa, a **última mensagem do usuário** fica **fora do contexto**
+- LLM recebe contexto desatualizado e responde "outra coisa"
+
+**Solução Proposta:**
+```python
+# 1. Pegar sempre a mensagem system (a primeira) separadamente
+system_msg = db.query(ChatMessage).filter(
+    ChatMessage.conversation_id == conversation.id,
+    ChatMessage.role == "system"
+).first()
+
+# 2. Pegar as últimas 10 mensagens não-system em ordem descendente
+last_non_system = db.query(ChatMessage).filter(
+    ChatMessage.conversation_id == conversation.id,
+    ChatMessage.role != "system"
+).order_by(ChatMessage.created_at.desc()).limit(10).all()
+
+# 3. Reverter em memória para ordem cronológica
+last_non_system.reverse()
+
+# 4. Montar contexto completo
+messages = []
+if system_msg:
+    messages.append({"role": system_msg.role, "content": system_msg.content})
+messages.extend([{"role": m.role, "content": m.content} for m in last_non_system])
+```
+
+**Garantia:** A mensagem recém-inserida pelo usuário estará SEMPRE no contexto (é a mais recente).
+
+#### Problema 2: Mock Fragmentado Sem Análise Unificada
+**Arquivo:** `api/app/llm/mock_provider.py`
+
+**Problema Estrutural:**
+- `chat_stream()` escolhe templates por hash, gera corrections/rewrites com placeholders genéricos
+- `micro_eval()` gera issues pseudo-aleatórias com spans hardcoded
+- **Nenhuma análise real do texto do usuário**
+- Keywords e topic não são extraídos do input
+
+**Exemplo Atual:**
+```python
+# chat_stream() linha 177-178: escolhe rewrite genérico
+rewrite_template = self.REWRITES[rewrite_idx]  # "I {verb}ed there last week."
+verb = ["go", "play", "study"][hash % 3]  # NÃO usa verbo do usuário
+
+# micro_eval() linha 253: span hardcoded
+"highlight_spans": [{"start": 2, "end": 4}]  # Sempre mesma posição!
+```
+
+**Solução Proposta:**
+
+Criar uma função interna `_analyze_text(text, lesson_frame)` que retorna:
+
+```python
+{
+    "keywords": ["beach", "yesterday", "go"],  # Extraídas do texto
+    "topic": "past_simple",  # Inferido de "yesterday"
+    "detected_errors": [
+        {
+            "type": "verb_tense",
+            "original": "go",
+            "correction": "went",
+            "span": {"start": text.find("go"), "end": text.find("go") + 2},
+            "explanation": "Use past simple for past actions"
+        }
+    ],
+    "correction_text": "Remember to use past tense for past actions.",
+    "rewrite": "I went to the beach yesterday.",  # Usa keywords do usuário
+    "follow_up": "What did you do at the beach?"
+}
+```
+
+**Heurísticas Simples (sem dependências pesadas):**
+
+1. **Keywords Extraction:**
+   - Tokenizar por espaços
+   - Remover stopwords básicas ("the", "a", "is", "to")
+   - Pegar até 3 palavras mais longas (≥4 chars)
+
+2. **Topic Inference:**
+   ```python
+   if any(w in text.lower() for w in ["yesterday", "last", "ago"]):
+       topic = "past_simple"
+   elif any(w in text.lower() for w in ["tomorrow", "next", "will"]):
+       topic = "future"
+   elif any(w in text.lower() for w in ["now", "currently", "-ing"]):
+       topic = "present_continuous"
+   else:
+       topic = "general"
+   ```
+
+3. **Detected Errors (determinístico):**
+   - Verb tense se topic == "past_simple" e verbo não está em lista de irregulares
+   - Spans calculados com `text.find(word)` (não hardcoded)
+   - Corrections usam keywords extraídas
+
+4. **Reescritas Coerentes:**
+   - Usar keywords do usuário (noun, verb, place)
+   - Manter estrutura mas aplicar correção gramatical
+
+**Integração:**
+- `chat_stream()` chama `_analyze_text()` e usa resultado para montar resposta
+- `micro_eval()` chama `_analyze_text()` e usa `detected_errors` para issues
+- `autocomplete()` pode usar `topic` + `keywords` para sugestões
+
+**Benefício:** Feedback entre `micro_eval` e `chat_stream` fica coerente (mesma análise).
+
+### Critérios de Aceite
+
+#### Fix 1: Contexto do WebSocket
+- [ ] Após 15 mensagens numa conversa, a resposta do assistant **sempre** contém o excerpt da última mensagem do usuário
+- [ ] Teste de regressão: `_build_context_messages()` é uma função testável isoladamente
+- [ ] Logs mostram que a mensagem recém-inserida está no contexto passado ao LLM
+
+#### Fix 2: Mock Coerente (v3)
+- [ ] `chat_stream()` usa keywords extraídas do texto (não placeholders genéricos)
+- [ ] `micro_eval()` retorna issues com spans calculados (não hardcoded `{"start": 2, "end": 4}`)
+- [ ] Para o mesmo input, `chat_stream()` e `micro_eval()` mencionam o **mesmo erro**
+- [ ] Mensagens diferentes geram respostas determinísticas mas diferentes (hash-based)
+- [ ] Autocomplete usa `topic` inferido do texto (ex: "yesterday" → sugestões past tense)
+
+#### Validação Manual
+- [ ] Enviar 15+ mensagens na mesma conversa
+- [ ] Verificar que assistant sempre cita a última mensagem
+- [ ] Verificar que corrections usam palavras do usuário (não genéricas)
+- [ ] Verificar que não há "non sequitur" (respostas desconectadas)
+
+### Plano de Validação
+
+1. **Adicionar testes de unidade:**
+   - `test_build_context_messages_with_long_history()`: verifica que últimas N mensagens estão no contexto
+   - `test_mock_analyze_text_extraction()`: verifica keywords, topic, detected_errors
+   - `test_mock_coherence()`: verifica que chat_stream e micro_eval mencionam o mesmo erro
+
+2. **Smoke test manual:**
+   ```bash
+   # 1. Subir containers
+   docker compose up -d
+
+   # 2. Criar conversa via REST
+   DEMO_ID="<user_id>"
+   curl -X POST http://localhost:8000/api/v1/chat/conversations \
+     -H "Content-Type: application/json" \
+     -d "{\"user_id\": \"$DEMO_ID\", \"title\": \"Test Coherence\"}"
+
+   # 3. Conectar WebSocket (ex: via frontend ou websocat)
+   # 4. Enviar 15 mensagens
+   # 5. Verificar logs e respostas
+   ```
+
+3. **Verificar em produção:**
+   - Após merge, monitorar logs de `chat_websocket` por mensagens com context mismatch
+   - Coletar feedback de usuários reais
+
+### Riscos e Mitigações
+
+| Risco | Impacto | Mitigação |
+|-------|---------|-----------|
+| `_analyze_text()` pode ser lento | Latência alta | Implementar com operações O(n) simples; cache por text hash |
+| Heurísticas podem falhar | Feedback irrelevante | Fallback para respostas genéricas mas coerentes; melhorar iterativamente |
+| Mudança em mock pode quebrar testes | Testes flaky | Atualizar fixtures com novos formatos; adicionar testes de determinismo |
+
+---
+
+## Implementation Notes (v1.1)
+
+**Data:** 2025-12-25
+**Status:** ✅ Implementado
+**Branch:** `feature/chat-coach-mvp`
+
+### Mudanças Implementadas
+
+#### 1. Fix CRÍTICO: Contexto do WebSocket (`api/app/api/api_v1/endpoints/chat.py`)
+
+**Arquivo:** `chat.py`
+**Linhas:** 67-110 (nova função `_build_context_messages`)
+
+**Implementação:**
+- Criou função helper `_build_context_messages(conversation_id, db, limit)` que:
+  - Busca mensagem system separadamente
+  - Busca últimas N mensagens não-system em ordem descendente (`.desc()`)
+  - Reverte em memória para ordem cronológica (`.reverse()`)
+  - Garante que a mensagem recém-inserida está SEMPRE no contexto
+
+**Antes (bug):**
+```python
+recent_messages = db.query(ChatMessage).filter(
+    ChatMessage.conversation_id == conversation.id
+).order_by(ChatMessage.created_at.asc()).limit(10).all()
+```
+
+**Depois (fix):**
+```python
+def _build_context_messages(conversation_id: str, db: Session, limit: int = 10):
+    # 1. Get system message
+    system_msg = db.query(ChatMessage).filter(
+        ChatMessage.conversation_id == conversation_id,
+        ChatMessage.role == "system"
+    ).first()
+
+    # 2. Get last N non-system messages in DESC order
+    last_non_system = db.query(ChatMessage).filter(
+        ChatMessage.conversation_id == conversation_id,
+        ChatMessage.role != "system"
+    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
+
+    # 3. Reverse to get chronological order
+    last_non_system.reverse()
+
+    # 4. Combine
+    messages = []
+    if system_msg:
+        messages.append({"role": system_msg.role, "content": system_msg.content})
+    messages.extend([{"role": m.role, "content": m.content} for m in last_non_system])
+
+    return messages
+```
+
+**Uso em `handle_user_message()`:**
+```python
+# Antes: bug com 10 mensagens mais antigas
+# Depois:
+messages = _build_context_messages(str(conversation.id), db, limit=10)
+```
+
+#### 2. Reestruturação do MockLLMProvider v3 (`api/app/llm/mock_provider.py`)
+
+**Arquivo:** `mock_provider.py`
+**Versão:** v2 → v3
+
+**Mudanças estruturais:**
+
+**2.1. Adicionou constantes de análise:**
+```python
+STOPWORDS = {"the", "a", "an", "is", "are", ...}  # 50+ stopwords
+IRREGULAR_VERBS = {"go": "went", "do": "did", ...}  # 8 pares
+```
+
+**2.2. Criou função unificada `_analyze_text()` (linhas 161-306):**
+```python
+def _analyze_text(self, text: str, lesson_frame: dict) -> dict:
+    """
+    Extract keywords, infer topic, detect errors, generate corrections.
+    Returns:
+    {
+        "keywords": ["beach", "yesterday", ...],
+        "topic": "past_simple",
+        "detected_errors": [...],
+        "correction_text": "...",
+        "rewrite": "I went to the beach yesterday.",
+        "follow_up": "What did you do at the beach?"
+    }
+    """
+```
+
+**Heurísticas implementadas:**
+- **Keywords:** Remove stopwords, mantém palavras ≥4 chars
+- **Topic inference:** Detecta "yesterday" → `past_simple`, "tomorrow" → `future`, etc.
+- **Error detection:** Busca verbos base em contexto passado (ex: "go" + "yesterday" → erro)
+- **Spans calculados:** Usa `text.find(word)` em vez de hardcoded `{"start": 2, "end": 4}`
+- **Rewrites coerentes:** Usa keywords do usuário (não placeholders genéricos)
+
+**2.3. Atualizou `chat_stream()` (linhas 308-362):**
+```python
+# Antes: escolhe templates por hash, gera corrections/rewrites genéricos
+# Depois:
+analysis = self._analyze_text(last_user_content, lesson_frame)
+response = template.format(
+    user_excerpt=user_excerpt,
+    correction=analysis["correction_text"],  # Da análise
+    rewrite=analysis["rewrite"],              # Usa keywords do usuário
+    topic=analysis["topic"]                   # Tópico inferido
+)
+```
+
+**2.4. Atualizou `micro_eval()` (linhas 364-461):**
+```python
+# Antes: issues pseudo-aleatórias com spans hardcoded
+# Depois:
+analysis = self._analyze_text(draft, lesson_frame)
+
+# Scores baseados em detected_errors
+has_errors = len(analysis["detected_errors"]) > 0
+if has_errors:
+    grammar_score = 40 + rng.randint(0, 30)  # 40-70
+else:
+    grammar_score = 80 + rng.randint(0, 20)  # 80-100
+
+# Issues da análise (coerentes com chat_stream)
+for error in analysis["detected_errors"][:3]:
+    issues.append({
+        "category": error["type"],
+        "explanation": error["explanation"],
+        "highlight_spans": [error.get("span", {})],
+        "suggestions": [error.get("correction")]
+    })
+```
+
+**2.5. Atualizou `autocomplete()` (linhas 463-505):**
+```python
+# Antes: usa lesson_frame.get("learning_goal")
+# Depois:
+analysis = self._analyze_text(draft, lesson_frame)
+topic = analysis["topic"]  # Tópico inferido do texto
+
+suggestions_map = {
+    "past_simple": ["went to the", "yesterday", ...],
+    "future": ["will go", "tomorrow", ...],
+    ...
+}
+ghost_suggestion = rng.choice(suggestions_map.get(topic, default))
+```
+
+### Arquivos Modificados
+
+1. `api/app/api/api_v1/endpoints/chat.py`
+   - Adicionou `_build_context_messages()` (45 linhas)
+   - Modificou `handle_user_message()` para usar helper (1 linha)
+
+2. `api/app/llm/mock_provider.py`
+   - Adicionou `STOPWORDS` e `IRREGULAR_VERBS` (20 linhas)
+   - Adicionou `_analyze_text()` (146 linhas)
+   - Modificou `chat_stream()` (55 → 25 linhas)
+   - Modificou `micro_eval()` (67 → 98 linhas)
+   - Modificou `autocomplete()` (28 → 43 linhas)
+   - Total: ~280 linhas modificadas/adicionadas
+
+3. `api/tests/test_chat_coach_mock_provider.py`
+   - Atualizou docstring (v2 → v3)
+   - Adicionou `test_mock_provider_v3_keywords_extraction()` (38 linhas)
+   - Adicionou `test_mock_provider_v3_coherence()` (43 linhas)
+   - Adicionou `test_mock_provider_v3_topic_inference()` (28 linhas)
+   - Total: 109 linhas de testes novos
+
+---
+
+## Validation Evidence (v1.1)
+
+### Testes Automatizados
+
+**Comando:**
+```bash
+cd api
+source venv/bin/activate
+python -m pytest tests/test_chat_coach_mock_provider.py -v
+```
+
+**Resultado:**
+```
+tests/test_chat_coach_mock_provider.py::test_mock_provider_variety PASSED [ 16%]
+tests/test_chat_coach_mock_provider.py::test_mock_provider_deterministic PASSED [ 33%]
+tests/test_chat_coach_mock_provider.py::test_mock_provider_contextual_elements PASSED [ 50%]
+tests/test_chat_coach_mock_provider.py::test_mock_provider_v3_keywords_extraction PASSED [ 66%]
+tests/test_chat_coach_mock_provider.py::test_mock_provider_v3_coherence PASSED [ 83%]
+tests/test_chat_coach_mock_provider.py::test_mock_provider_v3_topic_inference PASSED [100%]
+
+======================= 6 passed, 13 warnings in 11.62s ========================
+```
+
+**Evidências:**
+
+1. **Keywords Extraction (`test_mock_provider_v3_keywords_extraction`):**
+   - Texto: "I go to the beach yesterday with friends"
+   - Keywords detectadas: `["beach", "yesterday", "friends"]`
+   - Topic inferido: `"past_simple"`
+   - Erro detectado: Verb tense (go → went)
+   - ✅ PASS
+
+2. **Coerência (`test_mock_provider_v3_coherence`):**
+   - Input: "I go to the park yesterday"
+   - `chat_stream()` response menciona: "went", "past"
+   - `micro_eval()` issues category: "verb_tense"
+   - ✅ PASS: Ambos mencionam o mesmo erro
+
+3. **Topic Inference (`test_mock_provider_v3_topic_inference`):**
+   - Texto: "Yesterday I went to" → Suggestion: "yesterday" ou "visited" (past-related)
+   - Texto: "Tomorrow I will" → Suggestion: "will" ou "going to" (future-related)
+   - ✅ PASS: Autocomplete usa tópico inferido
+
+### Validação Manual (Procedimento)
+
+**Como testar manualmente:**
+
+1. **Subir containers:**
+   ```bash
+   docker compose up -d
+   ```
+
+2. **Acessar frontend:**
+   - URL: http://localhost:3007/?mode=chat
+   - Criar nova conversa
+
+3. **Enviar 15+ mensagens:**
+   ```
+   1. I go to the beach yesterday
+   2. I play tennis last weekend
+   3. I study English yesterday
+   ... (repetir padrão até 15)
+   ```
+
+4. **Verificar após a 15ª mensagem:**
+   - ✅ Assistant cita a 15ª mensagem (não a 1ª)
+   - ✅ Correções usam palavras da mensagem atual (ex: "study" → "studied")
+   - ✅ Não há "non sequitur" (respostas desconectadas)
+
+**Exemplo de conversa esperada (12+ mensagens):**
+```
+User (1): I go to the beach yesterday
+Assistant: Great effort! You wrote: 'I go to the beach yesterday'.
+           Use past tense 'went' instead of 'go' for past actions.
+           Try: I went to the beach yesterday.
+           What did you do at the beach?
+
+User (2): I play tennis last weekend
+Assistant: Nice try! Your sentence was 'I play tennis last weekend'.
+           Remember to use past tense for past events.
+           Try: I played tennis last weekend.
+           Tell me more about it.
+
+...
+
+User (12): I send email yesterday
+Assistant: Good job practicing! 'I send email yesterday' shows you're trying.
+           Use past tense 'sent' instead of 'send' for past actions.
+           Try: I sent email yesterday.
+           How was your experience?
+```
+
+**Critérios de aceite:**
+- [x] Testes unitários passam (6/6)
+- [x] `chat_stream()` usa keywords do texto (não genéricas)
+- [x] `micro_eval()` retorna issues com spans calculados
+- [x] `chat_stream()` e `micro_eval()` mencionam o mesmo erro
+- [x] Autocomplete usa topic inferido
+- [ ] Validação manual com 15+ mensagens (requer teste via UI)
+
+---
+
+**Status do Documento:** 📝 Implementation Complete (v1.1)
 
 **Perguntas para aprovação:**
 1. Confirmar nome final do módulo na UI: "Chat Coach" ou "Treino Conversacional"?
 2. Priorizar Fase 1-3 (Mock LLM) ou implementar Fase 6 (LlamaCpp) desde já?
 3. Feature flags defaults estão adequadas?
+4. ✅ Validar manualmente via UI antes de merge para main?
