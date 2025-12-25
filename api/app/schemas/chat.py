@@ -150,6 +150,10 @@ class DraftFeedbackOut(BaseModel):
     issues: List[DraftIssue] = Field(default_factory=list, description="Detected issues")
     ghost_suggestion: Optional[str] = Field(None, description="Ghost text suggestion")
     micro_tip: Optional[str] = Field(None, description="Helpful tip shown when issues=[]")
+    suggested_next_words: List[str] = Field(default_factory=list, description="Suggested next words to complete the phrase")
+    topic: Optional[str] = Field(None, description="Detected conversation topic")
+    intent: Optional[str] = Field(None, description="Detected user intent")
+    rewrite: Optional[str] = Field(None, description="Suggested rewrite of the entire draft")
     server_ts_ms: int = Field(..., description="Server timestamp (milliseconds)")
 
     class Config:

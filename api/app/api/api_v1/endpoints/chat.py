@@ -198,6 +198,17 @@ def _build_draft_feedback(
     if not issues and draft:
         micro_tip = _generate_micro_tip(draft, lesson_frame or {})
 
+    # Extract rich signals from eval_result (if available)
+    suggested_next_words = eval_result.get("suggested_next_words", [])
+    topic = eval_result.get("topic")
+    intent = eval_result.get("intent")
+
+    # Generate rewrite suggestion from first issue (if available)
+    rewrite = None
+    if issues and issues[0].get("suggestions"):
+        # Use the first suggestion as a rewrite
+        rewrite = issues[0]["suggestions"][0] if issues[0]["suggestions"] else None
+
     return DraftFeedbackOut(
         type="draft_feedback",
         conversation_id=conversation_id,
@@ -213,6 +224,10 @@ def _build_draft_feedback(
         issues=issues,
         ghost_suggestion=ghost_suggestion,
         micro_tip=micro_tip,
+        suggested_next_words=suggested_next_words,
+        topic=topic,
+        intent=intent,
+        rewrite=rewrite,
         server_ts_ms=now_ms
     ).model_dump()
 
