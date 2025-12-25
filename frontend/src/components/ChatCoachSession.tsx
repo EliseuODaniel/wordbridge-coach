@@ -48,6 +48,10 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   const [issues, setIssues] = useState<any[]>([]);
   const [ghostSuggestion, setGhostSuggestion] = useState<string | null>(null);
   const [microTip, setMicroTip] = useState<string | null>(null);
+  const [suggestedNextWords, setSuggestedNextWords] = useState<string[]>([]);
+  const [topic, setTopic] = useState<string | null>(null);
+  const [intent, setIntent] = useState<string | null>(null);
+  const [rewrite, setRewrite] = useState<string | null>(null);
 
   // Track if we're showing feedback from a sent message
   const [isShowingLastFeedback, setIsShowingLastFeedback] = useState<boolean>(false);
@@ -141,6 +145,10 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     setIssues(event.issues);
     setGhostSuggestion(event.ghost_suggestion);
     setMicroTip(event.micro_tip || null);
+    setSuggestedNextWords(event.suggested_next_words || []);
+    setTopic(event.topic || null);
+    setIntent(event.intent || null);
+    setRewrite(event.rewrite || null);
   };
 
   /**
@@ -408,7 +416,14 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
         {/* Analysis sidebar */}
         <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto p-4">
-          <AnalysisPanel issues={issues} micro_tip={microTip} />
+          <AnalysisPanel
+            issues={issues}
+            micro_tip={microTip}
+            suggested_next_words={suggestedNextWords}
+            topic={topic}
+            intent={intent}
+            rewrite={rewrite}
+          />
         </div>
       </div>
     </div>

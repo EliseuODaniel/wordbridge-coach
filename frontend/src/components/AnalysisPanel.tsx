@@ -2,7 +2,7 @@
  * AnalysisPanel Component
  *
  * Displays feedback issues (grammar, spelling, etc.) with suggestions.
- * When no issues, shows micro_tip if available.
+ * Shows rich signals: suggested_next_words, topic/intent badges, rewrite suggestion.
  */
 
 import React from 'react';
@@ -11,10 +11,22 @@ import type { DraftIssue } from '../services/api';
 interface AnalysisPanelProps {
   issues: DraftIssue[];
   micro_tip?: string | null;
+  suggested_next_words?: string[];
+  topic?: string | null;
+  intent?: string | null;
+  rewrite?: string | null;
   className?: string;
 }
 
-const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ issues, micro_tip, className = '' }) => {
+const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
+  issues,
+  micro_tip,
+  suggested_next_words,
+  topic,
+  intent,
+  rewrite,
+  className = ''
+}) => {
   // Case 1: No issues + micro_tip available
   if (issues.length === 0 && micro_tip) {
     return (
@@ -62,6 +74,47 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ issues, micro_tip, classN
   return (
     <div className={`space-y-3 ${className}`}>
       <h3 className="text-sm font-semibold text-gray-300 mb-3">Feedback</h3>
+
+      {/* Context tags: topic/intent */}
+      {(topic || intent) && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {topic && (
+            <span className="px-2 py-1 bg-purple-900 bg-opacity-30 border border-purple-600 text-purple-200 text-xs rounded">
+              🏷️ Topic: {topic}
+            </span>
+          )}
+          {intent && (
+            <span className="px-2 py-1 bg-indigo-900 bg-opacity-30 border border-indigo-600 text-indigo-200 text-xs rounded">
+              🎯 Intent: {intent}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Suggested next words */}
+      {suggested_next_words && suggested_next_words.length > 0 && (
+        <div className="bg-gray-800 border border-gray-600 rounded-lg p-3 mb-3">
+          <p className="text-xs text-gray-400 mb-2">✨ Try these words:</p>
+          <div className="flex flex-wrap gap-2">
+            {suggested_next_words.map((word, i) => (
+              <span
+                key={i}
+                className="px-2 py-1 bg-blue-900 bg-opacity-40 border border-blue-600 text-blue-200 text-sm rounded cursor-pointer hover:bg-opacity-60 transition"
+              >
+                {word}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rewrite suggestion */}
+      {rewrite && (
+        <div className="bg-green-900 bg-opacity-20 border border-green-600 rounded-lg p-3 mb-3">
+          <p className="text-xs text-green-300 mb-1">💡 Suggested rewrite:</p>
+          <p className="text-sm text-green-100 italic">"{rewrite}"</p>
+        </div>
+      )}
 
       {issues.map((issue, index) => (
         <div

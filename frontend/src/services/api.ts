@@ -384,6 +384,10 @@ export interface DraftFeedbackEvent {
   issues: DraftIssue[];
   ghost_suggestion: string | null;
   micro_tip?: string | null;  // Helpful tip shown when issues=[]
+  suggested_next_words: string[];  // Suggested next words to complete the phrase
+  topic?: string | null;  // Detected conversation topic
+  intent?: string | null;  // Detected user intent
+  rewrite?: string | null;  // Suggested rewrite of entire draft
   server_ts_ms: number;
 }
 
