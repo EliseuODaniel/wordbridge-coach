@@ -217,29 +217,68 @@ def _build_draft_feedback(
     ).model_dump()
 
 
-def _build_context_messages(conversation_id: str, db: Session, limit: int = 10) -> List[dict]:
+def _sanitize_assistant_response(response: str) -> str:
+    """
+    Remove extra user simulation from LLM response.
+
+    Defensive post-processing to handle cases where LLM ignores instructions
+    and generates a second turn simulating the user's speech.
+
+    Removes:
+    1. Quoted paragraph at the end (often looks like user simulation)
+    2. Any text after role labels (User:, Student:, etc.)
+
+    Args:
+        response: Raw LLM response
+
+    Returns:
+        Sanitized response with user simulation removed
+    """
+    lines = response.split('\n')
+
+    # Remove quoted paragraph at the end (looks like user simulation)
+    # Pattern: blank line followed by line starting with quote
+    if len(lines) >= 2 and not lines[-2].strip():
+        if lines[-1].strip().startswith('"'):
+            lines = lines[:-1]
+
+    # Truncate at role labels (LLM started a second turn)
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(('User:', 'USER:', 'Student:', 'STUDENT:')):
+            lines = lines[:i]
+            break
+
+    return '\n'.join(lines).strip()
+
+
+def _build_context_messages(conversation_id: str, db: Session, limit: int = 10,
+                          exclude_system: bool = False) -> List[dict]:
     """
     Build context messages for LLM, ensuring the most recent user message is included.
 
     Strategy:
-    1. Fetch the system message (first one) separately
+    1. Optionally exclude system message (when exclude_system=True)
     2. Fetch the last N non-system messages in descending order
     3. Reverse in memory to get chronological order
-    4. Combine: [system] + reversed(last_non_system)
+    4. Combine: [system] + reversed(last_non_system) or just reversed(last_non_system)
 
     Args:
         conversation_id: UUID of the conversation
         db: Database session
         limit: Maximum number of non-system messages to include (default: 10)
+        exclude_system: If True, exclude system message from context (default: False)
 
     Returns:
         List of message dicts with 'role' and 'content' keys
     """
-    # 1. Get system message (if exists)
-    system_msg = db.query(ChatMessage).filter(
-        ChatMessage.conversation_id == conversation_id,
-        ChatMessage.role == "system"
-    ).first()
+    # 1. Get system message (if exists and not excluded)
+    system_msg = None
+    if not exclude_system:
+        system_msg = db.query(ChatMessage).filter(
+            ChatMessage.conversation_id == conversation_id,
+            ChatMessage.role == "system"
+        ).first()
 
     # 2. Get last N non-system messages in descending order
     last_non_system = db.query(ChatMessage).filter(
@@ -664,8 +703,8 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
     db.add(user_message)
     db.commit()
 
-    # Build messages for LLM using the helper function (ensures latest messages are included)
-    messages = _build_context_messages(str(conversation.id), db, limit=10)
+    # Build messages for LLM excluding system (we'll inject fresh system_prompt)
+    messages = _build_context_messages(str(conversation.id), db, limit=10, exclude_system=True)
 
     # Build system prompt from lesson_frame
     lesson_frame = conversation.lesson_frame_json
@@ -675,7 +714,15 @@ Learning Goal: {lesson_frame.get('learning_goal', 'conversation practice')}
 Topic: {lesson_frame.get('topic', 'general conversation')}
 Expected Intent: {lesson_frame.get('expected_intent', 'general conversation')}
 
-Think step-by-step internally. Answer naturally and briefly in 1-2 sentences. Always ask one relevant follow-up question to keep the conversation going. If the user writes in Portuguese/Spanish, encourage them to switch to English gently.
+CRITICAL INSTRUCTIONS:
+- Reply as the assistant ONLY.
+- Never write the student's next message or simulate their speech.
+- Do not include quoted example replies.
+- No role labels like "User:", "Assistant:", "Student:".
+- Answer naturally and briefly in 1-3 sentences.
+- Always ask one relevant follow-up question to keep the conversation going.
+- If the user writes in Portuguese/Spanish, gently encourage them to switch to English.
+- Do NOT continue the conversation by writing what the user might say next.
 """
     full_response = ""
 
@@ -684,6 +731,7 @@ Think step-by-step internally. Answer naturally and briefly in 1-2 sentences. Al
         "temperature": 0.5,
         "max_tokens": 300,
         "top_p": 0.9,
+        "stop": ['\n"', '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:', '', ''],
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0
     }
@@ -695,6 +743,9 @@ Think step-by-step internally. Answer naturally and briefly in 1-2 sentences. Al
             conversation_id=str(conversation.id),
             token=token
         ).model_dump())
+
+    # Defensive sanitization to remove any user simulation LLM may have generated
+    full_response = _sanitize_assistant_response(full_response)
 
     # Persist assistant message
     assistant_message = ChatMessage(
