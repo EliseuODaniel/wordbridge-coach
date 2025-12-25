@@ -254,7 +254,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
         <div className="flex justify-between items-center mb-8">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-extrabold text-gray-100 mb-2">
-              Lingvist Mode
+              Treino Lacunas
             </h1>
             <p className="text-gray-500 text-sm">
               Cloze Deletion • Progressive Hints • Auto-submit
@@ -265,7 +265,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
               href="/?mode=spec4"
               className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
             >
-              Switch to Spec4 🎯
+              Trocar para Treino Clássico 🎯
             </a>
             <button
               onClick={onExit}

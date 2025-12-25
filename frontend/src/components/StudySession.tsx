@@ -331,7 +331,7 @@ return (
               FillTheWord
             </h1>
             <p className="text-gray-500 text-sm">
-              Spec4 Mode • Multiple Choice Training
+              Treino Clássico • Spaced Repetition
             </p>
           </div>
           <div className="flex gap-2">
@@ -339,7 +339,7 @@ return (
               href="/?mode=lingvist"
               className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
             >
-              Switch to Lingvist ✍️
+              Trocar para Treino Lacunas ✍️
             </a>
           </div>
         </div>

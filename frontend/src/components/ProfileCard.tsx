@@ -2,6 +2,20 @@
 
 import React from 'react';
 
+type TrainingMode = 'spec4' | 'lingvist';
+
+// Mode labels and descriptions for UI (internal IDs remain unchanged)
+const MODE_INFO: Record<TrainingMode, { name: string; description: string }> = {
+  spec4: {
+    name: "Treino Clássico",
+    description: "Múltipla escolha com spaced repetition"
+  },
+  lingvist: {
+    name: "Treino Lacunas",
+    description: "Preenchimento ativo com hints e áudio"
+  }
+};
+
 export interface ProfileStats {
   mastered_words?: number;
   accuracy?: number;
@@ -110,7 +124,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
         >
           <div className="flex items-center justify-center gap-2">
             <span>🎯</span>
-            <span>Spec4</span>
+            <span>{MODE_INFO.spec4.name}</span>
           </div>
           <div className="text-xs opacity-75 mt-0.5">Multiple choice</div>
         </button>
@@ -127,7 +141,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
         >
           <div className="flex items-center justify-center gap-2">
             <span>✍️</span>
-            <span>Lingvist</span>
+            <span>{MODE_INFO.lingvist.name}</span>
           </div>
           <div className="text-xs opacity-75 mt-0.5">Cloze + hints</div>
         </button>

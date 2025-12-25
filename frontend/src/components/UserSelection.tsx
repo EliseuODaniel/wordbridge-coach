@@ -7,6 +7,18 @@ import ConfirmDialog from './ConfirmDialog';
 
 type TrainingMode = 'spec4' | 'lingvist';
 
+// Mode labels and descriptions for UI (internal IDs remain unchanged)
+const MODE_INFO: Record<TrainingMode, { name: string; description: string }> = {
+  spec4: {
+    name: "Treino Clássico",
+    description: "Múltipla escolha com spaced repetition"
+  },
+  lingvist: {
+    name: "Treino Lacunas",
+    description: "Preenchimento ativo com hints e áudio"
+  }
+};
+
 interface UserSelectionProps {
   onUserSelected: (userId: string) => void;
   onModeSelect: (mode: TrainingMode) => void;
@@ -240,7 +252,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
             <div>
               <div className="font-semibold text-blue-200 mb-1">Prefere treinar digitando?</div>
               <div className="text-sm text-blue-300">
-                Escolha <strong>Lingvist</strong> ao iniciar um perfil para treinar com preenchimento de lacunas, hints progressivos e áudio pós-acerto.
+                Escolha <strong>{MODE_INFO.lingvist.name}</strong> ao iniciar um perfil para treinar com preenchimento de lacunas, hints progressivos e áudio pós-acerto.
               </div>
             </div>
           </div>
