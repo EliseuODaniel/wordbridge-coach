@@ -23,7 +23,9 @@ class User(BaseModel):
     easiness_factor = Column(Float, default=2.5, nullable=False)
     last_login = Column(DateTime, nullable=True)
     word_goal_rank = Column(Integer, default=1000, nullable=False)  # 100, 500, 1500, 3000, 5000, 10000
-    
+    mode = Column(String(20), default='spec4', nullable=False)  # 'spec4' | 'lingvist'
+    accuracy_last_20 = Column(Float, nullable=True)  # Average of last 20 answers
+
     # Relationships
     native_language_obj = relationship("Language", foreign_keys=[native_language_id], back_populates="users_native")
     target_language_obj = relationship("Language", foreign_keys=[target_language_id], back_populates="users_target")

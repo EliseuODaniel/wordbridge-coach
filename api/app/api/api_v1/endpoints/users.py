@@ -17,6 +17,7 @@ class UserResponse(BaseModel):
     id: str
     username: str
     language_preference: str
+    mode: str
     created_at: str
 
 
@@ -26,6 +27,7 @@ class CreateUserRequest(BaseModel):
     language_preference: str = "pt"  # Native/interface language
     target_language: str = "en"    # Target language for learning (en or fr)
     word_goal_rank: int = 1000     # Goal: 100, 500, 1500, 3000, 5000, 10000
+    mode: str = "spec4"           # Learning mode: "spec4" | "lingvist"
 
 
 class UpdateUserRequest(BaseModel):
@@ -34,6 +36,7 @@ class UpdateUserRequest(BaseModel):
     language_preference: Optional[str] = None  # Native/interface language
     target_language: Optional[str] = None     # Target language for learning (en or fr)
     word_goal_rank: Optional[int] = None      # Spec4: Vocabulary goal {100, 500, 1500, 3000, 5000, 10000}
+    mode: Optional[str] = None                # Learning mode: "spec4" | "lingvist"
 
 
 @router.get("/", response_model=List[UserResponse])
@@ -48,6 +51,7 @@ async def list_users(db: Session = Depends(get_db)):
                 "id": str(user.id),
                 "username": user.username,
                 "language_preference": user.language_preference,
+                "mode": user.mode,
                 "created_at": user.created_at.isoformat()
             }
             for user in users
@@ -105,7 +109,8 @@ async def create_user(
             target_language_id=target_lang.id,
             daily_new_limit=10,
             easiness_factor=2.5,
-            word_goal_rank=user_data.word_goal_rank  # ← Campo crítico adicionado!
+            word_goal_rank=user_data.word_goal_rank,  # ← Campo crítico adicionado!
+            mode=user_data.mode  # ← Learning mode (spec4 | lingvist)
         )
 
         db.add(new_user)
@@ -119,6 +124,7 @@ async def create_user(
             "id": str(new_user.id),
             "username": new_user.username,
             "language_preference": new_user.language_preference,
+            "mode": new_user.mode,
             "created_at": new_user.created_at.isoformat()
         }
 
@@ -211,6 +217,7 @@ async def get_user(
             "id": str(user.id),
             "username": user.username,
             "language_preference": user.language_preference,
+            "mode": user.mode,
             "created_at": user.created_at.isoformat()
         }
 
@@ -320,6 +327,23 @@ async def update_user(
                 # Note: we DON'T clamp max_contiguous_mastered_rank as that represents actual progress
                 print(f"DEBUG: Updated UserFrequencyProgress for user {user_id} to goal {user_data.word_goal_rank}")
 
+        # Adaptive Scheduler: Update mode if provided
+        if user_data.mode is not None:
+            # Validate against allowed values
+            ALLOWED_MODES = {"spec4", "lingvist"}
+            if user_data.mode not in ALLOWED_MODES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": "Invalid mode",
+                        "message": f"mode must be one of: {sorted(ALLOWED_MODES)}"
+                    }
+                )
+
+            # Update user mode
+            user.mode = user_data.mode
+            print(f"DEBUG: Updated mode for user {user_id} to {user_data.mode}")
+
         db.commit()
         db.refresh(user)
 
@@ -338,6 +362,7 @@ async def update_user(
             "id": str(user.id),
             "username": user.username,
             "language_preference": user.language_preference,
+            "mode": user.mode,
             "created_at": user.created_at.isoformat()
         }
 

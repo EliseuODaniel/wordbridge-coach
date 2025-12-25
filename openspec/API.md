@@ -46,28 +46,40 @@ POST /api/v1/users
 {
   "username": "new_user",
   "language_preference": "en",
-  "target_language": "en"
+  "target_language": "en",
+  "mode": "spec4"
 }
 ```
 
 **Optional Fields**:
 - `language_preference`: Native/interface language (pt, es, fr, en). Default: "pt"
 - `target_language`: Learning target language (en, fr). Default: "en"
+- `mode`: Learning mode ("spec4" | "lingvist"). Default: "spec4" - ⚠️ NOVO
 
 **Examples**:
 ```json
-// English learner (default)
+// Spec4 mode (default, clássico)
 {
   "username": "john_doe",
   "language_preference": "pt",
-  "target_language": "en"
+  "target_language": "en",
+  "mode": "spec4"
+}
+
+// Lingvist mode (adaptativo)
+{
+  "username": "jane_doe",
+  "language_preference": "pt",
+  "target_language": "en",
+  "mode": "lingvist"
 }
 
 // French learner
 {
   "username": "marie_dupont",
   "language_preference": "fr",
-  "target_language": "fr"
+  "target_language": "fr",
+  "mode": "spec4"
 }
 ```
 
@@ -77,6 +89,7 @@ POST /api/v1/users
   "id": "new-uuid-string",
   "username": "new_user",
   "language_preference": "en",
+  "mode": "spec4",
   "created_at": "2025-12-12T21:00:00Z"
 }
 ```
@@ -123,7 +136,8 @@ PATCH /api/v1/users/{user_id}
   "username": "new_username",
   "language_preference": "fr",
   "target_language": "fr",
-  "word_goal_rank": 1500
+  "word_goal_rank": 1500,
+  "mode": "lingvist"
 }
 ```
 
@@ -132,6 +146,7 @@ PATCH /api/v1/users/{user_id}
 - `language_preference`: Native interface language (pt, es, fr, en)
 - `target_language`: Learning target language (en, fr)
 - `word_goal_rank` (Spec4): Vocabulary goal from {100, 500, 1500, 3000, 5000, 10000}
+- `mode`: Learning mode ("spec4" | "lingvist") - ⚠️ NOVO
 
 **Response**: Same as GET user with updated values
 
@@ -316,9 +331,15 @@ POST /api/v1/cards/{card_id}/answer
 ```json
 {
   "answer": "book",
-  "response_time_ms": 2500
+  "response_time_ms": 2500,
+  "attempts": 1,
+  "hints_used": 0
 }
 ```
+
+**Optional Fields**:
+- `attempts`: Number of attempts taken (default: 1) - ⚠️ NOVO
+- `hints_used`: Number of hints used (default: 0) - ⚠️ NOVO
 
 **Response**:
 ```json
@@ -337,6 +358,8 @@ POST /api/v1/cards/{card_id}/answer
 3. **Updates `UserSessionStats`**: Incrementa `cards_shown` e `new_cards_shown` (Spec4: controle de mix)
 4. **Updates `UserWordStats`**: Accuracy e mastery por palavra
 5. **Updates `UserFrequencyProgress`**: `max_contiguous_mastered_rank` (Spec4: progressão de vocabulário)
+6. **Updates `User.accuracy_last_20`**: Calcula accuracy das últimas 20 respostas - ⚠️ NOVO
+7. **Manages `UserCardState.is_relearn/relearn_due`**: Se mode="lingvist", quality < 3 entra em relearn queue - ⚠️ NOVO
 
 **Spec4 Critical**: `ReviewEvent.sentence_id` é **SEMPRE** preenchido com `card.sentence_id` para suportar variedade de frases.
 

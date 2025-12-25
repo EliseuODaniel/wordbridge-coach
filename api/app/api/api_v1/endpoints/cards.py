@@ -542,13 +542,13 @@ async def submit_answer(
         print(f"DEBUG: SM2 validation result: is_correct={is_correct}, normalized_correct={normalized_correct}")
 
         # Calculate SM-2 quality
-        print(f"DEBUG: Calculating quality for response_time_ms={answer_data.response_time_ms}")
+        print(f"DEBUG: Calculating quality for response_time_ms={answer_data.response_time_ms}, attempts={answer_data.attempts}, hints={answer_data.hints_used}")
         try:
             quality = SM2Algorithm.calculate_quality_from_response(
                 was_correct=is_correct,
                 response_time_ms=answer_data.response_time_ms,
-                hints_used=0,  # TODO: Track hints usage
-                attempts=1     # TODO: Track attempts
+                hints_used=answer_data.hints_used,
+                attempts=answer_data.attempts
             )
             print(f"DEBUG: SM2 quality calculated: {quality}")
         except Exception as e:
@@ -617,14 +617,15 @@ async def submit_answer(
             user_answer=answer_data.answer,
             correct_answer=correct_answer,
             was_correct=is_correct,
-            hints_used=0,
+            hints_used=answer_data.hints_used,
+            attempts=answer_data.attempts,
             previous_easiness=previous_easiness,
             new_easiness=sm2_result["easiness_factor"],
             previous_interval=previous_interval,
             new_interval=sm2_result["interval_days"]
         )
         db.add(review_event)
-        print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}")
+        print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}, attempts={answer_data.attempts}")
 
         # Update or create UserDailyStats
         from app.models.user_daily_stats import UserDailyStats
@@ -670,6 +671,56 @@ async def submit_answer(
             user_card_state.status = MemoryStage.LEARNING
         else:
             user_card_state.status = MemoryStage.NEW
+
+        # Update user's accuracy_last_20 (adaptive scheduler)
+        from sqlalchemy import desc
+
+        recent_20 = db.query(ReviewEvent)\
+            .filter(ReviewEvent.user_id == user_id)\
+            .order_by(desc(ReviewEvent.created_at))\
+            .limit(19)\
+            .all()  # Get last 19 (plus current = 20)
+
+        correct_count = sum(1 for r in recent_20 if r.was_correct)
+        if is_correct:
+            correct_count += 1
+
+        total_count = len(recent_20) + 1  # +1 for current answer
+
+        # Get user and update accuracy
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.accuracy_last_20 = correct_count / total_count if total_count > 0 else None
+            print(f"DEBUG: Updated user accuracy_last_20={user.accuracy_last_20}")
+
+            # Adaptive Scheduler: Relearn queue logic (Lingvist mode only)
+            if user.mode == 'lingvist':
+                # Check if card should enter/exit relearn queue
+                should_relearn = SM2Algorithm.should_enter_relearn(quality)
+
+                if should_relearn:
+                    # Enter or advance in relearn queue
+                    user_card_state.is_relearn = True
+
+                    # Calculate next relearn interval
+                    # Count how many times this card has been in relearn
+                    relearn_count = db.query(ReviewEvent)\
+                        .filter(
+                            ReviewEvent.user_id == user_id,
+                            ReviewEvent.card_id == card_id,
+                            ReviewEvent.quality < 3  # Previous failures
+                        )\
+                        .count()
+
+                    relearn_interval = SM2Algorithm.calculate_relearn_interval(relearn_count)
+                    user_card_state.relearn_due = datetime.utcnow() + relearn_interval
+                    print(f"DEBUG: Card entered relearn queue, due in {relearn_interval}, count={relearn_count}")
+                else:
+                    # Exit relearn queue (quality >= 4, well-recalled)
+                    if user_card_state.is_relearn:
+                        user_card_state.is_relearn = False
+                        user_card_state.relearn_due = None
+                        print(f"DEBUG: Card exited relearn queue, returning to normal SM-2")
 
         print(f"DEBUG: UserCardState updated successfully")
 

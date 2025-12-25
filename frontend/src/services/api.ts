@@ -51,6 +51,8 @@ export interface LingvistCardResponse {
 export interface AnswerRequest {
   answer: string;
   response_time_ms: number;
+  attempts?: number;
+  hints_used?: number;
 }
 
 export interface AnswerResponse {
@@ -65,6 +67,7 @@ export interface User {
   id: string;
   username: string;
   language_preference: string;
+  mode: string;
   // Note: target_language is stored in backend but not returned in list API
   created_at: string;
 }
@@ -74,6 +77,7 @@ export interface CreateUserRequest {
   language_preference?: string;
   target_language?: string;
   word_goal_rank?: number;
+  mode?: string;
 }
 
 export interface UpdateUserRequest {
@@ -81,6 +85,7 @@ export interface UpdateUserRequest {
   language_preference?: string;
   target_language?: string;
   word_goal_rank?: number;
+  mode?: string;
 }
 
 // API client
@@ -141,9 +146,15 @@ export const cardsApi = {
     userId?: string
   ): Promise<AnswerResponse> => {
     const params = userId ? { user_id: userId } : {};
+    // Ensure defaults for adaptive scheduler
+    const payload = {
+      ...answerData,
+      attempts: answerData.attempts ?? 1,
+      hints_used: answerData.hints_used ?? 0,
+    };
     const response = await api.post(
       '/api/v1/cards/' + cardId + '/answer',
-      answerData,
+      payload,
       { params }
     );
     return response.data;

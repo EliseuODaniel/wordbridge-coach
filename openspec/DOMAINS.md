@@ -175,6 +175,12 @@ Usuário do sistema para controle de progresso individual com idiomas configurad
 - `word_goal_rank` (int, default 100) - **Objetivo de vocabulário** Spec4: {100, 500, 1500, 3000, 5000, 10000}
 - `daily_new_limit` (int, default 10)
 - `easiness_factor` (float, default 2.5)
+- `mode` (string, default "spec4") - **Modo de aprendizado**: "spec4" | "lingvist"
+  - "spec4": Scheduler SM-2 clássico com 25% new / 75% review fixo
+  - "lingvist": Scheduler adaptativo com relearn queue + new_share dinâmico
+- `accuracy_last_20` (float, optional) - **Accuracy das últimas 20 respostas** (0.0-1.0)
+  - Usado para ajustar new_share no modo lingvist
+  - Null se usuário tem menos de 20 respostas
 - `created_at` (datetime)
 - `last_login` (datetime, optional)
 
@@ -214,6 +220,12 @@ Estado individual do cartão para cada usuário com algoritmo SM-2 completo.
 - `status` (enum) - "new", "learning", "review", "relearn", "mature"
 - `total_reviews` (int, default 0) - Total de revisões
 - `correct_reviews` (int, default 0) - Revisões corretas
+- `is_relearn` (boolean, default false) - **Está na fila de relearn?** (Lingvist mode)
+  - True: quality < 3, precisa revisar em minutos
+  - False: seguindo scheduler SM-2 normal
+- `relearn_due` (datetime, optional) - **Quando revisar novamente** (Lingvist mode)
+  - Setado quando is_relearn = true
+  - Intervalos progressivos: 10min → 30min → 2h → 6h → 24h
 - `created_at` (datetime)
 - `updated_at` (datetime)
 
@@ -242,7 +254,8 @@ Registro individual de cada sessão de revisão para analytics e ajuste SM-2.
 - `user_answer` (string) - Resposta do usuário
 - `correct_answer` (string) - Resposta correta
 - `was_correct` (boolean) - Se a resposta estava correta
-- `hints_used` (int, default 0) - Quantidade de dicas usadas (Spec4 mode)
+- `hints_used` (int, default 0) - Quantidade de dicas usadas
+- `attempts` (int, default 1) - **Número de tentativas** para acertar - ⚠️ NOVO
 - `typed_answer` (string, nullable) - Resposta digitada no modo Lingvist - ⚠️ NOVO
 - `hints_used_lingvist` (JSON, nullable) - Hints usados no modo Lingvist - ⚠️ NOVO
 - `attempt_index` (int, default 1) - Índice da tentativa (1ª, 2ª, 3ª...) - ⚠️ NOVO
