@@ -1,4 +1,4 @@
-# Change: Chat Coach - Real LLM (OpenAI via HTTP)
+# Change: Chat Coach - Real LLM (OpenAI + Local LLM)
 
 **Status:** 📋 Planned
 **Created:** 2025-12-25
@@ -9,10 +9,10 @@
 
 ## Overview
 
-Replace MockLLMProvider with real OpenAI API calls for natural, contextual conversations in Chat Coach, while maintaining full backward compatibility with Spec4/Lingvist.
+Replace MockLLMProvider with real LLM for natural, contextual conversations in Chat Coach, supporting both cloud (OpenAI) and local (llama.cpp) providers, while maintaining full backward compatibility with Spec4/Lingvist.
 
 **Current State:** Chat Coach uses MockLLMProvider with heuristic-based responses (v5)
-**Target State:** Chat Coach uses OpenAI API via HTTP (no SDK) for chat_stream(), with Mock fallback
+**Target State:** Chat Coach uses local LLM (llama.cpp) or OpenAI API via HTTP (no SDK), with strict mode to prevent silent fallback
 
 ---
 
@@ -38,13 +38,12 @@ Replace MockLLMProvider with real OpenAI API calls for natural, contextual conve
 - No database migrations required
 - No breaking changes to WebSocket protocol
 
-### 4. Offline-First Design
-- Feature flags control network access
-- Graceful degradation to Mock when:
-  - Network disabled
-  - API key missing
-  - Timeout/error occurs
-  - Explicit CHAT_LLM_PROVIDER=mock
+### 4. Offline-First Design with Local LLM Preference
+- **Primary:** Local LLM (llama.cpp) running on user's machine (8GB VRAM)
+- **Optional:** Cloud LLM (OpenAI) with explicit opt-in
+- Feature flags control provider selection
+- Strict mode prevents silent fallback to Mock
+- Local LLM works completely offline (no network required)
 
 ---
 
@@ -111,6 +110,121 @@ Replace MockLLMProvider with real OpenAI API calls for natural, contextual conve
 
 ---
 
+## Local LLM (8GB VRAM)
+
+### Runtime Options
+
+#### Opção A: Docker (llama.cpp server)
+**File:** `docker-compose.yml`
+
+Add `llm` service:
+- Image: `ghcr.io/ggerganov/llama.cpp:server`
+- Expose port: `8080` (internal)
+- Network: `filltheword-net`
+- Volume: `llm_models:/models`
+- Command: Server pointing to `/models/model.gguf`
+- GPU: Optional (via deploy.resources.reservations.devices)
+
+**API Environment:**
+```yaml
+CHAT_LLM_PROVIDER=llamacpp
+CHAT_LLM_BASE_URL=http://llm:8080/v1
+CHAT_LLM_MODEL=qwen2.5-7b-instruct
+CHAT_LLM_STRICT=true
+```
+
+#### Opção B: Host (LM Studio)
+**File:** `docker-compose.yml`
+
+API service uses:
+```yaml
+CHAT_LLM_BASE_URL=http://host.docker.internal:1234/v1
+```
+
+**Prerequisites:**
+- LM Studio running on host
+- Port `1234` exposed
+- Model loaded in LM Studio
+
+### Feature Flags (Local LLM)
+
+#### CHAT_LLM_PROVIDER
+- **Values:** `mock` | `openai_http` | `llamacpp`
+- **Default:** `llamacpp` (changed from `mock`)
+- **Purpose:** Explicit provider selection
+
+#### CHAT_LLM_BASE_URL
+- **Format:** URL with `/v1` suffix
+  - Docker: `http://llm:8080/v1`
+  - Host: `http://host.docker.internal:1234/v1`
+- **Default:** (empty)
+- **Required:** Only when CHAT_LLM_PROVIDER=llamacpp or openai_http
+
+#### CHAT_LLM_MODEL
+- **Format:** Model name (identifier in server)
+  - llama.cpp: Filename without `.gguf` (e.g., `qwen2.5-7b-instruct`)
+  - OpenAI: Model name (e.g., `gpt-4o-mini`)
+- **Default:** `qwen2.5-7b-instruct`
+- **Purpose:** Model selection
+
+#### CHAT_LLM_STRICT
+- **Values:** `true` | `false`
+- **Default:** `false`
+- **Purpose:** Prevent silent fallback to Mock
+- **Behavior:**
+  - If `true` and provider fails → Send WebSocket error event
+  - If `false` and provider fails → Fallback to Mock silently
+
+#### CHAT_LLM_NETWORK_ENABLED
+- **Values:** `true` | `false`
+- **Default:** `false`
+- **Purpose:** Master switch for EXTERNAL providers only
+- **Behavior:**
+  - Local LLM (`llamacpp`) ignores this flag
+  - OpenAI (`openai_http`) respects this flag
+
+### Performance Notes (8GB VRAM)
+
+#### Recommended Models
+- **Primary:** Qwen2.5-7B-Instruct GGUF (Q4_K_M)
+  - Multilingual (EN, PT, ES)
+  - Good quality
+  - Fits in 8GB VRAM
+  - ~5GB VRAM usage
+
+- **Alternative:** Mistral-7B-Instruct-v0.3 GGUF Q4
+  - English-focused
+  - Fast inference
+  - ~4.5GB VRAM usage
+
+#### Quantization Trade-offs
+- **Q4_K_M:** Best balance (quality + size)
+- **Q5_K_M:** Better quality, ~6GB VRAM
+- **Q3_K_M:** Fits easily, lower quality
+
+### Acceptance Criteria
+
+1. **No Silent Mock Fallback:**
+   - When `CHAT_LLM_PROVIDER=llamacpp` and `CHAT_LLM_STRICT=true`
+   - Provider must be `LlamaCppLLMProvider`, NOT `MockLLMProvider`
+   - On error → WebSocket error event (no fallback)
+
+2. **Natural Conversation:**
+   - User: "hi, how are you?"
+   - Response: Natural greeting (NOT template)
+   - No "professor mecânico" patterns
+
+3. **Panel Functionality:**
+   - micro_tip appears when `issues=[]`
+   - Issues detected when errors present
+   - Panel does NOT zero on Enter
+
+4. **Offline Operation:**
+   - Local LLM works with `CHAT_LLM_NETWORK_ENABLED=false`
+   - No external network calls
+
+
+
 ## Implementation Plan
 
 ### FASE 2 - Apply (Backend)
@@ -146,34 +260,110 @@ class OpenAILLMProvider(LLMProviderBase):
 - Error fallback to MockLLMProvider on network/API failure
 - Streaming via `async for` generator
 
-#### 2.2 Factory Pattern
+#### 2.1b Local LLM Provider Implementation
+**File:** `/api/app/llm/llamacpp_provider.py`
+
+```python
+class LlamaCppLLMProvider(LLMProviderBase):
+    def __init__(
+        self,
+        base_url: str,
+        model: str = "qwen2.5-7b-instruct",
+        timeout: int = 60,
+        strict: bool = False
+    ):
+        self.base_url = base_url
+        self.model = model
+        self.timeout = timeout
+        self.strict = strict
+        self.client = httpx.AsyncClient(timeout=timeout)
+
+    async def chat_stream(self, messages, system_prompt, generation_config):
+        # Call llama.cpp server (OpenAI-compatible)
+        # POST {base_url}/chat/completions with stream=true
+        # No API key required
+        # Stream tokens via async generator
+        # If strict=True, raise on error; else fallback to Mock
+
+    async def micro_eval(self, context, lesson_frame, draft, student_profile):
+        # Use heuristic evaluation (separate from Mock)
+        # TODO: Extract logic from Mock to helper module
+
+    async def autocomplete(self, context, lesson_frame, draft, student_profile):
+        # Use heuristic autocomplete (separate from Mock)
+        # TODO: Extract logic from Mock to helper module
+```
+
+**Key Decisions:**
+- OpenAI-compatible API (same endpoints, no API key)
+- Base URL includes `/v1` suffix
+- Filter `generation_config` to only send supported params:
+  - `temperature`, `max_tokens`, `top_p`, `frequency_penalty`, `presence_penalty`
+  - Ignore internal params like `lesson_frame`
+- Strict mode: Raise exception instead of silent Mock fallback
+- micro_eval/autocomplete: Keep heuristic (can refactor later)
+
+
+#### 2.2 Factory Pattern (Updated)
 **File:** `/api/app/llm/factory.py`
 
 ```python
 def get_llm_provider_from_env() -> LLMProviderBase:
     """Read feature flags and return appropriate provider."""
-    provider = os.getenv("CHAT_LLM_PROVIDER", "mock")
+    provider = os.getenv("CHAT_LLM_PROVIDER", "llamacpp")
+    strict = os.getenv("CHAT_LLM_STRICT", "false").lower() == "true"
 
-    network_enabled = os.getenv("CHAT_LLM_NETWORK_ENABLED", "false").lower() == "true"
-    if not network_enabled:
-        return MockLLMProvider()
+    # Local LLM (llamacpp) - ignores CHAT_LLM_NETWORK_ENABLED
+    if provider == "llamacpp":
+        base_url = os.getenv("CHAT_LLM_BASE_URL")
+        if not base_url:
+            msg = "CHAT_LLM_PROVIDER=llamacpp but CHAT_LLM_BASE_URL not set"
+            if strict:
+                raise ValueError(msg)
+            logger.warning(f"{msg}, falling back to Mock")
+            return MockLLMProvider()
 
+        model = os.getenv("CHAT_LLM_MODEL", "qwen2.5-7b-instruct")
+        timeout = int(os.getenv("CHAT_OPENAI_TIMEOUT_S", "60"))
+
+        logger.info(f"Using LlamaCppLLMProvider (model={model}, base_url={base_url}, strict={strict})")
+        return LlamaCppLLMProvider(base_url=base_url, model=model, timeout=timeout, strict=strict)
+
+    # OpenAI (external) - respects CHAT_LLM_NETWORK_ENABLED
     if provider == "openai_http":
+        network_enabled = os.getenv("CHAT_LLM_NETWORK_ENABLED", "false").lower() == "true"
+        if not network_enabled:
+            if strict:
+                raise ValueError("CHAT_LLM_NETWORK_ENABLED=false but CHAT_LLM_STRICT=true")
+            logger.info("CHAT_LLM_NETWORK_ENABLED=false, using MockLLMProvider")
+            return MockLLMProvider()
+
         api_key = os.getenv("CHAT_OPENAI_API_KEY")
         if not api_key:
-            logger.warning("CHAT_OPENAI_API_KEY not set, falling back to Mock")
+            msg = "CHAT_OPENAI_API_KEY not set"
+            if strict:
+                raise ValueError(msg)
+            logger.warning(f"{msg}, falling back to Mock")
             return MockLLMProvider()
 
         model = os.getenv("CHAT_OPENAI_MODEL", "gpt-4o-mini")
         timeout = int(os.getenv("CHAT_OPENAI_TIMEOUT_S", "30"))
 
-        return OpenAILLMProvider(api_key=api_key, model=model, timeout=timeout)
+        logger.info(f"Using OpenAILLMProvider (model={model}, strict={strict})")
+        return OpenAILLMProvider(api_key=api_key, model=model, timeout=timeout, strict=strict)
 
-    # Default fallback
+    # Mock (explicit or default)
+    logger.info("Using MockLLMProvider")
     return MockLLMProvider()
 ```
 
-#### 2.3 Update Chat Endpoint
+**Key Changes:**
+- Default provider changed from `mock` to `llamacpp`
+- Local LLM ignores `CHAT_LLM_NETWORK_ENABLED`
+- `CHAT_LLM_STRICT` controls error behavior (raise vs fallback)
+- Clear logging: "Using X Provider (strict=Y)"
+
+#### 2.3 Update Chat Endpoint (Enhanced)
 **File:** `/api/app/api/api_v1/endpoints/chat.py`
 
 **Line 32 (BEFORE):**
@@ -186,6 +376,34 @@ llm_provider = MockLLMProvider()
 from app.llm.factory import get_llm_provider_from_env
 llm_provider = get_llm_provider_from_env()
 ```
+
+**Additional Changes:**
+
+1. **generation_config Cleanup:**
+   - Remove internal objects (e.g., `lesson_frame`) from `generation_config`
+   - Only keep standard LLM params: `temperature`, `max_tokens`, `top_p`, etc.
+
+2. **System Prompt Construction:**
+   - Build `system_prompt` from `lesson_frame_json`
+   - Example:
+   ```python
+   lesson_frame = conversation.lesson_frame_json
+   system_prompt = f"""You are an English conversation tutor helping a {lesson_frame.get('cefr_target', 'A2')} level student.
+
+   Learning Goal: {lesson_frame.get('learning_goal', 'conversation practice')}
+   Topic: {lesson_frame.get('topic', 'general')}
+   Expected Intent: {lesson_frame.get('expected_intent', 'general conversation')}
+
+   Keep responses conversational and natural. Respond to what the user actually says.
+   """
+   ```
+
+3. **Provider Logging:**
+   - Log after initialization:
+   ```python
+   logger.info(f"Chat Coach LLM provider: {get_provider_name(llm_provider)} (strict={strict}, base_url={base_url})")
+   ```
+
 
 #### 2.4 Improve Mock Heuristics
 **File:** `/api/app/llm/mock_provider.py`
@@ -248,9 +466,249 @@ micro_tip?: string;
 
 ---
 
+### FASE 3 - Apply (Infrastructure: Local Runtime)
+
+#### 3.1 Docker Compose - llama.cpp Service
+**File:** `docker-compose.yml`
+
+Add `llm` service:
+
+```yaml
+services:
+  api:
+    # ... existing config ...
+    environment:
+      - CHAT_LLM_PROVIDER=llamacpp
+      - CHAT_LLM_BASE_URL=http://llm:8080/v1
+      - CHAT_LLM_MODEL=qwen2.5-7b-instruct
+      - CHAT_LLM_STRICT=true
+    depends_on:
+      - llm
+
+  llm:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: filltheword-llm
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # Internal only (not exposed to host)
+    volumes:
+      - llm_models:/models
+    environment:
+      - MODEL_PATH=/models/model.gguf
+      - HOST=0.0.0.0
+      - PORT=8080
+      - N_GPU_LAYERS=-1  # -1 = offload all to GPU (if available)
+      - N_CTX=4096       # Context window size
+    command: >
+      /llama-server
+      --model /models/model.gguf
+      --host 0.0.0.0
+      --port 8080
+      --ctx-size 4096
+      --n-gpu-layers -1
+    networks:
+      - filltheword-net
+    # GPU support (optional, requires nvidia-docker)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  llm_models:
+    driver: local
+
+networks:
+  filltheword-net:
+    driver: bridge
+```
+
+#### 3.2 Model Download Script
+**File:** `scripts/download_model.sh`
+
+```bash
+#!/bin/bash
+# Download Qwen2.5-7B-Instruct GGUF model
+
+set -e
+
+MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf"
+MODEL_FILE="llm_models/qwen2.5-7b-instruct-q4_k_m.gguf"
+
+# Create directory
+mkdir -p llm_models
+
+# Check if model already exists
+if [ -f "$MODEL_FILE" ]; then
+    echo "Model already exists: $MODEL_FILE"
+    echo "Skipping download."
+    exit 0
+fi
+
+echo "Downloading Qwen2.5-7B-Instruct GGUF (Q4_K_M)..."
+echo "This may take a while (~5GB)..."
+
+# Download
+curl -L -o "$MODEL_FILE" "$MODEL_URL"
+
+echo "Download complete: $MODEL_FILE"
+echo "Model size: $(du -h "$MODEL_FILE" | cut -f1)"
+```
+
+**Usage:**
+```bash
+chmod +x scripts/download_model.sh
+./scripts/download_model.sh
+```
+
+#### 3.3 .gitignore Update
+**File:** `.gitignore`
+
+```gitignore
+# LLM models (large files, not committed)
+llm_models/*.gguf
+llm_models/
+!llm_models/.gitkeep
+```
+
+Create `.gitkeep`:
+```bash
+touch llm_models/.gitkeep
+git add llm_models/.gitkeep
+```
+
+#### 3.4 Model Setup Instructions
+
+**Step 1: Download Model**
+```bash
+# Option A: Using script
+./scripts/download_model.sh
+
+# Option B: Manual download
+# Visit: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF
+# Download: qwen2.5-7b-instruct-q4_k_m.gguf
+# Save to: llm_models/qwen2.5-7b-instruct-q4_k_m.gguf
+```
+
+**Step 2: Verify Model**
+```bash
+ls -lh llm_models/
+# Should show: qwen2.5-7b-instruct-q4_k_m.gguf (~5GB)
+```
+
+**Step 3: Start Services**
+```bash
+docker compose up -d --build
+```
+
+**Step 4: Verify LLM Service**
+```bash
+# Check logs
+docker logs filltheword-llm
+
+# Test API (optional)
+curl http://localhost:8080/v1/models
+```
+
+#### 3.5 Alternative: Host-Based LM Studio
+
+If using LM Studio instead of Docker llama.cpp:
+
+**1. Update docker-compose.yml (API service):**
+```yaml
+environment:
+  - CHAT_LLM_BASE_URL=http://host.docker.internal:1234/v1
+```
+
+**2. LM Studio Setup:**
+- Open LM Studio
+- Load model: Qwen2.5-7B-Instruct-GGUF
+- Start server on port `1234`
+- Enable "CORS" and "Allow External Connections"
+
+**3. Test Connection:**
+```bash
+curl http://host.docker.internal:1234/v1/models
+```
+
+---
+
 ### FASE 4 - Validate
 
-#### 4.1 Unit Tests
+#### 4.1 Unit Tests (Local LLM)
+**File:** `/api/tests/test_chat_coach_llamacpp_provider.py`
+
+```python
+@pytest.mark.asyncio
+async def test_llamacpp_provider_chat_stream():
+    """Test llama.cpp provider with MockTransport."""
+    # Mock SSE response
+    def handler(request):
+        # Return SSE stream with tokens
+        return httpx.Response(
+            200,
+            content=b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
+                    b'data: {"choices":[{"delta":{"content":" world"}}]}\n\n'
+                    b'data: [DONE]\n\n',
+            headers={"Content-Type": "text/event-stream"}
+        )
+
+    transport = httpx.MockTransport(handler)
+    provider = LlamaCppLLMProvider(base_url="http://test:8080/v1")
+    provider.client = httpx.AsyncClient(transport=transport)
+
+    tokens = []
+    async for token in provider.chat_stream(messages, system_prompt, generation_config):
+        tokens.append(token)
+
+    assert "".join(tokens) == "Hello world"
+
+@pytest.mark.asyncio
+async def test_llamacpp_provider_strict_mode():
+    """Test strict mode raises on error."""
+    provider = LlamaCppLLMProvider(
+        base_url="http://invalid:9999/v1",
+        strict=True
+    )
+
+    with pytest.raises(Exception):
+        tokens = []
+        async for token in provider.chat_stream(messages, system_prompt, generation_config):
+            tokens.append(token)
+
+@pytest.mark.asyncio
+async def test_llamacpp_provider_filters_generation_config():
+    """Test that generation_config is filtered."""
+    provider = LlamaCppLLMProvider(base_url="http://test:8080/v1")
+
+    # Mock handler to inspect request
+    def handler(request):
+        payload = json.loads(request.content)
+        # Should NOT include lesson_frame
+        assert "lesson_frame" not in payload
+        # Should include standard params
+        assert "temperature" in payload
+        assert "max_tokens" in payload
+        return httpx.Response(200, content=b'data: [DONE]\n\n')
+
+    transport = httpx.MockTransport(handler)
+    provider.client = httpx.AsyncClient(transport=transport)
+
+    # Call with generation_config containing lesson_frame
+    gen_config = {
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "lesson_frame": {"topic": "past_simple"}  # Should be filtered
+    }
+
+    async for token in provider.chat_stream(messages, system_prompt, gen_config):
+        pass
+```
+
+#### 4.2 Unit Tests (OpenAI Provider - Existing)
 **File:** `/api/tests/test_chat_coach_openai_provider.py`
 
 ```python
@@ -299,25 +757,92 @@ async def test_portuguese_greeting_detection():
         assert len(analysis["detected_errors"]) > 0
 ```
 
-#### 4.2 Manual Validation Test Cases
+#### 4.2 Manual Validation (Local LLM)
+
+**Prerequisites:**
+```bash
+# 1. Download model
+./scripts/download_model.sh
+
+# 2. Start services
+docker compose up -d --build
+
+# 3. Verify LLM service
+docker logs filltheword-llm
+# Should show: "llama server listening at..."
+```
 
 **Conversation Test Cases:**
-1. **PT/ES Greeting:** User: "ola, how are you" → Assistant: Greets back, mentions comma issue
-2. **Meta-Question:** User: "what should I practice?" → Assistant: Explains Chat Coach usage
+1. **Natural Greeting:** User: "hi, how are you?" → Assistant: Natural greeting (NOT template)
+2. **PT Greeting:** User: "ola, tudo bem?" → Assistant: Responds naturally, may mention comma
 3. **Grammar Error:** User: "I go to market yesterday" → Assistant: Corrects to "went"
-4. **No Issues:** User: "Yesterday I went to the market" → Assistant: Affirms + follows up
+4. **Meta-Question:** User: "what should I practice?" → Assistant: Explains Chat Coach
+5. **No Issues:** User: "Yesterday I went to the market" → Assistant: Affirms + asks follow-up
 
 **Panel Test Cases:**
-1. **Typing with errors:** Bar score drops, issues show
-2. **Press Enter:** Panel KEEPS showing feedback (NOT zeros to 100)
-3. **Start new message:** Panel clears, fresh feedback appears
-4. **Perfect sentence:** issues=[], micro_tip shows
+1. **Typing with errors:** Bar score drops (e.g., 45), issues show in right panel
+2. **Press Enter:** Panel KEEPS showing feedback (does NOT reset to 100)
+3. **Start new message:** Type new draft → Panel clears, fresh feedback appears
+4. **Perfect sentence:** Type "Yesterday I went to the market" → issues=[], micro_tip shows
+5. **micro_tip content:** Should be contextual (e.g., "Well done! Tell me more about it.")
 
 **Feature Flag Test Cases:**
-1. `CHAT_LLM_PROVIDER=mock` → Uses Mock
-2. `CHAT_LLM_NETWORK_ENABLED=false` → Uses Mock (even if provider=openai_http)
-3. `CHAT_OPENAI_API_KEY missing` → Falls back to Mock with warning log
-4. `CHAT_LLM_PROVIDER=openai_http + key set` → Uses OpenAI
+1. `CHAT_LLM_PROVIDER=llamacpp` + strict=false → Falls back to Mock on error
+2. `CHAT_LLM_PROVIDER=llamacpp` + strict=true → Raises error (WS error event) on failure
+3. `CHAT_LLM_PROVIDER=mock` → Uses MockLLMProvider
+4. `CHAT_LLM_PROVIDER=openai_http` + network=false → Uses Mock (respects network flag)
+5. `CHAT_LLM_PROVIDER=llamacpp` + network=false → Uses LlamaCpp (ignores network flag)
+
+**Performance Test (8GB VRAM):**
+- Monitor GPU: `nvidia-smi` or equivalent
+- Expected VRAM usage: ~5GB for Qwen2.5-7B Q4_K_M
+- Token generation speed: ~20-50 tokens/s (depends on GPU)
+
+#### 4.3 Offline Tests (No Network)
+
+**Test Setup:**
+```bash
+# Disconnect from network (optional)
+# Or just ensure CHAT_LLM_PROVIDER=llamacpp (local)
+```
+
+**Test Cases:**
+1. **Local LLM Works Offline:**
+   - Set `CHAT_LLM_PROVIDER=llamacpp`
+   - Set `CHAT_LLM_NETWORK_ENABLED=false`
+   - Verify: Chat Coach works normally
+   - Verify: No external network calls (check logs)
+
+2. **Strict Mode Error:**
+   - Stop LLM service: `docker stop filltheword-llm`
+   - Set `CHAT_LLM_STRICT=true`
+   - Try to send message
+   - Verify: WebSocket error event sent
+   - Verify: User sees error message (not silent fallback)
+
+3. **Non-Strict Mode Fallback:**
+   - Stop LLM service: `docker stop filltheword-llm`
+   - Set `CHAT_LLM_STRICT=false`
+   - Try to send message
+   - Verify: Falls back to Mock silently
+   - Verify: Conversation continues (no error)
+
+#### 4.4 Manual Validation (OpenAI - Optional)
+
+**Test Setup:**
+```bash
+# Set OpenAI credentials
+export CHAT_LLM_PROVIDER=openai_http
+export CHAT_LLM_NETWORK_ENABLED=true
+export CHAT_OPENAI_API_KEY=sk-...
+export CHAT_OPENAI_MODEL=gpt-4o-mini
+docker compose restart api
+```
+
+**Test Cases:**
+1. **Natural Conversation:** Send message → Verify natural response from OpenAI
+2. **Error Handling:** Invalid API key → Verify fallback or error (depending on strict mode)
+
 
 ---
 
@@ -339,15 +864,37 @@ async def test_portuguese_greeting_detection():
 
 ## Validation Checklist
 
-### Backend
+### Backend (Local LLM)
+- [ ] `LlamaCppLLMProvider` implements `LLMProviderBase` correctly
+- [ ] `chat_stream()` calls llama.cpp server via HTTP (OpenAI-compatible)
+- [ ] SSE streaming works (tokens arrive incrementally)
+- [ ] `generation_config` filtering works (lesson_frame removed)
+- [ ] Strict mode raises exception on error
+- [ ] Non-strict mode falls back to Mock on error
+- [ ] micro_eval uses heuristic (not MockLLMProvider directly)
+- [ ] autocomplete uses heuristic (not MockLLMProvider directly)
+
+### Backend (OpenAI)
 - [ ] `OpenAILLMProvider` implements `LLMProviderBase` correctly
 - [ ] `chat_stream()` calls OpenAI API via HTTP and streams tokens
 - [ ] Timeout handling works (no unhandled exceptions)
-- [ ] Fallback to Mock on API error
-- [ ] `factory.get_llm_provider_from_env()` respects all feature flags
-- [ ] `chat.py` uses factory instead of hardcoded MockLLMProvider
-- [ ] Mock heuristics detect PT/ES greetings, "i", contractions
-- [ ] All existing tests still pass (10/10)
+- [ ] Fallback to Mock on API error (if not strict)
+
+### Factory
+- [ ] Default provider changed to `llamacpp`
+- [ ] `CHAT_LLM_PROVIDER=llamacpp` creates `LlamaCppLLMProvider`
+- [ ] `CHAT_LLM_PROVIDER=openai_http` creates `OpenAILLMProvider`
+- [ ] `CHAT_LLM_PROVIDER=mock` creates `MockLLMProvider`
+- [ ] Local LLM ignores `CHAT_LLM_NETWORK_ENABLED`
+- [ ] OpenAI respects `CHAT_LLM_NETWORK_ENABLED`
+- [ ] `CHAT_LLM_STRICT=true` prevents fallback
+- [ ] Clear logging on startup
+
+### Chat Endpoint
+- [ ] `chat.py` uses factory instead of hardcoded provider
+- [ ] `generation_config` cleanup (remove lesson_frame)
+- [ ] `system_prompt` constructed from `lesson_frame_json`
+- [ ] Provider logged on startup
 
 ### Frontend
 - [ ] `DraftFeedbackOut` schema includes `micro_tip` field
@@ -356,16 +903,36 @@ async def test_portuguese_greeting_detection():
 - [ ] `AnalysisPanel` renders micro_tip when issues=[]
 - [ ] Panel persists on Enter (regression test)
 
+### Infrastructure
+- [ ] `llm` service added to docker-compose.yml
+- [ ] `llm_models` volume created
+- [ ] GPU support configured (optional)
+- [ ] `download_model.sh` script works
+- [ ] `.gitignore` excludes `.gguf` files
+
 ### Integration
-- [ ] Chat Coach works with OpenAI (CHAT_LLM_PROVIDER=openai_http)
-- [ ] Chat Coach works with Mock (CHAT_LLM_PROVIDER=mock)
-- [ ] Chat Coach works offline (CHAT_LLM_NETWORK_ENABLED=false)
+- [ ] Chat Coach works with local LLM (llamacpp)
+- [ ] Chat Coach works with OpenAI (openai_http)
+- [ ] Chat Coach works with Mock (mock)
+- [ ] Local LLM works offline (network disabled)
 - [ ] Spec4/Lingvist unaffected (smoke test)
 
 ### Documentation
 - [ ] Environment variables documented in README.md
-- [ ] Privacy note about external API added
+- [ ] Model download instructions clear
+- [ ] 8GB VRAM requirements documented
+- [ ] Privacy note about local vs cloud LLM
 - [ ] Change file updated with validation evidence
+
+### Tests
+- [ ] Unit tests for LlamaCppLLMProvider with MockTransport
+- [ ] Unit tests for strict mode error handling
+- [ ] Unit tests for generation_config filtering
+- [ ] Manual validation: Natural conversation (not template)
+- [ ] Manual validation: Panel works (issues + micro_tip)
+- [ ] Manual validation: Offline operation
+- [ ] Performance test: ~5GB VRAM usage
+
 
 ---
 
