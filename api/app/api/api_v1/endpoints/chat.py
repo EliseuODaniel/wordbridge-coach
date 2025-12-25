@@ -64,23 +64,105 @@ def get_default_student_profile() -> dict:
     }
 
 
+def _generate_micro_tip(draft: str, lesson_frame: dict) -> str:
+    """
+    Generate a helpful tip when no issues are detected.
+
+    Provides contextual encouragement and suggests next steps.
+
+    Args:
+        draft: User's draft text
+        lesson_frame: Current lesson frame
+
+    Returns:
+        Helpful tip message
+    """
+    import random
+
+    # Create stable random based on draft content
+    seed = sum(ord(c) for c in draft) % 100
+    rng = random.Random(seed)
+
+    # Detect draft characteristics
+    draft_lower = draft.lower().strip()
+    word_count = len(draft_lower.split())
+
+    # Very short drafts (< 5 words)
+    if word_count < 5:
+        tips = [
+            "Good start! Try expanding with more details.",
+            "Nice beginning! Can you add more information?",
+            "Great! Tell me more about this.",
+        ]
+        return tips[seed % len(tips)]
+
+    # Questions (encourage elaboration)
+    if draft_lower.endswith("?"):
+        tips = [
+            "Good question! Try asking for more specific details.",
+            "Nice! You can also ask about feelings or opinions.",
+            "Great question! What made you think about this?",
+        ]
+        return tips[seed % len(tips)]
+
+    # Past tense (encourage follow-up)
+    if any(w in draft_lower for w in ["yesterday", "last", "ago", "went", "did"]):
+        tips = [
+            "Well done! Can you tell me more about it?",
+            "Good job! How did you feel about it?",
+            "Nice! What happened next?",
+        ]
+        return tips[seed % len(tips)]
+
+    # Future tense (encourage planning)
+    if any(w in draft_lower for w in ["tomorrow", "will", "going to", "plan"]):
+        tips = [
+            "Sounds exciting! Any specific preparations?",
+            "Great! When will you do this?",
+            "Nice! Who will you go with?",
+        ]
+        return tips[seed % len(tips)]
+
+    # Hobbies/likes (encourage elaboration)
+    if any(w in draft_lower for w in ["like", "love", "enjoy", "favorite"]):
+        tips = [
+            "That's interesting! How often do you do this?",
+            "Nice! What do you like most about it?",
+            "Great! Since when have you enjoyed this?",
+        ]
+        return tips[seed % len(tips)]
+
+    # Default encouragement
+    tips = [
+        "Great job! Try asking a follow-up question.",
+        "Well done! Can you add more details?",
+        "Nice! Tell me more about it.",
+        "Good! What else would you like to share?",
+    ]
+    return tips[seed % len(tips)]
+
+
 def _build_draft_feedback(
     conversation_id: str,
     eval_result: dict,
     now_ms: int,
-    ghost_suggestion: str = None
+    ghost_suggestion: str = None,
+    draft: str = None,
+    lesson_frame: dict = None
 ) -> dict:
     """
     Build draft_feedback response from micro_eval result.
 
-    Calculates bar score, maps issues, and optionally includes ghost suggestion.
-    Reusable helper for both draft_update and request_autocomplete.
+    Calculates bar score, maps issues, optionally includes ghost suggestion,
+    and generates micro_tip when no issues are detected.
 
     Args:
         conversation_id: UUID of the conversation
         eval_result: Result from llm_provider.micro_eval()
         now_ms: Current timestamp in milliseconds
         ghost_suggestion: Optional ghost suggestion from autocomplete
+        draft: Optional draft text for micro_tip generation
+        lesson_frame: Optional lesson frame for micro_tip generation
 
     Returns:
         Dict matching DraftFeedbackOut schema
@@ -105,6 +187,11 @@ def _build_draft_feedback(
             "suggestions": issue.get("suggestions", [])
         })
 
+    # Generate micro_tip when no issues
+    micro_tip = None
+    if not issues and draft:
+        micro_tip = _generate_micro_tip(draft, lesson_frame or {})
+
     return DraftFeedbackOut(
         type="draft_feedback",
         conversation_id=conversation_id,
@@ -119,6 +206,7 @@ def _build_draft_feedback(
         lesson_alignment_score=eval_result["lesson_alignment_score"],
         issues=issues,
         ghost_suggestion=ghost_suggestion,
+        micro_tip=micro_tip,
         server_ts_ms=now_ms
     ).model_dump()
 
@@ -485,7 +573,9 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
             conversation_id=str(conversation.id),
             eval_result=eval_result,
             now_ms=now_ms,
-            ghost_suggestion=None
+            ghost_suggestion=None,
+            draft=draft_text,
+            lesson_frame=conversation.lesson_frame_json
         )
         await websocket.send_json(feedback)
     else:
@@ -526,7 +616,9 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
         conversation_id=str(conversation.id),
         eval_result=eval_result,
         now_ms=now_ms,
-        ghost_suggestion=autocomplete_result.get("ghost_suggestion", "")
+        ghost_suggestion=autocomplete_result.get("ghost_suggestion", ""),
+        draft=draft_text,
+        lesson_frame=conversation.lesson_frame_json
     )
 
     # Send draft_feedback with real issues + ghost suggestion
@@ -551,7 +643,9 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
         conversation_id=str(conversation.id),
         eval_result=eval_result,
         now_ms=now_ms,
-        ghost_suggestion=None
+        ghost_suggestion=None,
+        draft=content,
+        lesson_frame=conversation.lesson_frame_json
     )
     await websocket.send_json(feedback)
 

@@ -47,6 +47,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   const [barScore, setBarScore] = useState<number>(100);
   const [issues, setIssues] = useState<any[]>([]);
   const [ghostSuggestion, setGhostSuggestion] = useState<string | null>(null);
+  const [microTip, setMicroTip] = useState<string | null>(null);
 
   // Track if we're showing feedback from a sent message
   const [isShowingLastFeedback, setIsShowingLastFeedback] = useState<boolean>(false);
@@ -139,6 +140,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     setBarScore(event.bar_score_raw);
     setIssues(event.issues);
     setGhostSuggestion(event.ghost_suggestion);
+    setMicroTip(event.micro_tip || null);
   };
 
   /**
@@ -406,7 +408,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
         {/* Analysis sidebar */}
         <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto p-4">
-          <AnalysisPanel issues={issues} />
+          <AnalysisPanel issues={issues} micro_tip={microTip} />
         </div>
       </div>
     </div>

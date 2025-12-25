@@ -2,6 +2,7 @@
  * AnalysisPanel Component
  *
  * Displays feedback issues (grammar, spelling, etc.) with suggestions.
+ * When no issues, shows micro_tip if available.
  */
 
 import React from 'react';
@@ -9,10 +10,24 @@ import type { DraftIssue } from '../services/api';
 
 interface AnalysisPanelProps {
   issues: DraftIssue[];
+  micro_tip?: string | null;
   className?: string;
 }
 
-const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ issues, className = '' }) => {
+const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ issues, micro_tip, className = '' }) => {
+  // Case 1: No issues + micro_tip available
+  if (issues.length === 0 && micro_tip) {
+    return (
+      <div className={`text-center py-4 ${className}`}>
+        <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3 mb-2">
+          <p className="text-sm text-blue-200">💡 {micro_tip}</p>
+        </div>
+        <p className="text-gray-500 text-xs">No issues detected. Keep up the good work!</p>
+      </div>
+    );
+  }
+
+  // Case 2: No issues + no micro_tip
   if (issues.length === 0) {
     return (
       <div className={`text-center py-4 ${className}`}>
@@ -21,6 +36,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({ issues, className = '' })
     );
   }
 
+  // Case 3: Has issues
   const getCategoryIcon = (category: string): string => {
     const icons: Record<string, string> = {
       spelling: '🔤',

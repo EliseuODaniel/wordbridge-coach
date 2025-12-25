@@ -149,6 +149,7 @@ class DraftFeedbackOut(BaseModel):
     lesson_alignment_score: float = Field(..., description="Lesson alignment score")
     issues: List[DraftIssue] = Field(default_factory=list, description="Detected issues")
     ghost_suggestion: Optional[str] = Field(None, description="Ghost text suggestion")
+    micro_tip: Optional[str] = Field(None, description="Helpful tip shown when issues=[]")
     server_ts_ms: int = Field(..., description="Server timestamp (milliseconds)")
 
     class Config:

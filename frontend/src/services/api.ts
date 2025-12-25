@@ -383,6 +383,7 @@ export interface DraftFeedbackEvent {
   lesson_alignment_score: number;
   issues: DraftIssue[];
   ghost_suggestion: string | null;
+  micro_tip?: string | null;  // Helpful tip shown when issues=[]
   server_ts_ms: number;
 }
 
