@@ -10,6 +10,7 @@ import AnswerInput from './AnswerInput';
 import FeedbackMessage from './FeedbackMessage';
 import SessionCounter from './SessionCounter';
 import InsightsSection from './InsightsSection';
+import PreviousCardReplayModal from './PreviousCardReplayModal';
 
 interface StudySessionProps {
   userId?: string;
@@ -30,11 +31,18 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
   // Track if user has interacted (for autoplay gating)
   const [userHasInteracted, setUserHasInteracted] = useState(false);
 
+  // Previous card replay state
+  const [previousCard, setPreviousCard] = useState<CardResponse | null>(null);
+  const [showPreviousCardModal, setShowPreviousCardModal] = useState(false);
+
   // Ref to manage next card timeout and prevent "ghost timers"
   const nextCardTimeoutRef = useRef<number | null>(null);
 
   // Ref to track previous card_id for autoplay logic
   const previousCardIdRef = useRef<string | null>(null);
+
+  // Ref to track previous card (avoids stale state in closures)
+  const previousCardRef = useRef<CardResponse | null>(null);
 
   // Load stats from API
   const loadStats = useCallback(async () => {
@@ -87,6 +95,13 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         wordId: card.word_id.slice(0, 8) + '...',
         sentenceLength: card.sentence.length
       });
+
+      // Save current card as previous before updating
+      if (currentCard) {
+        previousCardRef.current = currentCard;
+        setPreviousCard(currentCard);
+      }
+
       setCurrentCard(card);
 
     } catch (error) {
@@ -335,6 +350,14 @@ return (
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowPreviousCardModal(true)}
+              disabled={!previousCard}
+              className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Ver frase anterior"
+            >
+              ← Frase anterior
+            </button>
             <a
               href="/?mode=lingvist"
               className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
@@ -423,6 +446,19 @@ return (
           <p>Press <kbd className="px-2 py-1 bg-gray-700 text-gray-100 rounded">Enter</kbd> to submit answer</p>
         </div>
       </div>
+
+      {/* Previous Card Replay Modal */}
+      <PreviousCardReplayModal
+        open={showPreviousCardModal}
+        onClose={() => setShowPreviousCardModal(false)}
+        title={previousCard?.sentence || null}
+        answer={previousCard?.word || null}
+        translation={previousCard?.sentence_translation || null}
+        source={previousCard?.sentence_source || null}
+        audioWordUrl={previousCard?.audio_word_url || null}
+        audioSentenceUrl={previousCard?.audio_sentence_url || null}
+        autoPlay={true}
+      />
     </div>
   );
 };

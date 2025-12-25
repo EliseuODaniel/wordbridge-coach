@@ -1,10 +1,11 @@
 /** Lingvist Mode Study Session Component */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cardsApi, type LingvistCardResponse, type AnswerResponse } from '../services/api';
 import { audioService } from '../services/audio';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
+import PreviousCardReplayModal from './PreviousCardReplayModal';
 
 interface LingvistSessionProps {
   userId?: string;
@@ -38,6 +39,13 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
   // Track manual audio playback errors
   const [audioError, setAudioError] = useState<string | null>(null);
 
+  // Previous card replay state
+  const [previousCard, setPreviousCard] = useState<LingvistCardResponse | null>(null);
+  const [showPreviousCardModal, setShowPreviousCardModal] = useState(false);
+
+  // Ref to track previous card (avoids stale state in closures)
+  const previousCardRef = useRef<LingvistCardResponse | null>(null);
+
   // Load next card
   const loadNextCard = useCallback(async (excludeCardId?: string) => {
     try {
@@ -67,6 +75,12 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
         micro_progress: card.micro_progress,
         correct_answer: card.correct_answer
       });
+
+      // Save current card as previous before updating
+      if (currentCard) {
+        previousCardRef.current = currentCard;
+        setPreviousCard(currentCard);
+      }
 
       setCurrentCard(card);
 
@@ -261,6 +275,14 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowPreviousCardModal(true)}
+              disabled={!previousCard}
+              className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Ver frase anterior"
+            >
+              ← Frase anterior
+            </button>
             <a
               href="/?mode=spec4"
               className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
@@ -520,6 +542,19 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
           </div>
         )}
       </div>
+
+      {/* Previous Card Replay Modal */}
+      <PreviousCardReplayModal
+        open={showPreviousCardModal}
+        onClose={() => setShowPreviousCardModal(false)}
+        title={previousCard?.sentence || null}
+        answer={previousCard?.correct_answer || null}
+        translation={previousCard?.sentence_translation_pt || null}
+        source={previousCard?.sentence_source || null}
+        audioWordUrl={previousCard?.audio_word_url || null}
+        audioSentenceUrl={previousCard?.audio_sentence_url || null}
+        autoPlay={true}
+      />
     </div>
   );
 };

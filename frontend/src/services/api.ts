@@ -12,6 +12,7 @@ export interface CardResponse {
   card_id: string;
   word_id: string;
   sentence_id: string;
+  word: string;
   sentence: string;
   gap: Gap;
   sentence_translation: string;
