@@ -363,6 +363,298 @@ POST /api/v1/cards/{card_id}/answer
 
 **Spec4 Critical**: `ReviewEvent.sentence_id` é **SEMPRE** preenchido com `card.sentence_id` para suportar variedade de frases.
 
+### Chat Coach (Conversational Training with Real-time Feedback)
+
+**Status**: 📝 Proposed (see [change proposal](../changes/2025-12-chat-coach-mode-v1.md))
+
+The Chat Coach module uses a hybrid REST + WebSocket architecture:
+- **REST endpoints** for conversation and message management
+- **WebSocket** for real-time draft feedback and streaming responses
+
+#### REST Endpoints
+
+##### Create Conversation
+```http
+POST /api/v1/chat/conversations
+```
+
+**Request Body**:
+```json
+{
+  "user_id": "uuid-string",
+  "title": "Practice Past Simple"
+}
+```
+
+**Response**:
+```json
+{
+  "id": "new-conversation-uuid",
+  "user_id": "uuid-string",
+  "title": "Practice Past Simple",
+  "student_profile_json": {
+    "cefr_level": "A2",
+    "common_errors": ["past_simple", "articles"]
+  },
+  "lesson_frame_json": {
+    "cefr_target": "A2",
+    "learning_goal": "conversation_start",
+    "expected_intent": "introduction",
+    "topic": "getting_started",
+    "rubric": {
+      "grammar": [],
+      "vocab": [],
+      "style": ["friendly"]
+    }
+  },
+  "session_summary": "",
+  "created_at": "2025-12-25T10:00:00Z",
+  "updated_at": "2025-12-25T10:00:00Z"
+}
+```
+
+##### List Conversations
+```http
+GET /api/v1/chat/conversations?user_id={user_id}
+```
+
+**Query Parameters**:
+- `user_id` (required, string): User ID
+
+**Response**:
+```json
+[
+  {
+    "id": "conversation-uuid-1",
+    "title": "Practice Past Simple",
+    "created_at": "2025-12-25T10:00:00Z",
+    "updated_at": "2025-12-25T10:15:00Z",
+    "message_count": 15
+  },
+  {
+    "id": "conversation-uuid-2",
+    "title": "Business English",
+    "created_at": "2025-12-24T14:30:00Z",
+    "updated_at": "2025-12-24T15:00:00Z",
+    "message_count": 8
+  }
+]
+```
+
+##### Get Conversation Messages
+```http
+GET /api/v1/chat/conversations/{conversation_id}/messages
+```
+
+**Response**:
+```json
+[
+  {
+    "id": "message-uuid-1",
+    "conversation_id": "conversation-uuid",
+    "role": "system",
+    "content": "You are an English teacher. Your student is A2 level.",
+    "created_at": "2025-12-25T10:00:00Z"
+  },
+  {
+    "id": "message-uuid-2",
+    "conversation_id": "conversation-uuid",
+    "role": "assistant",
+    "content": "Hello! Let's practice past simple. What did you do last weekend?",
+    "created_at": "2025-12-25T10:00:01Z"
+  },
+  {
+    "id": "message-uuid-3",
+    "conversation_id": "conversation-uuid",
+    "role": "user",
+    "content": "I go to the beach.",
+    "created_at": "2025-12-25T10:00:10Z"
+  }
+]
+```
+
+##### Delete Conversation
+```http
+DELETE /api/v1/chat/conversations/{conversation_id}
+```
+
+**Response**: `204 No Content`
+
+#### WebSocket Endpoint
+
+##### Connect to Chat
+```http
+WS /api/v1/chat/ws/{conversation_id}
+```
+
+**Connection Parameters**:
+- `conversation_id` (path parameter): UUID of conversation
+
+**Query Parameters**:
+- `user_id` (optional): User ID for validation
+
+**WebSocket Message Types**:
+
+###### Client → Server Events
+
+**draft_update** (sent while typing)
+```json
+{
+  "type": "draft_update",
+  "conversation_id": "uuid-string",
+  "draft_text": "I go to the",
+  "cursor": 12,
+  "client_ts_ms": 1735132810000
+}
+```
+
+**user_message** (send final message)
+```json
+{
+  "type": "user_message",
+  "conversation_id": "uuid-string",
+  "content": "I go to the beach yesterday.",
+  "client_ts_ms": 1735132815000
+}
+```
+
+**request_autocomplete** (after idle time)
+```json
+{
+  "type": "request_autocomplete",
+  "conversation_id": "uuid-string",
+  "draft_text": "I go",
+  "client_ts_ms": 1735132812000,
+  "mode": "soft"
+}
+```
+
+**ping** (heartbeat)
+```json
+{
+  "type": "ping",
+  "ts": 1735132810000
+}
+```
+
+###### Server → Client Events
+
+**draft_feedback** (response to draft_update)
+```json
+{
+  "type": "draft_feedback",
+  "conversation_id": "uuid-string",
+  "bar_score_raw": 45.0,
+  "bar_score_components": {
+    "spelling": 100.0,
+    "grammar": 20.0,
+    "syntax": 80.0,
+    "lesson_alignment": 30.0,
+    "naturalness": 50.0
+  },
+  "lesson_alignment_score": 30.0,
+  "issues": [
+    {
+      "category": "grammar",
+      "title": "Verb tense",
+      "explanation": "Use past simple for yesterday: 'go' → 'went'",
+      "highlight_spans": [
+        {"start": 2, "end": 4}
+      ],
+      "suggestions": ["went", "traveled", "drove"]
+    }
+  ],
+  "ghost_suggestion": "went to the",
+  "server_ts_ms": 1735132810050
+}
+```
+
+**assistant_stream_token** (streaming response)
+```json
+{
+  "type": "assistant_stream_token",
+  "conversation_id": "uuid-string",
+  "token": "That"
+}
+```
+
+**assistant_done** (end of streaming)
+```json
+{
+  "type": "assistant_done",
+  "conversation_id": "uuid-string",
+  "full_content": "That's great! But remember, we use past simple for yesterday. Can you try again?",
+  "lesson_frame": {
+    "cefr_target": "A2",
+    "learning_goal": "past_simple_regular_verbs",
+    "expected_intent": "describe_recent_activity",
+    "topic": "weekend_plans",
+    "rubric": {
+      "grammar": ["past tense consistency"],
+      "vocab": ["yesterday", "last weekend", "went", "visited"],
+      "style": ["short clear sentences"]
+    },
+    "scoring_hints": {
+      "avoid": ["present continuous for past events"],
+      "encourage": ["time markers", "irregular verbs"]
+    }
+  },
+  "summary_update": "Student practiced past simple. Made error with 'go' instead of 'went'. Needs more practice with irregular verbs."
+}
+```
+
+**error**
+```json
+{
+  "type": "error",
+  "message": "Conversation not found",
+  "code": "NOT_FOUND"
+}
+```
+
+**pong** (response to ping)
+```json
+{
+  "type": "pong",
+  "ts": 1735132810000
+}
+```
+
+#### Feature Flags (Environment Variables)
+
+```bash
+# LLM Configuration
+CHAT_LLM_PROVIDER=mock              # mock | llamacpp | openai | anthropic
+CHAT_LLM_BASE_URL=http://llm:8080   # llama.cpp server URL
+
+# Real-time Feedback
+CHAT_MICRO_EVAL_MIN_INTERVAL_MS=100 # Minimum interval between LLM calls (10 Hz max)
+CHAT_IDLE_SOFT_MS=1200              # Time before first autocomplete suggestion
+CHAT_IDLE_HARD_MS=2500              # Time before extended autocomplete
+
+# UI Smoothing
+CHAT_EMA_ALPHA=0.4                  # Exponential moving average alpha (0-1)
+
+# Concurrency
+CHAT_MAX_CONCURRENT_DRAFT_UPDATES=5 # Max concurrent draft updates per connection
+```
+
+#### Rate Limiting
+
+- **draft_update**: Client should throttle to ~50ms (20 Hz max)
+- **micro_eval** (LLM calls): Backend throttles to `CHAT_MICRO_EVAL_MIN_INTERVAL_MS` (default: 100ms = 10 Hz)
+- **request_autocomplete**: Only sent after idle time (tracked by backend)
+- **Fast analyzers** (spelling/grammar/syntax): No throttling (run on every draft_update)
+
+#### Performance Targets
+
+- **draft_feedback latency**: <200ms p95 (fast analyzers) / <500ms p95 (with LLM)
+- **assistant_stream_first_token**: <500ms
+- **WebSocket connection**: <100ms
+- **Ghost suggestion**: <1500ms after idle_soft
+
+See [change proposal](../changes/2025-12-chat-coach-mode-v1.md) for complete implementation details.
+
 ### Statistics
 
 #### Get Basic Stats
