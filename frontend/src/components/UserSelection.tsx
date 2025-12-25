@@ -99,7 +99,8 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
         username: newUsername.trim(),
         language_preference: nativeLanguage,
         target_language: targetLanguage,
-        word_goal_rank: wordGoalRank
+        word_goal_rank: wordGoalRank,
+        mode: selectedMode
       };
 
       const newUser = await usersApi.createUser(userData);
@@ -121,9 +122,18 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
     }
   };
 
-  const handleStartLearning = (userId: string, mode: TrainingMode) => {
-    // Save mode preference
+  const handleStartLearning = async (userId: string, mode: TrainingMode) => {
+    // Save mode preference to localStorage
     localStorage.setItem('preferredTrainingMode', mode);
+
+    // Persist mode to backend
+    try {
+      await usersApi.updateUser(userId, { mode });
+    } catch (error) {
+      console.error('Failed to persist mode to backend:', error);
+      // Continue anyway - localStorage will keep the preference
+    }
+
     onModeSelect(mode);
     onUserSelected(userId);
   };
@@ -161,7 +171,8 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
         username: editUsername.trim(),
         language_preference: editNativeLanguage,
         target_language: editTargetLanguage,
-        word_goal_rank: editWordGoalRank  // Spec4: include goal in update
+        word_goal_rank: editWordGoalRank,
+        mode: selectedMode
       };
 
       const updatedUser = await usersApi.updateUser(userId, updateData);
