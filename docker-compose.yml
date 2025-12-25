@@ -58,6 +58,10 @@ services:
       TTS_SERVICE_URL: http://tts:8001
       AUDIO_CACHE_PATH: /audio
       DEBUG: "true"
+      LINGVIST_TRANSLATIONS_AUTOFILL: "true"
+      LINGVIST_TRANSLATIONS_PROVIDER: "google_http"
+      LINGVIST_TRANSLATIONS_NETWORK_ENABLED: "true"
+      LINGVIST_TRANSLATIONS_TARGET_LANG: "pt"
     ports:
       - "8000:8000"
     volumes:

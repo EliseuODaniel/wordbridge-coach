@@ -3,16 +3,14 @@
 import React from 'react';
 
 interface HintPanelProps {
-  grammarTagPt: string;
   correctAnswer: string;
   wordTranslationPt?: string | null;
   sentenceTranslationPt?: string | null;
-  hintLevel: number; // 0-5 based on mistakes/time
+  hintLevel: number; // 0-6 based on mistakes/time
   showAll?: boolean; // For debugging
 }
 
 const HintPanel: React.FC<HintPanelProps> = ({
-  grammarTagPt,
   correctAnswer,
   wordTranslationPt,
   sentenceTranslationPt,
@@ -26,29 +24,40 @@ const HintPanel: React.FC<HintPanelProps> = ({
 
   const shouldShow = (level: number) => showAll || hintLevel >= level;
 
-  // Level 1: Grammar Tag (already shown in card, but we reinforce here)
-  const showGrammarTag = shouldShow(1) && grammarTagPt !== 'UNK';
+  // NEW HINT PROGRESSION: One new visible hint per mistake (up to level 6)
 
-  // Level 2: Length Mask (ex: "_ _ _" for 3 letters)
+  // Level 1: Length Mask (ALWAYS show at level 1, independent of grammar)
   const lengthMask = correctAnswer.split('').map(() => '_').join(' ');
-  const showLengthMask = shouldShow(2);
+  const showLengthMask = shouldShow(1);
 
-  // Level 3: First Letter (ex: "b _ _ k")
+  // Level 2: First Letter
   const firstLetterHint = correctAnswer[0] + ' ' + correctAnswer.slice(1).split('').map(() => '_').join(' ');
-  const showFirstLetter = shouldShow(3);
+  const showFirstLetter = shouldShow(2);
 
-  // Level 4: Reveal Letters (progressive based on level)
-  const revealCount = Math.max(1, hintLevel - 3); // Level 4: 1 letter, Level 5: 2 letters, etc.
+  // Level 3-5: Reveal Letters (progressive reveal up to ~80%)
+  const maxReveal = Math.ceil(correctAnswer.length * 0.8); // Cap at 80%
+  let revealCount = 0;
+  if (hintLevel === 3) revealCount = Math.min(2, correctAnswer.length);
+  else if (hintLevel === 4) revealCount = Math.min(4, correctAnswer.length);
+  else if (hintLevel === 5) revealCount = Math.min(6, maxReveal);
+  else if (hintLevel >= 6) revealCount = maxReveal;
+
   const revealedLetters = correctAnswer
     .split('')
     .map((char, idx) => (idx < revealCount ? char : '_'))
     .join(' ');
-  const showRevealedLetters = shouldShow(4);
+  const showRevealedLetters = shouldShow(3);
 
-  // Level 5: Translation (PT-BR)
-  const showTranslation = shouldShow(5) && (wordTranslationPt || sentenceTranslationPt);
+  // Level 4: Word Translation (or "Tradução indisponível")
+  const showWordTranslation = shouldShow(4);
 
-  if (!showGrammarTag && !showLengthMask && !showFirstLetter && !showRevealedLetters && !showTranslation) {
+  // Level 5: Sentence Translation (or "Tradução indisponível")
+  const showSentenceTranslation = shouldShow(5);
+
+  // Level 6: Complete Answer (final hint)
+  const showCompleteAnswer = shouldShow(6);
+
+  if (!showLengthMask && !showFirstLetter && !showRevealedLetters && !showWordTranslation && !showSentenceTranslation && !showCompleteAnswer) {
     return null;
   }
 
@@ -58,18 +67,7 @@ const HintPanel: React.FC<HintPanelProps> = ({
         Hints
       </div>
 
-      {/* Level 1: Grammar Tag */}
-      {showGrammarTag && (
-        <div className="flex items-start gap-2">
-          <span className="text-blue-400 text-sm">📝</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Grammar</div>
-            <div className="text-sm text-gray-200">{grammarTagPt}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Level 2: Length Mask */}
+      {/* Level 1: Length Mask */}
       {showLengthMask && (
         <div className="flex items-start gap-2">
           <span className="text-yellow-400 text-sm">📏</span>
@@ -80,7 +78,7 @@ const HintPanel: React.FC<HintPanelProps> = ({
         </div>
       )}
 
-      {/* Level 3: First Letter */}
+      {/* Level 2: First Letter */}
       {showFirstLetter && (
         <div className="flex items-start gap-2">
           <span className="text-green-400 text-sm">🔤</span>
@@ -91,7 +89,7 @@ const HintPanel: React.FC<HintPanelProps> = ({
         </div>
       )}
 
-      {/* Level 4: Reveal Letters */}
+      {/* Level 3: Reveal Letters */}
       {showRevealedLetters && (
         <div className="flex items-start gap-2">
           <span className="text-purple-400 text-sm">✨</span>
@@ -102,22 +100,41 @@ const HintPanel: React.FC<HintPanelProps> = ({
         </div>
       )}
 
-      {/* Level 5: Translation */}
-      {showTranslation && (
+      {/* Level 4: Word Translation */}
+      {showWordTranslation && (
+        <div className="flex items-start gap-2">
+          <span className="text-blue-400 text-sm">📝</span>
+          <div className="flex-1">
+            <div className="text-xs text-gray-400 mb-1">Word (PT)</div>
+            <div className="text-sm text-gray-200">
+              {wordTranslationPt || <span className="text-gray-500 italic">Tradução indisponível</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Level 5: Sentence Translation */}
+      {showSentenceTranslation && (
         <div className="flex items-start gap-2">
           <span className="text-orange-400 text-sm">🌐</span>
           <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Translation</div>
-            {wordTranslationPt && (
-              <div className="text-sm text-gray-200">
-                <span className="font-semibold">Word:</span> {wordTranslationPt}
-              </div>
-            )}
-            {sentenceTranslationPt && (
-              <div className="text-sm text-gray-200 mt-1">
-                <span className="font-semibold">Sentence:</span> {sentenceTranslationPt}
-              </div>
-            )}
+            <div className="text-xs text-gray-400 mb-1">Sentence (PT)</div>
+            <div className="text-sm text-gray-200">
+              {sentenceTranslationPt || <span className="text-gray-500 italic">Tradução indisponível</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Level 6: Complete Answer */}
+      {showCompleteAnswer && (
+        <div className="flex items-start gap-2">
+          <span className="text-red-400 text-sm">💡</span>
+          <div className="flex-1">
+            <div className="text-xs text-gray-400 mb-1">Answer</div>
+            <div className="text-sm font-mono font-bold text-gray-100 tracking-widest">
+              {correctAnswer}
+            </div>
           </div>
         </div>
       )}

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from datetime import datetime, timedelta
 import uuid
+import os
+import logging
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -20,6 +22,135 @@ from app.models.user_theme_stats import UserThemeStats
 from app.models.word_theme_mapping import WordThemeMapping
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Global cache for TSV translations (override priority over MT)
+_tsv_translations_cache: Optional[dict[str, str]] = None
+
+
+def _load_tsv_translations() -> dict[str, str]:
+    """Load EN-PT translations from TSV file (priority over MT).
+
+    Returns:
+        Dict mapping lowercase word -> pt_translation
+    """
+    global _tsv_translations_cache
+
+    if _tsv_translations_cache is not None:
+        return _tsv_translations_cache
+
+    _tsv_translations_cache = {}
+    tsv_path = "/app/data/en_pt_word_translations_sample.tsv"
+
+    if not os.path.exists(tsv_path):
+        logger.info(f"TSV file not found: {tsv_path}")
+        return _tsv_translations_cache
+
+    try:
+        logger.info(f"Loading TSV translations from {tsv_path}...")
+        with open(tsv_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+
+                # Skip comments and empty lines
+                if not line or line.startswith('#'):
+                    continue
+
+                parts = line.split('\t')
+                if len(parts) < 2:
+                    continue
+
+                word = parts[0].strip()
+                pt_translation = parts[1].strip()
+
+                # Skip empty translations
+                if not pt_translation:
+                    continue
+
+                # Store with lowercase key for matching
+                _tsv_translations_cache[word.lower()] = pt_translation
+
+        logger.info(f"✅ Loaded {len(_tsv_translations_cache)} TSV translations")
+    except Exception as e:
+        logger.error(f"Failed to load TSV translations: {e}")
+
+    return _tsv_translations_cache
+
+
+def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card: 'Card'):
+    """Auto-generate translations if missing (on-demand with DB cache).
+
+    Priority:
+    1. Existing translation in DB (do nothing)
+    2. TSV override (curated translations)
+    3. MT (Argos Translate or Google Translate) if LINGVIST_TRANSLATIONS_AUTOFILL=true
+
+    Args:
+        db: Database session
+        word: Word object
+        sentence: Sentence object
+        card: Card object (for sentence reconstruction)
+    """
+    from app.services.translation_service import get_translation_service
+
+    # Load TSV cache (priority override)
+    tsv_override = _load_tsv_translations()
+
+    # --- Word translation ---
+    word_needs_translation = (
+        not word.features or
+        not isinstance(word.features, dict) or
+        not word.features.get("pt_translation") or
+        not word.features["pt_translation"].strip()
+    )
+
+    if word_needs_translation:
+        word_translation = None
+
+        # Try TSV override first
+        word_lower = word.lemma.lower() if word.lemma else ""
+        if word_lower in tsv_override:
+            word_translation = tsv_override[word_lower]
+            logger.info(f"✅ Word translation from TSV: {word.lemma} → {word_translation}")
+
+        # Fallback to MT if enabled
+        else:
+            translation_service = get_translation_service()
+            if translation_service.is_enabled():
+                word_translation = translation_service.translate(word.lemma or word.text)
+                if word_translation:
+                    logger.info(f"🤖 Word translation from {translation_service.get_provider()}: {word.lemma} → {word_translation}")
+
+        # Save to DB if translation found
+        if word_translation:
+            if not word.features:
+                word.features = {}
+            word.features['pt_translation'] = word_translation
+            db.flush()  # Flush without commit (caller commits)
+            logger.debug(f"💾 Saved word translation to DB: {word.lemma}")
+
+    # --- Sentence translation ---
+    sentence_needs_translation = (
+        not sentence.translation or
+        not sentence.translation.strip()
+    )
+
+    if sentence_needs_translation:
+        # Reconstruct sentence with word filled in
+        sentence_with_gap = sentence.text or ""
+        sentence_with_word = sentence_with_gap.replace("___", word.text or "", 1)
+
+        # Try MT if enabled (no TSV for sentences)
+        translation_service = get_translation_service()
+        if translation_service.is_enabled():
+            sentence_translation = translation_service.translate(sentence_with_word)
+            if sentence_translation:
+                logger.info(f"🤖 Sentence translation from {translation_service.get_provider()}: '{sentence_with_word[:50]}...' → '{sentence_translation[:50]}...'")
+                sentence.translation = sentence_translation
+                db.flush()  # Flush without commit (caller commits)
+                logger.debug(f"💾 Saved sentence translation to DB")
+        else:
+            logger.debug(f"⚠️ Translation service disabled, skipping sentence translation")
 
 def create_sample_data_if_needed(db: Session):
     """Create minimal sample data for testing"""
@@ -737,6 +868,9 @@ async def get_next_card_lingvist(
     enriched payload.
 
     Mix: 20% new / 80% review (more conservative than Spec4).
+
+    Auto-translation: If LINGVIST_TRANSLATIONS_AUTOFILL is enabled and
+    translations are missing, generates them on-demand using Argos Translate.
     """
     try:
         from app.schemas.lingvist import LingvistCardResponse, MicroProgress
@@ -792,12 +926,16 @@ async def get_next_card_lingvist(
                 detail={"error": "Card data incomplete", "message": "Missing card/word/sentence"}
             )
 
+        # Auto-generate translations if missing (on-demand with DB cache)
+        _autofill_translations(db, word, sentence, card)
+
         # Build grammar_tag_pt from word.part_of_speech and word.features
         grammar_tag_pt = _build_grammar_tag_pt(word)
 
         # Extract PT-BR translations
         word_translation_pt = _extract_word_translation(word)
-        sentence_translation_pt = sentence.translation  # Already in Sentence model
+        # Normalize sentence.translation: treat ""/whitespace as None
+        sentence_translation_pt = (sentence.translation or "").strip() or None
 
         # Get micro_progress from UserSessionStats
         micro_progress = _get_micro_progress(db, user_id, user)
@@ -813,6 +951,9 @@ async def get_next_card_lingvist(
         sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
         sentence_text_encoded = quote(sentence_with_word)
         audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
+        # Commit database changes (including autofilled translations)
+        db.commit()
 
         # Build enriched response
         return LingvistCardResponse(
@@ -891,9 +1032,15 @@ def _build_grammar_tag_pt(word: 'Word') -> str:
 
 
 def _extract_word_translation(word: 'Word') -> Optional[str]:
-    """Extract PT-BR translation from Word.features.pt_translation"""
+    """Extract PT-BR translation from Word.features.pt_translation
+
+    Returns None if translation is missing, None, empty string, or whitespace.
+    """
     if word.features and isinstance(word.features, dict):
-        return word.features.get("pt_translation")
+        translation = word.features.get("pt_translation")
+        # Normalize: treat None, "", and whitespace as None
+        if translation and isinstance(translation, str) and translation.strip():
+            return translation.strip()
     return None
 
 
