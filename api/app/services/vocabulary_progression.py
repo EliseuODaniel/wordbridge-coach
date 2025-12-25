@@ -96,16 +96,24 @@ class VocabularyProgressionService:
 
         # 3. Query usage statistics for each candidate sentence
         # Get count(*) and max(created_at) grouped by sentence_id
+        # IMPORTANT: Filter by word_id to implement K=10 REAL per word (not global)
         K = 10
+
+        # Join ReviewEvent with Card and Sentence to filter by word_id
+        # This ensures we only count ReviewEvents where the card's sentence belongs to THIS word
+        from app.models import Card
         usage_stats = self.db.query(
             ReviewEvent.sentence_id,
             func.count(ReviewEvent.id).label('usage_count'),
             func.max(ReviewEvent.created_at).label('last_used_at')
+        ).join(Card, ReviewEvent.card_id == Card.id).join(
+            Sentence, Card.sentence_id == Sentence.id
         ).filter(
             and_(
                 ReviewEvent.user_id == user_id,
                 ReviewEvent.sentence_id.in_(candidate_sentence_ids),
-                ReviewEvent.sentence_id.isnot(None)
+                ReviewEvent.sentence_id.isnot(None),
+                Sentence.word_id == word_id  # CRITICAL: Only count events for THIS word
             )
         ).group_by(ReviewEvent.sentence_id).all()
 
