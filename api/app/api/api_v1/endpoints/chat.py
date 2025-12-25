@@ -20,7 +20,7 @@ from app.schemas.chat import (
     ErrorOut,
     Pong,
 )
-from app.llm import MockLLMProvider
+from app.llm.factory import get_llm_provider_from_env
 
 # Feature flags (environment variables)
 CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "mock")
@@ -28,8 +28,8 @@ CHAT_MICRO_EVAL_MIN_INTERVAL_MS = int(os.getenv("CHAT_MICRO_EVAL_MIN_INTERVAL_MS
 
 router = APIRouter()
 
-# Initialize LLM provider (mock for now)
-llm_provider = MockLLMProvider()
+# Initialize LLM provider from environment variables (supports Mock, OpenAI, etc.)
+llm_provider = get_llm_provider_from_env()
 
 # In-memory tracking for throttling micro_eval (conversation_id -> last_eval_ts)
 _micro_eval_timestamps = {}

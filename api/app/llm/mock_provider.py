@@ -180,8 +180,13 @@ class MockLLMProvider(LLMProvider):
         # ============================================================================
         intent = "statement"
 
-        # Greeting patterns
-        greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+        # Greeting patterns (English, Portuguese, Spanish)
+        greetings = [
+            "hi", "hello", "hey",
+            "good morning", "good afternoon", "good evening",
+            "ola", "olá", "oi", "bom dia", "boa tarde", "boa noite",  # PT
+            "hola", "buen día", "buenas tardes", "buenas noches"  # ES
+        ]
         if any(text_lower.startswith(g) for g in greetings):
             intent = "greeting"
         # Question patterns (starts with wh- or ends with ?)
@@ -221,6 +226,64 @@ class MockLLMProvider(LLMProvider):
                     "span": {"start": idx, "end": idx + 4},
                     "explanation": "Use 'let's' with an apostrophe for 'let us'."
                 })
+
+        # 2.2b. Common contractions: im, dont, cant, wont, etc.
+        contractions_map = {
+            "im": "I'm",
+            "dont": "don't",
+            "doesnt": "doesn't",
+            "wont": "won't",
+            "cant": "can't",
+            "couldnt": "couldn't",
+            "shouldnt": "shouldn't",
+            "wouldnt": "wouldn't",
+        }
+
+        # Check each contraction pattern (as whole word, not substring)
+        for wrong, correct in contractions_map.items():
+            # Match whole word only (surrounded by spaces or at start/end)
+            pattern_start = f" {wrong} "
+            pattern_start_sentence = f"{wrong} "  # At start
+            pattern_end = f" {wrong}"  # At end
+
+            if pattern_start in text_lower or pattern_start_sentence in text_lower or pattern_end in text_lower:
+                # Find the index
+                idx = text_lower.find(wrong)
+                detected_errors.append({
+                    "type": "contraction",
+                    "category": "grammar",
+                    "original": wrong,
+                    "correction": correct,
+                    "span": {"start": idx, "end": idx + len(wrong)},
+                    "explanation": f"Use '{correct}' with an apostrophe."
+                })
+
+        # 2.2c. Lowercase "i" (standalone, not part of another word)
+        # Check for " i " (surrounded by spaces) or at start/end of sentence
+        words = text_lower.split()
+        for i, word in enumerate(words):
+            if word == "i" and word not in self.STOPWORDS:
+                # This is a standalone lowercase "i"
+                # Find its position in original text
+                idx = text_lower.find(" i ")
+                if idx == -1:
+                    # Check at start
+                    if text_lower.startswith("i "):
+                        idx = 0
+                    # Check at end
+                    elif text_lower.endswith(" i"):
+                        idx = text_lower.rfind(" i")
+
+                if idx >= 0:
+                    detected_errors.append({
+                        "type": "capitalization",
+                        "category": "grammar",
+                        "original": "i",
+                        "correction": "I",
+                        "span": {"start": idx, "end": idx + 1},
+                        "explanation": "The pronoun 'I' must always be capitalized."
+                    })
+                    break  # Only report first occurrence
 
         # 2.3. Subject-verb agreement: "I lets" → "I let"
         if " i lets " in text_lower or text_lower.startswith("i lets "):
@@ -284,7 +347,20 @@ class MockLLMProvider(LLMProvider):
         # Apply corrections in reverse order (to maintain index positions)
         for error in reversed(detected_errors):
             if error["type"] == "contraction":
-                rewrite = rewrite.replace("lets", "let's")
+                # Handle all contractions (lets, im, dont, cant, wont, etc.)
+                wrong = error["original"]
+                correct = error["correction"]
+                # Replace whole-word matches only (case-insensitive)
+                import re
+                pattern = r'\b' + re.escape(wrong) + r'\b'
+                rewrite = re.sub(pattern, correct, rewrite, flags=re.IGNORECASE)
+            elif error["type"] == "capitalization":
+                # Handle i → I
+                rewrite = rewrite.replace(" i ", " I ")
+                if rewrite.startswith("i "):
+                    rewrite = "I " + rewrite[2:]
+                if rewrite.endswith(" i"):
+                    rewrite = rewrite[:-2] + " I"
             elif error["type"] == "agreement":
                 rewrite = rewrite.replace("I lets", "I let")
             elif error["type"] == "verb_tense":
