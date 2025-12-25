@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import StudySession from './components/StudySession';
 import LingvistSession from './components/LingvistSession';
+import ChatCoachSession from './components/ChatCoachSession';
 import UserSelection from './components/UserSelection';
 import { healthApi } from './services/api';
 import './App.css';
 
-type TrainingMode = 'spec4' | 'lingvist';
+type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
 function App() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -17,7 +18,7 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const modeParam = params.get('mode');
-    if (modeParam === 'lingvist' || modeParam === 'spec4') {
+    if (modeParam === 'lingvist' || modeParam === 'spec4' || modeParam === 'chat') {
       setTrainingMode(modeParam);
     }
   }, []);
@@ -59,6 +60,8 @@ function App() {
         />
       ) : trainingMode === 'lingvist' ? (
         <LingvistSession userId={selectedUserId} onExit={handleExit} />
+      ) : trainingMode === 'chat' ? (
+        <ChatCoachSession userId={selectedUserId} onExit={handleExit} />
       ) : (
         <StudySession userId={selectedUserId} />
       )}

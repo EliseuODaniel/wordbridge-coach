@@ -18,11 +18,11 @@ export interface Profile {
 
 interface ProfileCardProps {
   profile: Profile;
-  onStart: (profileId: string, mode: 'spec4' | 'lingvist') => void;
+  onStart: (profileId: string, mode: 'spec4' | 'lingvist' | 'chat') => void;
   onEdit: (profileId: string) => void;
   onDelete: (profileId: string) => void;
   isFocused?: boolean;
-  selectedMode?: 'spec4' | 'lingvist';
+  selectedMode?: 'spec4' | 'lingvist' | 'chat';
 }
 
 const ProfileCard: React.FC<ProfileCardProps> = ({
@@ -66,6 +66,11 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
     onStart(profile.id, 'lingvist');
   };
 
+  const handleStartChat = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onStart(profile.id, 'chat');
+  };
+
   return (
     <div
       className={`
@@ -97,20 +102,20 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-2 mt-3">
+      <div className="grid grid-cols-3 gap-2 mt-3">
         <button
           onClick={handleStartSpec4}
           className={`
-            flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all
+            px-2 py-2 rounded-lg font-medium text-sm transition-all
             ${selectedMode === 'spec4'
               ? 'bg-primary-600 text-white shadow-lg'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }
           `}
         >
-          <div className="flex items-center justify-center gap-2">
-            <span>🎯</span>
-            <span>Spec4</span>
+          <div className="flex items-center justify-center gap-1">
+            <span className="text-base">🎯</span>
+            <span className="text-xs">Spec4</span>
           </div>
           <div className="text-xs opacity-75 mt-0.5">Multiple choice</div>
         </button>
@@ -118,18 +123,35 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
         <button
           onClick={handleStartLingvist}
           className={`
-            flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all
+            px-2 py-2 rounded-lg font-medium text-sm transition-all
             ${selectedMode === 'lingvist'
               ? 'bg-primary-600 text-white shadow-lg'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }
           `}
         >
-          <div className="flex items-center justify-center gap-2">
-            <span>✍️</span>
-            <span>Lingvist</span>
+          <div className="flex items-center justify-center gap-1">
+            <span className="text-base">✍️</span>
+            <span className="text-xs">Lingvist</span>
           </div>
           <div className="text-xs opacity-75 mt-0.5">Cloze + hints</div>
+        </button>
+
+        <button
+          onClick={handleStartChat}
+          className={`
+            px-2 py-2 rounded-lg font-medium text-sm transition-all
+            ${selectedMode === 'chat'
+              ? 'bg-purple-600 text-white shadow-lg'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }
+          `}
+        >
+          <div className="flex items-center justify-center gap-1">
+            <span className="text-base">💬</span>
+            <span className="text-xs">Chat</span>
+          </div>
+          <div className="text-xs opacity-75 mt-0.5">Conversational</div>
         </button>
       </div>
 

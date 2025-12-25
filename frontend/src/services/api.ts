@@ -298,7 +298,174 @@ export const insightsApi = {
   },
 };
 
-// Health check
+// ============================================================================
+// Chat Coach Types
+// ============================================================================
+
+export interface ChatConversation {
+  id: string;
+  user_id: string;
+  title: string;
+  student_profile_json: Record<string, any>;
+  lesson_frame_json: Record<string, any>;
+  session_summary: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatConversationList {
+  id: string;
+  user_id: string;
+  title: string;
+  student_profile_json: Record<string, any>;
+  lesson_frame_json: Record<string, any>;
+  session_summary: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  metadata_json: Record<string, any>;
+  created_at: string;
+}
+
+export interface CreateConversationRequest {
+  user_id: string;
+  title: string;
+}
+
+// WebSocket Event Types (Client -> Server)
+export interface DraftUpdateEvent {
+  type: 'draft_update';
+  conversation_id: string;
+  draft_text: string;
+  cursor: number;
+  client_ts_ms: number;
+}
+
+export interface UserMessageEvent {
+  type: 'user_message';
+  conversation_id: string;
+  content: string;
+  client_ts_ms: number;
+}
+
+export interface RequestAutocompleteEvent {
+  type: 'request_autocomplete';
+  conversation_id: string;
+  draft_text: string;
+  client_ts_ms: number;
+  mode: 'soft' | 'hard';
+}
+
+export interface PingEvent {
+  type: 'ping';
+  ts: number;
+}
+
+// WebSocket Event Types (Server -> Client)
+export interface DraftFeedbackEvent {
+  type: 'draft_feedback';
+  conversation_id: string;
+  bar_score_raw: number;
+  bar_score_components: {
+    spelling: number;
+    grammar: number;
+    syntax: number;
+    lesson_alignment: number;
+    naturalness: number;
+  };
+  lesson_alignment_score: number;
+  issues: DraftIssue[];
+  ghost_suggestion: string | null;
+  server_ts_ms: number;
+}
+
+export interface DraftIssue {
+  category: string;
+  title: string;
+  explanation: string;
+  highlight_spans: Array<{ start: number; end: number }>;
+  suggestions: string[];
+}
+
+export interface AssistantStreamTokenEvent {
+  type: 'assistant_stream_token';
+  conversation_id: string;
+  token: string;
+}
+
+export interface AssistantDoneEvent {
+  type: 'assistant_done';
+  conversation_id: string;
+  full_content: string;
+  lesson_frame: Record<string, any>;
+  summary_update: string;
+}
+
+export interface PongEvent {
+  type: 'pong';
+  ts: number;
+}
+
+export interface ErrorEvent {
+  type: 'error';
+  message: string;
+  code: string;
+}
+
+export type WebSocketServerEvent =
+  | DraftFeedbackEvent
+  | AssistantStreamTokenEvent
+  | AssistantDoneEvent
+  | PongEvent
+  | ErrorEvent;
+
+// ============================================================================
+// Chat Coach API
+// ============================================================================
+
+export const chatApi = {
+  // Create a new conversation
+  createConversation: async (requestData: CreateConversationRequest): Promise<ChatConversation> => {
+    const response = await api.post('/api/v1/chat/conversations', requestData);
+    return response.data;
+  },
+
+  // List all conversations for a user
+  listConversations: async (userId: string): Promise<ChatConversationList[]> => {
+    const response = await api.get(`/api/v1/chat/conversations?user_id=${userId}`);
+    return response.data;
+  },
+
+  // Get messages for a conversation
+  getConversationMessages: async (
+    conversationId: string,
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<ChatMessage[]> => {
+    const response = await api.get(
+      `/api/v1/chat/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`
+    );
+    return response.data;
+  },
+
+  // Delete a conversation
+  deleteConversation: async (conversationId: string): Promise<{ message: string }> => {
+    const response = await api.delete(`/api/v1/chat/conversations/${conversationId}`);
+    return response.data;
+  },
+};
+
+// ============================================================================
+// Health Check
+// ============================================================================
+
 export const healthApi = {
   checkHealth: async (): Promise<{ status: string; service: string }> => {
     const response = await api.get('/health');

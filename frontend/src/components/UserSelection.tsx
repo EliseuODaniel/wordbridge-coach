@@ -5,7 +5,7 @@ import { usersApi, type CreateUserRequest, type UpdateUserRequest } from '../ser
 import ProfileCard, { type ProfileStats, type Profile } from './ProfileCard';
 import ConfirmDialog from './ConfirmDialog';
 
-type TrainingMode = 'spec4' | 'lingvist';
+type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
 interface UserSelectionProps {
   onUserSelected: (userId: string) => void;
@@ -46,7 +46,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
   // Load last used mode from localStorage
   useEffect(() => {
     const lastMode = localStorage.getItem('preferredTrainingMode') as TrainingMode | null;
-    if (lastMode && (lastMode === 'spec4' || lastMode === 'lingvist')) {
+    if (lastMode && (lastMode === 'spec4' || lastMode === 'lingvist' || lastMode === 'chat')) {
       onModeSelect(lastMode);
     }
   }, []);
