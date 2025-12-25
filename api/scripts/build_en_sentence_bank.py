@@ -26,13 +26,162 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Project Gutenberg books (public domain, pre-1929)
 GUTENBERG_BOOKS = [
+    # GOTHIC/HORROR (2)
     {
-        "id": "1342",
-        "title": "Pride and Prejudice",
-        "author": "Jane Austen",
-        "year": 1813,
-        "url": "https://www.gutenberg.org/files/1342/1342-0.txt"
+        "id": "84",
+        "title": "Frankenstein",
+        "author": "Mary Shelley",
+        "year": 1818,
+        "url": "https://www.gutenberg.org/files/84/84-0.txt"
     },
+    {
+        "id": "174",
+        "title": "The Picture of Dorian Gray",
+        "author": "Oscar Wilde",
+        "year": 1890,
+        "url": "https://www.gutenberg.org/files/174/174-0.txt"
+    },
+
+    # VICTORIAN CLASSICS (8)
+    {
+        "id": "1400",
+        "title": "Great Expectations",
+        "author": "Charles Dickens",
+        "year": 1861,
+        "url": "https://www.gutenberg.org/files/1400/1400-0.txt"
+    },
+    {
+        "id": "1260",
+        "title": "Jane Eyre",
+        "author": "Charlotte Brontë",
+        "year": 1847,
+        "url": "https://www.gutenberg.org/files/1260/1260-0.txt"
+    },
+    {
+        "id": "768",
+        "title": "Wuthering Heights",
+        "author": "Emily Brontë",
+        "year": 1847,
+        "url": "https://www.gutenberg.org/files/768/768-0.txt"
+    },
+    {
+        "id": "1184",
+        "title": "The Count of Monte Cristo",
+        "author": "Alexandre Dumas",
+        "year": 1844,
+        "url": "https://www.gutenberg.org/files/1184/1184-0.txt"
+    },
+    {
+        "id": "98",
+        "title": "A Tale of Two Cities",
+        "author": "Charles Dickens",
+        "year": 1859,
+        "url": "https://www.gutenberg.org/files/98/98-0.txt"
+    },
+    {
+        "id": "580",
+        "title": "The Mystery of Edwin Drood",
+        "author": "Charles Dickens",
+        "year": 1870,
+        "url": "https://www.gutenberg.org/files/580/580-0.txt"
+    },
+    {
+        "id": "766",
+        "title": "The Woman in White",
+        "author": "Wilkie Collins",
+        "year": 1860,
+        "url": "https://www.gutenberg.org/files/766/766-0.txt"
+    },
+    {
+        "id": "1374",
+        "title": "North and South",
+        "author": "Elizabeth Gaskell",
+        "year": 1855,
+        "url": "https://www.gutenberg.org/files/1374/1374-0.txt"
+    },
+
+    # ADVENTURE (5)
+    {
+        "id": "120",
+        "title": "Treasure Island",
+        "author": "Robert Louis Stevenson",
+        "year": 1883,
+        "url": "https://www.gutenberg.org/files/120/120-0.txt"
+    },
+    {
+        "id": "1257",
+        "title": "The Three Musketeers",
+        "author": "Alexandre Dumas",
+        "year": 1844,
+        "url": "https://www.gutenberg.org/files/1257/1257-0.txt"
+    },
+    {
+        "id": "844",
+        "title": "The Man in the Iron Mask",
+        "author": "Alexandre Dumas",
+        "year": 1850,
+        "url": "https://www.gutenberg.org/files/844/844-0.txt"
+    },
+    {
+        "id": "520",
+        "title": "Ivanhoe",
+        "author": "Walter Scott",
+        "year": 1820,
+        "url": "https://www.gutenberg.org/files/520/520-0.txt"
+    },
+    {
+        "id": "2044",
+        "title": "The Sea-Hawk",
+        "author": "Rafael Sabatini",
+        "year": 1915,
+        "url": "https://www.gutenberg.org/files/2044/2044-0.txt"
+    },
+
+    # AMERICAN CLASSICS (6)
+    {
+        "id": "2701",
+        "title": "Moby-Dick",
+        "author": "Herman Melville",
+        "year": 1851,
+        "url": "https://www.gutenberg.org/files/2701/2701-0.txt"
+    },
+    {
+        "id": "76",
+        "title": "Adventures of Huckleberry Finn",
+        "author": "Mark Twain",
+        "year": 1884,
+        "url": "https://www.gutenberg.org/files/76/76-0.txt"
+    },
+    {
+        "id": "74",
+        "title": "The Adventures of Tom Sawyer",
+        "author": "Mark Twain",
+        "year": 1876,
+        "url": "https://www.gutenberg.org/files/74/74-0.txt"
+    },
+    {
+        "id": "215",
+        "title": "The Call of the Wild",
+        "author": "Jack London",
+        "year": 1903,
+        "url": "https://www.gutenberg.org/files/215/215-0.txt"
+    },
+    {
+        "id": "603",
+        "title": "The Last of the Mohicans",
+        "author": "James Fenimore Cooper",
+        "year": 1826,
+        "url": "https://www.gutenberg.org/files/603/603-0.txt"
+    },
+    {
+        "id": "36",
+        "title": "The War of the Worlds",
+        "author": "H.G. Wells",
+        "year": 1898,
+        "url": "https://www.gutenberg.org/files/36/36-0.txt"
+    },
+
+    # FANTASY/CHILDREN (6)
     {
         "id": "11",
         "title": "Alice's Adventures in Wonderland",
@@ -41,6 +190,110 @@ GUTENBERG_BOOKS = [
         "url": "https://www.gutenberg.org/files/11/11-0.txt"
     },
     {
+        "id": "55",
+        "title": "The Wonderful Wizard of Oz",
+        "author": "L. Frank Baum",
+        "year": 1900,
+        "url": "https://www.gutenberg.org/files/55/55-0.txt"
+    },
+    {
+        "id": "16",
+        "title": "Peter Pan",
+        "author": "J.M. Barrie",
+        "year": 1911,
+        "url": "https://www.gutenberg.org/files/16/16-0.txt"
+    },
+    {
+        "id": "91",
+        "title": "The Wind in the Willows",
+        "author": "Kenneth Grahame",
+        "year": 1908,
+        "url": "https://www.gutenberg.org/files/91/91-0.txt"
+    },
+    {
+        "id": "113",
+        "title": "The Secret Garden",
+        "author": "Frances Hodgson Burnett",
+        "year": 1911,
+        "url": "https://www.gutenberg.org/files/113/113-0.txt"
+    },
+    {
+        "id": "7321",
+        "title": "The Princess and the Goblin",
+        "author": "George MacDonald",
+        "year": 1872,
+        "url": "https://www.gutenberg.org/files/7321/7321-0.txt"
+    },
+
+    # SCIENCE FICTION (3)
+    {
+        "id": "35",
+        "title": "The Time Machine",
+        "author": "H.G. Wells",
+        "year": 1895,
+        "url": "https://www.gutenberg.org/files/35/35-0.txt"
+    },
+    {
+        "id": "345",
+        "title": "The Invisible Man",
+        "author": "H.G. Wells",
+        "year": 1897,
+        "url": "https://www.gutenberg.org/files/345/345-0.txt"
+    },
+    {
+        "id": "1200",
+        "title": "From the Earth to the Moon",
+        "author": "Jules Verne",
+        "year": 1870,
+        "url": "https://www.gutenberg.org/files/1200/1200-0.txt"
+    },
+
+    # ROMANCE (6)
+    {
+        "id": "1342",
+        "title": "Pride and Prejudice",
+        "author": "Jane Austen",
+        "year": 1813,
+        "url": "https://www.gutenberg.org/files/1342/1342-0.txt"
+    },
+    {
+        "id": "141",
+        "title": "Sense and Sensibility",
+        "author": "Jane Austen",
+        "year": 1811,
+        "url": "https://www.gutenberg.org/files/141/141-0.txt"
+    },
+    {
+        "id": "161",
+        "title": "Emma",
+        "author": "Jane Austen",
+        "year": 1815,
+        "url": "https://www.gutenberg.org/files/161/161-0.txt"
+    },
+    {
+        "id": "3751",
+        "title": "Vanity Fair",
+        "author": "William Makepeace Thackeray",
+        "year": 1848,
+        "url": "https://www.gutenberg.org/files/3751/3751-0.txt"
+    },
+    {
+        "id": "1416",
+        "title": "My Man Jeeves",
+        "author": "P.G. Wodehouse",
+        "year": 1919,
+        "url": "https://www.gutenberg.org/files/1416/1416-0.txt"
+    },
+    {
+        "id": "3020",
+        "title": "The Ball and the Cross",
+        "author": "G.K. Chesterton",
+        "year": 1910,
+        "url": "https://www.gutenberg.org/files/3020/3020-0.txt"
+    },
+
+    # MYSTERY/DETECTIVE (2)
+    {
         "id": "1661",
         "title": "The Adventures of Sherlock Holmes",
         "author": "Arthur Conan Doyle",
@@ -48,19 +301,28 @@ GUTENBERG_BOOKS = [
         "url": "https://www.gutenberg.org/files/1661/1661-0.txt"
     },
     {
+        "id": "2097",
+        "title": "The Mystery of the Yellow Room",
+        "author": "Gaston Leroux",
+        "year": 1908,
+        "url": "https://www.gutenberg.org/files/2097/2097-0.txt"
+    },
+
+    # ORIGINAL FROM CURRENT SENTENCE BANK (2)
+    {
         "id": "345",
         "title": "Dracula",
         "author": "Bram Stoker",
         "year": 1897,
         "url": "https://www.gutenberg.org/files/345/345-0.txt"
-    }
+    },
 ]
 
 # Filtragem
 MIN_SENTENCE_LENGTH = 20  # Caracteres
 MAX_SENTENCE_LENGTH = 140  # Caracteres
 MIN_WORDS = 3  # Palavras mínimas
-MAX_SENTENCES_PER_BOOK = 25000  # Limite para não explodir
+MAX_SENTENCES_PER_BOOK = 8000  # Limite para não explodir (balanceado)
 
 # Diretórios
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -322,6 +584,10 @@ def main():
         # Extract sentences
         sentences = extract_sentences(text)
         print(f"   Extracted: {len(sentences):,} sentences")
+
+        # Balanceamento: shuffle antes de fatiar (amostra representativa)
+        random.shuffle(sentences)
+        print(f"   🔀 Shuffled for balanced sampling")
 
         # Limit to avoid explosion
         if len(sentences) > MAX_SENTENCES_PER_BOOK:

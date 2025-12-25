@@ -1553,8 +1553,37 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
             candidates = sentence_index.get(wf.word.lower(), [])
 
             if candidates:
-                # Shuffle candidates for variety
-                random.shuffle(candidates)
+                # Diversify sources: round-robin by source_title when possible
+                # This prevents a single book from dominating sentences for a word
+                from collections import defaultdict
+
+                # Group candidates by source_title
+                by_source = defaultdict(list)
+                for entry in candidates:
+                    by_source[entry.get('source_title', 'Unknown')].append(entry)
+
+                # Shuffle within each source group
+                for source_title in by_source:
+                    random.shuffle(by_source[source_title])
+
+                # Round-robin selection from different sources
+                selected_candidates = []
+                sources_list = list(by_source.keys())
+                random.shuffle(sources_list)  # Shuffle source order too
+
+                # Take candidates round-robin until we have enough or exhaust all
+                idx = 0
+                while len(selected_candidates) < min(len(candidates), sentence_count * 2):
+                    for source_title in sources_list:
+                        if by_source[source_title]:
+                            selected_candidates.append(by_source[source_title].pop(0))
+                            if len(selected_candidates) >= sentence_count * 2:
+                                break
+                    # If we've exhausted all sources, break
+                    if not any(by_source.values()):
+                        break
+
+                candidates = selected_candidates
 
                 # Try to get sentence_count unique sentences
                 for entry in candidates:
