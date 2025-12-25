@@ -16,11 +16,33 @@ from app.llm.provider_base import LLMProvider
 
 class MockLLMProvider(LLMProvider):
     """
-    Mock LLM provider v2 for development and testing.
+    Mock LLM provider v3 for development and testing.
 
-    Returns contextual, non-repetitive responses without requiring GPU.
+    Returns contextual, coherent responses using unified text analysis.
     All methods are async to match the interface of real providers.
     """
+
+    # Basic stopwords for keyword extraction
+    STOPWORDS = {
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "to", "of", "in", "on", "at", "by", "for", "with", "about", "as",
+        "i", "you", "he", "she", "it", "we", "they", "my", "your", "his",
+        "her", "its", "our", "their", "this", "that", "these", "those",
+        "and", "or", "but", "so", "because", "if", "when", "where", "what",
+        "how", "who", "which", "do", "does", "did", "have", "has", "had"
+    }
+
+    # Common irregular verbs for error detection
+    IRREGULAR_VERBS = {
+        "go": "went", "went": "gone",
+        "do": "did", "did": "done",
+        "have": "had", "had": "had",
+        "eat": "ate", "ate": "eaten",
+        "write": "wrote", "wrote": "written",
+        "take": "took", "took": "taken",
+        "make": "made", "made": "made",
+        "come": "came", "came": "come"
+    }
 
     # 30+ contextual teacher response templates
     TEACHER_RESPONSE_TEMPLATES = [
@@ -136,6 +158,153 @@ class MockLLMProvider(LLMProvider):
         # NOTE: We don't use self.random anymore to avoid cross-method interference
         pass
 
+    def _analyze_text(self, text: str, lesson_frame: dict) -> dict:
+        """
+        Unified text analysis for consistent feedback across methods.
+
+        Extracts keywords, infers topic, detects errors, and generates corrections.
+        Uses simple heuristics (no NLP dependencies) for speed and determinism.
+
+        Args:
+            text: User's input text
+            lesson_frame: Current lesson frame with topic/goal
+
+        Returns:
+            Dict with:
+            - keywords: List of relevant words from text
+            - topic: Inferred grammatical topic
+            - detected_errors: List of error dicts with spans
+            - correction_text: One-sentence correction
+            - rewrite: Improved version using user's keywords
+            - follow_up: Follow-up question
+        """
+        # 1. Extract keywords (remove stopwords, keep words >= 4 chars)
+        words = text.lower().replace(".", "").replace(",", "").replace("?", "").split()
+        keywords = [w for w in words if w not in self.STOPWORDS and len(w) >= 4][:3]
+
+        # Fallback if no keywords found
+        if not keywords:
+            keywords = ["practice", "sentence"]
+
+        # 2. Infer topic from text (simple heuristics)
+        text_lower = text.lower()
+
+        # Topic inference by keywords
+        if any(w in text_lower for w in ["yesterday", "last", "ago", "earlier"]):
+            topic = "past_simple"
+        elif any(w in text_lower for w in ["tomorrow", "next", "will", "going to"]):
+            topic = "future"
+        elif any(w in text_lower for w in ["now", "currently", "at the moment"]) or text_lower.strip().endswith("ing"):
+            topic = "present_continuous"
+        elif any(w in text_lower for w in ["like", "enjoy", "love", "hobbies", "free time"]):
+            topic = "hobbies"
+        elif any(w in text_lower for w in ["work", "job", "office", "company"]):
+            topic = "work"
+        elif any(w in text_lower for w in ["weekend", "saturday", "sunday", "holiday"]):
+            topic = "weekend_plans"
+        else:
+            # Use lesson frame topic as fallback
+            topic = lesson_frame.get("topic", "getting_started")
+
+        # 3. Detect errors (deterministic based on text)
+        detected_errors = []
+
+        # Check for verb tense errors when topic is past_simple
+        if topic == "past_simple":
+            # Look for common verbs that should be in past tense
+            for verb_base, verb_past in self.IRREGULAR_VERBS.items():
+                if verb_base in text_lower:
+                    # Found base form used in past context
+                    idx = text_lower.find(verb_base)
+                    detected_errors.append({
+                        "type": "verb_tense",
+                        "original": verb_base,
+                        "correction": verb_past,
+                        "span": {"start": idx, "end": idx + len(verb_base)},
+                        "explanation": f"Use past tense '{verb_past}' instead of '{verb_base}' for past actions."
+                    })
+                    break  # Only detect one error per call for simplicity
+
+        # If no errors detected but topic suggests past tense, add a generic one
+        if not detected_errors and topic == "past_simple":
+            detected_errors.append({
+                "type": "time_marker",
+                "original": "present tense",
+                "correction": "past tense",
+                "span": {},
+                "explanation": "Remember to use past tense for past events."
+            })
+
+        # 4. Generate correction text (uses detected error or generic)
+        if detected_errors:
+            first_error = detected_errors[0]
+            correction_text = first_error["explanation"]
+        else:
+            correction_text = "Your sentence structure is good. Let's make it even better."
+
+        # 5. Generate rewrite using user's keywords
+        # Create a coherent sentence using keywords from user's text
+        if keywords:
+            main_keyword = keywords[0]
+            if topic == "past_simple":
+                # Convert to past form if it's a common irregular verb
+                verb_past = self.IRREGULAR_VERBS.get(main_keyword, main_keyword + "ed")
+                rewrite = f"I {verb_past} {keywords[1] if len(keywords) > 1 else 'there'} yesterday."
+            elif topic == "hobbies":
+                rewrite = f"I really enjoy {main_keyword}ing in my free time."
+            elif topic == "work":
+                rewrite = f"I work as a {main_keyword} in a big company."
+            else:
+                rewrite = f"I {main_keyword} every day."
+        else:
+            rewrite = "I practiced this yesterday."
+
+        # 6. Generate follow-up question based on topic
+        follow_ups = {
+            "past_simple": [
+                "What did you do next?",
+                "Tell me more about it.",
+                "How was your experience?"
+            ],
+            "future": [
+                "What are your plans?",
+                "Who will you go with?",
+                "What do you need to prepare?"
+            ],
+            "present_continuous": [
+                "How long have you been doing that?",
+                "What else are you working on?",
+                "How is it going?"
+            ],
+            "hobbies": [
+                "How often do you practice?",
+                "Do you have any other hobbies?",
+                "What do you enjoy most about it?"
+            ],
+            "work": [
+                "What do you like about your job?",
+                "What are your responsibilities?",
+                "Do you have a busy schedule?"
+            ],
+            "weekend_plans": [
+                "What are your plans for this weekend?",
+                "Do you prefer relaxing or being active?",
+                "What did you do last weekend?"
+            ]
+        }
+
+        topic_follow_ups = follow_ups.get(topic, ["Tell me more.", "Can you elaborate?"])
+        follow_up = topic_follow_ups[hash(text) % len(topic_follow_ups)]
+
+        return {
+            "keywords": keywords,
+            "topic": topic,
+            "detected_errors": detected_errors,
+            "correction_text": correction_text,
+            "rewrite": rewrite,
+            "follow_up": follow_up
+        }
+
     async def chat_stream(
         self,
         messages: List[Dict[str, str]],
@@ -143,10 +312,10 @@ class MockLLMProvider(LLMProvider):
         generation_config: Dict[str, Any]
     ) -> AsyncGenerator[str, None]:
         """
-        Mock streaming chat completion with contextual responses.
+        Mock streaming chat completion with contextual, coherent responses.
 
-        Generates a response based on the last user message.
-        Uses deterministic seeding for testability.
+        Uses _analyze_text() to extract keywords and generate consistent feedback.
+        Responses are deterministic for testing but vary by input.
         """
         # Extract last user message
         user_messages = [m for m in messages if m.get("role") == "user"]
@@ -158,56 +327,31 @@ class MockLLMProvider(LLMProvider):
 
         # Get lesson frame from config (if available)
         lesson_frame = generation_config.get("lesson_frame", {})
-        topic = lesson_frame.get("topic", "getting_started")
 
-        # Create stable seed from user content (deterministic but varied by input)
-        # Use sum of char codes as a simple hash
+        # Use unified text analysis
+        analysis = self._analyze_text(last_user_content, lesson_frame)
+
+        # Create stable seed for template selection (varies by content)
         content_hash = sum(ord(c) for c in last_user_content) % 10000
-
-        # Create local RNG for this call (isolated from other methods)
         rng = random.Random(content_hash)
 
-        # Select templates deterministically based on content hash
+        # Select template deterministically
         template_idx = content_hash % len(self.TEACHER_RESPONSE_TEMPLATES)
         template = self.TEACHER_RESPONSE_TEMPLATES[template_idx]
-
-        correction_idx = content_hash % len(self.CORRECTIONS)
-        correction = self.CORRECTIONS[correction_idx]
-
-        rewrite_idx = (content_hash * 2) % len(self.REWRITES)
-        rewrite_template = self.REWRITES[rewrite_idx]
-
-        # Generate rewrite with simple placeholders
-        place = ["market", "park", "beach", "school", "home"][content_hash % 5]
-        verb = ["go", "play", "study", "work", "cook"][content_hash % 5]
-        noun = ["book", "movie", "car", "house", "food"][content_hash % 5]
-        adjective = ["good", "big", "small", "beautiful", "interesting"][content_hash % 5]
-
-        rewrite = rewrite_template.format(
-            place=place,
-            verb=verb,
-            noun=noun,
-            adjective=adjective
-        )
-
-        # Get follow-up based on topic
-        follow_ups = self.FOLLOW_UPS.get(topic, self.FOLLOW_UPS["default"])
-        follow_up_idx = (content_hash * 3) % len(follow_ups)
-        follow_up = follow_ups[follow_up_idx]
 
         # Extract excerpt from user message (first 40 chars max)
         user_excerpt = last_user_content[:40] if len(last_user_content) > 40 else last_user_content
 
-        # Assemble the response
+        # Assemble the response using analysis results
         response = template.format(
             user_excerpt=user_excerpt,
-            correction=correction,
-            rewrite=rewrite,
-            topic=topic.replace("_", " ")
+            correction=analysis["correction_text"],
+            rewrite=analysis["rewrite"],
+            topic=analysis["topic"].replace("_", " ")
         )
 
         # Add follow-up question
-        response += " " + follow_up
+        response += " " + analysis["follow_up"]
 
         # Split into tokens and stream
         tokens = response.split()
@@ -225,64 +369,85 @@ class MockLLMProvider(LLMProvider):
         student_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Mock micro-evaluation of student's draft.
+        Mock micro-evaluation of student's draft using unified text analysis.
 
-        Returns stable scores (avoids big jumps) and 1-3 simple issues.
-        Uses LOCAL RNG to avoid affecting other methods.
+        Returns stable scores and issues that match what chat_stream would say.
+        Uses _analyze_text() to ensure coherence with chat responses.
         """
+        # Use unified text analysis
+        analysis = self._analyze_text(draft, lesson_frame)
+
         # Generate pseudo-random but stable scores based on draft content
         score_seed = sum(ord(c) for c in draft) % 100
 
         # Create LOCAL RNG (does not affect other methods)
         rng = random.Random(score_seed)
 
-        # Base scores
-        grammar_score = 40 + (rng.randint(0, 99) % 60)  # 40-100
-        spelling_score = 70 + (rng.randint(0, 99) % 30)  # 70-100
-        naturalness_score = 30 + (rng.randint(0, 99) % 70)  # 30-100
-        lesson_alignment_score = 20 + (rng.randint(0, 99) % 80)  # 20-100
+        # Base scores with some variation but generally tied to detected errors
+        has_errors = len(analysis["detected_errors"]) > 0
 
-        # Generate 1-3 simple issues based on scores
+        if has_errors:
+            grammar_score = 40 + (rng.randint(0, 99) % 30)  # 40-70 (has errors)
+            spelling_score = 70 + (rng.randint(0, 99) % 30)  # 70-100
+            naturalness_score = 40 + (rng.randint(0, 99) % 40)  # 40-80
+            lesson_alignment_score = 50 + (rng.randint(0, 99) % 40)  # 50-90
+        else:
+            grammar_score = 80 + (rng.randint(0, 99) % 20)  # 80-100 (good)
+            spelling_score = 85 + (rng.randint(0, 99) % 15)  # 85-100
+            naturalness_score = 70 + (rng.randint(0, 99) % 30)  # 70-100
+            lesson_alignment_score = 70 + (rng.randint(0, 99) % 30)  # 70-100
+
+        # Generate issues from detected_errors in analysis
         issues = []
 
-        if grammar_score < 60:
+        for error in analysis["detected_errors"][:3]:  # Max 3 issues
+            issue = {
+                "category": error["type"],
+                "title": error.get("original", "Error").capitalize(),
+                "explanation": error["explanation"],
+                "highlight_spans": [error.get("span", {})] if error.get("span") else [],
+                "suggestions": [error.get("correction", "Try again")]
+            }
+            issues.append(issue)
+
+        # If no detected errors but scores are low, add generic issues
+        if not issues and grammar_score < 60:
             issues.append({
                 "category": "grammar",
-                "title": "Verb tense",
-                "explanation": "Use past simple for past events: 'go' → 'went'",
-                "highlight_spans": [{"start": 2, "end": 4}],
-                "suggestions": ["went", "traveled", "stayed"]
-            })
-
-        if spelling_score < 80:
-            issues.append({
-                "category": "spelling",
-                "title": "Spelling error",
-                "explanation": "Check the spelling of this word",
-                "highlight_spans": [{"start": 5, "end": 10}],
-                "suggestions": ["example", "correct", "practice"]
-            })
-
-        if naturalness_score < 50:
-            issues.append({
-                "category": "style",
-                "title": "Sentence structure",
-                "explanation": "Try to make the sentence more natural",
+                "title": "Grammar check",
+                "explanation": "Review your sentence structure for better clarity.",
                 "highlight_spans": [],
-                "suggestions": ["Use shorter sentences", "Add time markers"]
+                "suggestions": ["Check verb tenses", "Review word order"]
             })
 
-        # Suggested next words (2-4 words)
-        suggestions_pool = ["went", "played", "visited", "stayed", "traveled", "watched", "cooked", "studied"]
+        # Suggested next words based on topic and keywords
+        suggestions_by_topic = {
+            "past_simple": ["went", "played", "visited", "stayed", "traveled", "watched", "cooked", "studied"],
+            "future": ["will", "going to", "plan", "expect", "hope"],
+            "present_continuous": ["doing", "working", "playing", "studying", "reading"],
+            "hobbies": ["enjoy", "practice", "love", "prefer"],
+            "work": ["job", "office", "company", "meetings", "projects"],
+            "weekend_plans": ["relax", "visit", "travel", "rest", "explore"]
+        }
+
+        topic = analysis["topic"]
+        suggestions_pool = suggestions_by_topic.get(topic, ["continue", "practice", "improve"])
         suggested_next_words = rng.sample(suggestions_pool, min(3, len(suggestions_pool)))
 
-        # Micro tip
-        micro_tips = [
-            "Good start! Keep practicing.",
-            "Almost there! Check your verb tense.",
-            "Nice try! Remember the past tense.",
-            "You're doing great! Just fix the spelling.",
-        ]
+        # Micro tip based on performance
+        if has_errors:
+            micro_tips = [
+                f"Good start! {analysis['correction_text']}",
+                "Almost there! Check your grammar.",
+                f"Nice try! {analysis['correction_text']}",
+            ]
+        else:
+            micro_tips = [
+                "Great job! Your sentence is well-structured.",
+                "Excellent work! Keep practicing.",
+                "You're doing great!",
+            ]
+
         micro_tip = rng.choice(micro_tips)
 
         return {
@@ -303,32 +468,38 @@ class MockLLMProvider(LLMProvider):
         student_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Mock ghost suggestion (1-6 words).
+        Mock ghost suggestion (1-6 words) using inferred topic.
 
-        Returns a short continuation based on lesson goal.
-        Uses LOCAL RNG to avoid affecting other methods.
+        Returns a short continuation based on analyzed topic and last word.
+        Uses _analyze_text() for topic inference.
         """
+        # Use unified text analysis to get topic
+        analysis = self._analyze_text(draft, lesson_frame)
+        topic = analysis["topic"]
+
         # Pseudo-random but deterministic based on draft
         suggestion_seed = sum(ord(c) for c in draft) % 10
 
         # Create LOCAL RNG (does not affect other methods)
         rng = random.Random(suggestion_seed)
 
+        # Suggestions by topic (contextual)
         suggestions_map = {
-            "past_simple": ["went to the", "played", "visited", "stayed at"],
-            "present_continuous": ["am doing", "is working", "are playing"],
-            "articles": ["the", "a", "an", "the new"],
-            "default": ["more", "and then", "also", "next"]
+            "past_simple": ["went to the", "yesterday", "last week", "visited", "stayed at", "traveled to"],
+            "future": ["will go", "going to", "tomorrow", "next week", "plan to"],
+            "present_continuous": ["am doing", "is working", "are playing", "currently", "right now"],
+            "hobbies": ["enjoy", "practice", "love to", "my favorite"],
+            "work": ["at the office", "for my job", "in the company", "during work"],
+            "weekend_plans": ["this weekend", "on Saturday", "tomorrow", "next Sunday"],
+            "getting_started": ["more", "and then", "also", "next"],
+            "default": ["more", "and then", "also", "continue", "next"]
         }
 
-        # Get learning goal from lesson frame
-        learning_goal = lesson_frame.get("learning_goal", "default")
-
-        # Pick suggestion based on goal
-        suggestions = suggestions_map.get(learning_goal, suggestions_map["default"])
+        # Pick suggestion based on topic
+        suggestions = suggestions_map.get(topic, suggestions_map["default"])
         ghost_suggestion = rng.choice(suggestions)
 
         return {
             "ghost_suggestion": ghost_suggestion,
-            "reason": f"Based on lesson goal: {learning_goal}"
+            "reason": f"Based on detected topic: {topic}"
         }
