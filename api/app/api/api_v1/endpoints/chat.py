@@ -537,6 +537,24 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
     """Handle user_message event → stream assistant response → assistant_done"""
     content = data.get("content", "")
 
+    # Run micro_eval to freeze feedback for the message being sent
+    eval_result = await llm_provider.micro_eval(
+        context=conversation.session_summary,
+        lesson_frame=conversation.lesson_frame_json,
+        draft=content,
+        student_profile=conversation.student_profile_json
+    )
+
+    # Send draft_feedback to freeze the feedback (without ghost suggestion)
+    now_ms = int(datetime.now().timestamp() * 1000)
+    feedback = _build_draft_feedback(
+        conversation_id=str(conversation.id),
+        eval_result=eval_result,
+        now_ms=now_ms,
+        ghost_suggestion=None
+    )
+    await websocket.send_json(feedback)
+
     # Persist user message
     user_message = ChatMessage(
         conversation_id=conversation.id,
