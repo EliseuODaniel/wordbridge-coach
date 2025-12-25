@@ -1032,7 +1032,244 @@ Assistant: Good job practicing! 'I send email yesterday' shows you're trying.
 
 ---
 
-**Status do Documento:** 📝 Implementation Complete (v1.1)
+## Coerência & Context (v1.2)
+
+**Status:** ✅ Implementation Complete
+**Created:** 2025-12-25
+**Type:** Bug Fix + Enhancement (Hotfix)
+**Previous:** v1.1
+
+### Problema Identificado
+
+Após implementação do v1.1, observamos dois novos problemas críticos na experiência do usuário:
+
+#### 1. **Painel Zera ao Pausar (Crítico)**
+**Sintoma:** Ao parar de digitar por 1.2s (trigger de autocomplete), o painel da direita "zera" - issues desaparecem e são substituídas por placeholders.
+
+**Exemplo:**
+- Usuário digita: "hi, how are you"
+- Painel mostra: style issue (missing ?), score 75/100
+- Usuário para de digitar por 1.2s
+- Painel mostra: grammar 50/100 (placeholder), issues=[] (VAZIO), ghost suggestion aparece
+
+**Impacto:**
+- Feedback real é perdido quando autocomplete é acionado
+- Usuário confuso vê score/issues mudarem aleatoriamente
+- Invalida a utilidade do painel de feedback em tempo real
+
+#### 2. **Rewrite Nonsense para Greetings/Short Phrases**
+**Sintoma:** `_analyze_text()` gera rewrites aleatórios e sem sentido para greetings e frases curtas.
+
+**Exemplos:**
+```
+Input: "hi, how are you"
+Output v3: "I hi every day."  (NONSENSE)
+
+Input: "lets go"
+Output v3: "I lets every day."   (NONSENSE + erro gramatical)
+```
+
+**Causa Raiz:**
+- Fallback genérico: `rewrite = f"I {main_keyword} every day."` (linha 258)
+- Sem detecção de intent (greeting, question, imperative)
+- Sem tratamento especial para frases curtas
+
+#### 3. **Categorias Incorretas no Painel**
+**Sintoma:** `micro_eval()` usa `error["type"]` em vez de `error["category"]`, enviando categorias não-canônicas pro frontend.
+
+**Exemplo:**
+- `type="contraction"` → enviado como category="contraction"
+- Frontend espera: category ∈ {grammar, style, spelling, syntax, semantic}
+
+**Código Bugado (linha 460):**
+```python
+issue = {
+    "category": error["type"],  # BUG! Usa type em vez de category
+    ...
+}
+```
+
+### Solução Implementada
+
+#### Fix 1: Helper Reutilizável para Draft Feedback
+
+**Arquivo:** `api/app/api/api_v1/endpoints/chat.py:67-123`
+
+**Implementação:**
+Criou `_build_draft_feedback(conversation_id, eval_result, now_ms, ghost_suggestion=None)` que:
+- Calcula bar_score_raw (weighted average)
+- Monta bar_score_components (spelling, grammar, syntax, lesson_alignment, naturalness)
+- Mapeia top_issues para schema DraftIssue
+- Inclui ghost_suggestion opcional
+
+**Uso:**
+- `handle_draft_update`: chama helper com `ghost_suggestion=None`
+- `handle_request_autocomplete`: **PRIMEIRO** executa `micro_eval()`, depois `autocomplete()`, chama helper com `ghost_suggestion`
+
+**Resultado:**
+- Painel mantém issues reais quando autocomplete é acionado
+- Ghost suggestion é adicionado SEM apagar issues/scores
+
+#### Fix 2: Mock Provider v4 - Análise Inteligente
+
+**Arquivo:** `api/app/llm/mock_provider.py:161-361`
+
+**Mudanças em `_analyze_text()`:**
+
+**2.1. Intent Detection:**
+```python
+intent = "statement"  # default
+
+# Greeting patterns
+if any(text_lower.startswith(g) for g in ["hi", "hello", "hey", ...]):
+    intent = "greeting"
+# Question patterns
+elif any(text_lower.startswith(q) for q in ["how", "what", "where", ...]):
+    intent = "question"
+elif text_lower.endswith("?"):
+    intent = "question"
+# Imperative/short
+elif len(text_lower.split()) <= 3:
+    intent = "short"
+```
+
+**2.2. Error Detection Específica:**
+- **Pontuação:** questões sem `?` → category="style"
+- **Contração:** "lets go" → category="grammar", correction="let's"
+- **Concordância:** "I lets" → category="grammar", correction="I let"
+- **Tempo verbal:** "go" + "yesterday" → category="grammar", correction="went"
+- **Greeting:** "hi" sem vírgula → category="style", correction="Hi,"
+
+**2.3. Rewrite Plausível:**
+- Começa com texto original: `rewrite = text_original`
+- Aplica correções detectadas em ordem reversa
+- Garante capitalização e pontuação
+- **NUNCA** usa fallback "I {keyword} every day"
+
+**Exemplos:**
+```
+Input: "hi, how are you"
+Intent: greeting
+Errors: [style: missing comma, style: missing ?]
+Rewrite: "Hi, how are you?"
+
+Input: "lets go"
+Intent: short
+Errors: [grammar: missing apostrophe]
+Rewrite: "Let's go."
+
+Input: "how was your weekend"
+Intent: question
+Errors: [style: missing ?]
+Rewrite: "How was your weekend?"
+```
+
+#### Fix 3: Categorias Canônicas no micro_eval
+
+**Arquivo:** `api/app/llm/mock_provider.py:458-470`
+
+**Antes (BUG):**
+```python
+issue = {
+    "category": error["type"],  # type="contraction" → category="contraction"
+    ...
+}
+```
+
+**Depois (FIX):**
+```python
+# Use canonical category from analysis (grammar, style, etc)
+category = error.get("category", "grammar")
+
+issue = {
+    "category": category,  # Usa category="grammar" do erro
+    ...
+}
+```
+
+**Resultado:**
+- Frontend recebe categorias canônicas: grammar, style, spelling, etc.
+- Painel exibe ícone corromp correto para cada tipo de erro
+
+### Arquivos Modificados
+
+1. **`api/app/api/api_v1/endpoints/chat.py`**
+   - Adicionou `_build_draft_feedback()` helper (57 linhas)
+   - Refatorou `handle_draft_update()` para usar helper (-32 linhas)
+   - Refatorou `handle_request_autocomplete()` para executar micro_eval PRIMEIRO (+16 linhas)
+   - Total: ~41 linhas modificadas
+
+2. **`api/app/llm/mock_provider.py`**
+   - Refatorou `_analyze_text()` completamente (v3 → v4)
+   - Adicionou intent detection (greeting, question, statement, short)
+   - Adicionou error detection específica (punctuation, contraction, agreement)
+   - Melhorou rewrite generation (correções mínimas do texto original)
+   - Corrigiu `micro_eval()` para usar `error["category"]`
+   - Total: ~200 linhas modificadas
+
+3. **`api/tests/test_chat_coach_mock_provider.py`**
+   - Adicionou `test_mock_provider_v4_greeting_detection()` (50 linhas)
+   - Adicionou `test_mock_provider_v4_contraction_error()` (40 linhas)
+   - Adicionou `test_mock_provider_v4_question_punctuation()` (45 linhas)
+   - Adicionou `test_mock_provider_v4_rewrite_coherence()` (40 linhas)
+   - Total: 175 linhas de testes novos
+
+### Resultados dos Testes
+
+**Comando:**
+```bash
+cd api
+source venv/bin/activate
+python -m pytest tests/test_chat_coach_mock_provider.py -v
+```
+
+**Resultado:**
+```
+======================= 10 passed, 13 warnings in 10.99s =======================
+```
+
+**Testes v4:**
+- ✅ `test_mock_provider_v4_greeting_detection()`: Detecta "hi, how are you" como greeting, marca style issues
+- ✅ `test_mock_provider_v4_contraction_error()`: Detecta "lets go" → grammar issue "let's"
+- ✅ `test_mock_provider_v4_question_punctuation()`: Detecta questões sem ?
+- ✅ `test_mock_provider_v4_rewrite_coherence()`: Rewrites são plausíveis, sem "every day" nonsense
+
+### Critérios de Aceite - v1.2
+
+- [x] Painel NÃO zera quando autocomplete é acionado (1.2s idle)
+- [x] Issues reais são mantidas + ghost suggestion aparece
+- [x] Greetings são detectados corretamente (intent="greeting")
+- [x] Contraction errors são detectados ("lets" → "let's")
+- [x] Questions sem ? são marcadas com style issue
+- [x] Rewrites são plausíveis e baseados no texto original
+- [x] `micro_eval()` usa categorias canônicas (grammar, style, etc)
+- [x] Todos os 10 testes passam
+
+### Validação Manual
+
+**Como testar:**
+
+1. **Teste 1 - Greeting + Pontuação:**
+   - Digitar: "hi, how are you"
+   - Esperado: Painel mostra style issue (comma + ?)
+   - Pausar 1.2s
+   - Esperado: Issues continuam visíveis + ghost suggestion aparece
+
+2. **Teste 2 - Contraction:**
+   - Digitar: "lets go"
+   - Esperado: Painel mostra grammar issue "let's"
+   - Pausar 1.2s
+   - Esperado: Issue continua visível + ghost suggestion
+
+3. **Teste 3 - Painel não zera:**
+   - Digitar qualquer texto com erros
+   - Verificar issues no painel
+   - Parar de digitar (1.2s)
+   - Esperado: **Issues continuam no painel** + ghost suggestion aparece
+
+---
+
+**Status do Documento:** 📝 Implementation Complete (v1.2)
 
 **Perguntas para aprovação:**
 1. Confirmar nome final do módulo na UI: "Chat Coach" ou "Treino Conversacional"?
