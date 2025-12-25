@@ -675,14 +675,14 @@ Learning Goal: {lesson_frame.get('learning_goal', 'conversation practice')}
 Topic: {lesson_frame.get('topic', 'general conversation')}
 Expected Intent: {lesson_frame.get('expected_intent', 'general conversation')}
 
-Keep responses conversational and natural. Respond to what the user actually says.
+Think step-by-step internally. Answer naturally and briefly in 1-2 sentences. Always ask one relevant follow-up question to keep the conversation going. If the user writes in Portuguese/Spanish, encourage them to switch to English gently.
 """
     full_response = ""
 
     # Generation config (standard LLM params only, no internal objects)
     generation_config = {
-        "temperature": 0.7,
-        "max_tokens": 500,
+        "temperature": 0.5,
+        "max_tokens": 300,
         "top_p": 0.9,
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0

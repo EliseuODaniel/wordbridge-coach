@@ -120,7 +120,7 @@ services:
     ports:
       - "8080:8080"  # Internal only (accessible via Docker network)
     volumes:
-      - llm_models:/models
+      - ./llm_models:/models
     command: >
       -m /models/model.gguf
       -c 4096
@@ -171,8 +171,6 @@ volumes:
   audio_cache:
     driver: local
   tts_models:
-    driver: local
-  llm_models:
     driver: local
 
 networks:
