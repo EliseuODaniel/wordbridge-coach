@@ -1,5 +1,86 @@
 # FillTheWord OpenSpec - Histórico de Mudanças
 
+## ✅ Aplicado: Chat Coach - Real LLM (Local llama.cpp + OpenAI) (2025-12-25)
+
+**Status**: ✅ Applied & Validated (Partial - Model Download Required)
+**Change Document**: `openspec/changes/archived/2025-12-chat-coach-real-llm-v1.md`
+**Escopo**: Backend (LLM providers, factory, tests), Infrastructure (llama.cpp service)
+**Commits**: 7bafc73, 314a043, 2ef12b2, 04f4ec3
+
+### Resumo
+
+Implementação de **LLM real para Chat Coach**, suportando tanto local (llama.cpp, 8GB VRAM) quanto cloud (OpenAI), com modo strict para evitar fallback silencioso:
+
+1. **LlamaCppLLMProvider**: Cliente HTTP OpenAI-compatible para llama.cpp local
+2. **Factory Pattern**: Seleção de provider via env vars (llamacpp | openai_http | mock)
+3. **Strict Mode**: `CHAT_LLM_STRICT=true` previne fallback silencioso
+4. **Infrastructure**: Serviço docker llama.cpp com volume para modelo GGUF
+5. **SSE Streaming**: Parse de Server-Sent Events para respostas em tempo real
+6. **Config Filtering**: Remove objetos internos (lesson_frame) antes de enviar ao LLM
+
+### Implementação
+
+**Backend**:
+- ✅ `LlamaCppLLMProvider` com HTTP client (httpx) + SSE parsing (`api/app/llm/llamacpp_provider.py`)
+- ✅ `get_llm_provider_from_env()` com suporte a strict mode (`api/app/llm/factory.py`)
+- ✅ Chat endpoint atualizado com system_prompt + cleanup de generation_config (`api/app/api/api_v1/endpoints/chat.py`)
+- ✅ 16 testes unitários com MockTransport (SSE, strict mode, factory)
+
+**Infrastructure**:
+- ✅ Serviço `llm` no docker-compose.yml (ghcr.io/ggml-org/llama.cpp:server)
+- ✅ Volume `llm_models` para modelo GGUF (~5GB)
+- ✅ Script `scripts/download_model.sh` + docs `LOCAL_LLM_SETUP.md`
+
+**Feature Flags**:
+- `CHAT_LLM_PROVIDER`: llamacpp (default) | openai_http | mock
+- `CHAT_LLM_BASE_URL`: URL do servidor llama.cpp (default: http://llm:8080/v1)
+- `CHAT_LLM_MODEL`: Nome do modelo (default: qwen2.5-7b-instruct)
+- `CHAT_LLM_STRICT`: true | false (previne fallback se true)
+- `CHAT_LLM_NETWORK_ENABLED`: true | false (OpenAI respeita, llamacpp ignora)
+
+### Validação
+
+**Unit Tests (16/16 passed)**:
+```bash
+✅ test_llamacpp_provider_chat_stream_sse
+✅ test_llamacpp_provider_filters_generation_config
+✅ test_llamacpp_provider_strict_mode_raises
+✅ test_llamacpp_provider_non_strict_fallback
+✅ test_llamacpp_provider_micro_eval_heuristic
+✅ test_llamacpp_provider_autocomplete_heuristic
+✅ test_factory_llamacpp_provider (10 tests)
+```
+
+**Infrastructure**:
+```bash
+docker exec ftw-api env | grep CHAT
+CHAT_LLM_PROVIDER=llamacpp
+CHAT_LLM_BASE_URL=http://llm:8080/v1
+CHAT_LLM_MODEL=qwen2.5-7b-instruct
+CHAT_LLM_STRICT=true
+```
+
+### Limitações Conhecidas
+
+1. **Model Download**: Requer download manual do modelo Qwen2.5-7B-Instruct GGUF (~5GB)
+   - Script automatizado falhou (rede/tamanho)
+   - Instruções em `LOCAL_LLM_SETUP.md`
+2. **Validação UI End-to-End**: Pendente download do modelo
+   - Unit tests cobrem todos os caminhos de código
+   - Infraestrutura pronta e configurada
+
+### Próximos Passos
+
+Para validação completa:
+```bash
+# 1. Baixar modelo manualmente (veja LOCAL_LLM_SETUP.md)
+# 2. Iniciar serviço LLM
+docker compose up -d llm
+# 3. Testar UI em http://localhost:3007/?mode=chat
+```
+
+---
+
 ## ✅ Aplicado: Lingvist Mode - Inline Cloze + Hints Progressivos (2025-12-24)
 
 **Status**: ✅ Applied → Validated
