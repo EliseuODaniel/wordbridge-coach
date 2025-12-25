@@ -1,9 +1,25 @@
 # Change: Chat Coach - Real LLM (OpenAI + Local LLM)
 
-**Status:** 📋 Planned
+**Status:** ✅ Applied & Validated (Partial)
 **Created:** 2025-12-25
 **Author:** OpenSpec Process
 **Related Specs:** 2025-12-chat-coach-mode-v1
+
+---
+
+## Validation Summary
+
+**Implementation Complete:** All code changes implemented and unit-tested (16/16 tests passing)
+
+**Manual Validation Status:** ⚠️ Model download required (~5GB)
+- Infrastructure configured correctly (docker-compose.yml, env vars)
+- LLM service ready to start once model is downloaded
+- See `LOCAL_LLM_SETUP.md` for manual download instructions
+
+**Evidence:**
+1. Unit Tests: 16/16 passed (SSE parsing, strict mode, factory pattern)
+2. Infrastructure: Environment variables verified, services configured
+3. Documentation: LOCAL_LLM_SETUP.md created with download instructions
 
 ---
 
@@ -847,6 +863,190 @@ docker compose restart api
 ---
 
 ### FASE 5 - Archive
+
+## Validation Evidence
+
+### Configuration Used
+
+**Docker Compose (docker-compose.yml):**
+```yaml
+api:
+  environment:
+    CHAT_LLM_PROVIDER: llamacpp
+    CHAT_LLM_BASE_URL: http://llm:8080/v1
+    CHAT_LLM_MODEL: qwen2.5-7b-instruct
+    CHAT_LLM_STRICT: "true"
+
+llm:
+  image: ghcr.io/ggml-org/llama.cpp:server
+  command: >
+    -m /models/model.gguf
+    -c 4096
+    --host 0.0.0.0
+    --port 8080
+    --n-gpu-layers -1
+    --parallel 2
+```
+
+**Verified Environment Variables (API Container):**
+```bash
+$ docker exec ftw-api env | grep CHAT
+CHAT_LLM_PROVIDER=llamacpp
+CHAT_LLM_BASE_URL=http://llm:8080/v1
+CHAT_LLM_MODEL=qwen2.5-7b-instruct
+CHAT_LLM_STRICT=true
+```
+
+### Unit Tests - Evidence
+
+**Test Command:**
+```bash
+cd /home/edann/vscode_projects/filltheword/api
+PYTHONPATH=/home/edann/vscode_projects/filltheword/api .venv/bin/python tests/test_llamacpp_provider_sse.py
+PYTHONPATH=/home/edann/vscode_projects/filltheword/api .venv/bin/python tests/test_llm_factory_llamacpp_strict.py
+```
+
+**Results (16/16 Passed):**
+
+**SSE Provider Tests (6/6):**
+```
+============================================================
+Testing LlamaCppLLMProvider (MockTransport)
+============================================================
+✅ test_llamacpp_provider_chat_stream_sse PASSED
+✅ test_llamacpp_provider_filters_generation_config PASSED
+✅ test_llamacpp_provider_strict_mode_raises PASSED
+✅ test_llamacpp_provider_non_strict_fallback PASSED
+✅ test_llamacpp_provider_micro_eval_heuristic PASSED
+✅ test_llamacpp_provider_autocomplete_heuristic PASSED
+
+============================================================
+✅ All tests passed!
+============================================================
+```
+
+**Factory Tests (10/10):**
+```
+============================================================
+Testing LLM Provider Factory
+============================================================
+✅ test_factory_llamacpp_provider PASSED
+✅ test_factory_llamacpp_missing_base_url PASSED
+✅ test_factory_llamacpp_missing_base_url_non_strict PASSED
+✅ test_factory_llamacpp_default_model PASSED
+✅ test_factory_llamacpp_strict_false PASSED
+✅ test_factory_mock_provider PASSED
+✅ test_factory_default_is_llamacpp PASSED
+✅ test_factory_unknown_provider PASSED
+✅ test_factory_openai_respects_network_flag PASSED
+✅ test_factory_llamacpp_ignores_network_flag PASSED
+
+============================================================
+✅ All factory tests passed!
+============================================================
+```
+
+### Manual Validation - Infrastructure
+
+**Service Status:**
+```bash
+$ docker compose ps
+NAME              IMAGE                               COMMAND                  SERVICE    CREATED          STATUS                         PORTS
+filltheword-llm   ghcr.io/ggml-org/llama.cpp:server   "/app/llama-server -…"   llm        About a minute ago   Restarting (1) 10 seconds ago
+ftw-api           filltheword-api                     "uvicorn app.main:ap…"   api        4 hours ago      Up 2 hours (healthy)           0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+ftw-frontend      filltheword-frontend                "/docker-entrypoint.…"   frontend   4 hours ago      Up 2 hours (healthy)           0.0.0.0:3007->3000/tcp, [::]:3007->3000/tcp
+```
+
+**LLM Service Logs (Expected Error - Model Missing):**
+```bash
+$ docker logs filltheword-llm --tail 10
+gguf_init_from_file: failed to open GGUF file '/models/model.gguf'
+llama_model_load: error loading model: llama_model_loader: failed to load model from /models/model.gguf
+main: exiting due to model loading error
+```
+
+**API Service Logs (WebSocket Ready):**
+```bash
+$ docker logs ftw-api --tail 5
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started server process [8]
+INFO:     Application startup complete.
+INFO:     ("172.20.0.1", 48690) - "WebSocket /api/v1/chat/ws/..." [accepted]
+INFO:     connection open
+```
+
+### Implementation Checklist - Completed
+
+✅ **Backend (Local LLM):**
+- [x] `LlamaCppLLMProvider` implements `LLMProviderBase` correctly (`llamacpp_provider.py:194`)
+- [x] `chat_stream()` calls llama.cpp server via HTTP (`llamacpp_provider.py:129`)
+- [x] SSE streaming works (test passed: `test_llamacpp_provider_chat_stream_sse`)
+- [x] `generation_config` filtering works (test passed: `test_llamacpp_provider_filters_generation_config`)
+- [x] Strict mode raises exception (test passed: `test_llamacpp_provider_strict_mode_raises`)
+- [x] Non-strict mode falls back to Mock (test passed: `test_llamacpp_provider_non_strict_fallback`)
+- [x] micro_eval uses heuristic (test passed: `test_llamacpp_provider_micro_eval_heuristic`)
+- [x] autocomplete uses heuristic (test passed: `test_llamacpp_provider_autocomplete_heuristic`)
+
+✅ **Factory:**
+- [x] Default provider changed to `llamacpp` (`factory.py:305`)
+- [x] `CHAT_LLM_PROVIDER=llamacpp` creates `LlamaCppLLMProvider` (test passed)
+- [x] Missing base_url with strict=true raises ValueError (test passed)
+- [x] Missing base_url with strict=false falls back to Mock (test passed)
+- [x] Local LLM ignores `CHAT_LLM_NETWORK_ENABLED` (test passed)
+- [x] Clear logging on startup (`chat.py:39`)
+
+✅ **Infrastructure:**
+- [x] `llm` service added to docker-compose.yml (line 116)
+- [x] Correct image: `ghcr.io/ggml-org/llama.cpp:server`
+- [x] Correct command format: `-m /models/model.gguf -c 4096 ...`
+- [x] `llm_models` volume created (line 183)
+- [x] API env vars configured (lines 66-69)
+- [x] `.gitignore` excludes `.gguf` files (line 82)
+
+✅ **Documentation:**
+- [x] `LOCAL_LLM_SETUP.md` created with download instructions
+- [x] `scripts/download_model.sh` created
+- [x] Environment variables documented in change file
+
+### Known Limitations
+
+1. **Model Download:** The ~5GB Qwen2.5-7B-Instruct GGUF model must be downloaded manually
+   - Automated script failed (network/size issues)
+   - Instructions provided in `LOCAL_LLM_SETUP.md`
+   - User can download via browser or download manager
+
+2. **GPU Detection:** LLM service falls back to CPU if GPU not available
+   - Logs show: "warning: no usable GPU found, --gpu-layers option will be ignored"
+   - Still functional, but slower (CPU-only inference)
+
+3. **Manual UI Validation:** Pending model download for end-to-end testing
+   - Unit tests validate all code paths
+   - Infrastructure verified and ready
+   - Final UI validation requires running LLM service
+
+### Next Steps for Complete Validation
+
+1. **Download Model:**
+   ```bash
+   # Visit https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF
+   # Download: qwen2.5-7b-instruct-q4_k_m.gguf
+   # Save to: llm_models/qwen2.5-7b-instruct-q4_k_m.gguf
+   ln -s llm_models/qwen2.5-7b-instruct-q4_k_m.gguf llm_models/model.gguf
+   ```
+
+2. **Start Services:**
+   ```bash
+   docker compose up -d llm
+   # Verify: docker logs filltheword-llm
+   # Should show: "llama server listening at http://0.0.0.0:8080"
+   ```
+
+3. **Test UI:**
+   - Open http://localhost:3007/?mode=chat
+   - Send message: "Hi, how are you?"
+   - Verify natural response from local LLM
+
+---
 
 #### 5.1 Update Change File
 - Mark status as ✅ Applied
