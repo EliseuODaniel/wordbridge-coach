@@ -84,6 +84,21 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
 
     } catch (error) {
       console.error('❌ Error loading Lingvist card:', error);
+
+      // Extract error message from axios error if available
+      let errorMsg = 'Failed to load card. Please try again.';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as any;
+        if (axiosError.response?.data?.detail) {
+          errorMsg = `Error ${axiosError.response.status}: ${axiosError.response.data.detail}`;
+        } else if (axiosError.message) {
+          errorMsg = axiosError.message;
+        }
+      } else if (error instanceof Error) {
+        errorMsg = error.message;
+      }
+
+      setErrorMessage(errorMsg);
       setCurrentCard(null);
     }
   }, [userId]);
@@ -469,10 +484,39 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
         ) : (
           /* Loading State */
           <div className="text-center py-16">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-400">
-              Loading card...
-            </p>
+            {errorMessage ? (
+              <>
+                {/* Error State */}
+                <div className="text-red-400 mb-4">
+                  <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h8m-4 8h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-100 mb-2">
+                  Failed to Load Card
+                </h3>
+                <p className="text-gray-400 mb-6 max-w-md mx-auto">
+                  {errorMessage}
+                </p>
+                <button
+                  onClick={() => {
+                    setErrorMessage(null);
+                    loadNextCard();
+                  }}
+                  className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition font-semibold"
+                >
+                  🔄 Retry
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Loading State */}
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p className="text-gray-400">
+                  Loading card...
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>
