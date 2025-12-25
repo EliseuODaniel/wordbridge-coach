@@ -63,6 +63,18 @@ class CardSelectionService:
             user_id: User identifier
             exclude_card_id: Optional card ID to exclude from selection (avoids immediate repetition)
         """
+        # Get user mode
+        user_mode = self._get_user_mode(user_id)
+
+        if user_mode == 'lingvist':
+            return self._get_next_card_lingvist(user_id, exclude_card_id)
+        else:
+            return self._get_next_card_spec4(user_id, exclude_card_id)
+
+    def _get_next_card_spec4(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Spec4 mode: Fixed 25% new / 75% review mix (original behavior)
+        """
         # Get user progress and session stats
         progress = self.progression_service.get_or_create_user_progress(user_id)
         session_stats = self.progression_service.get_session_stats_for_today(user_id)
@@ -104,6 +116,62 @@ class CardSelectionService:
         print(f"DEBUG: No cards available for user {user_id} - DB may be empty")
         return None
 
+    def _get_next_card_lingvist(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Lingvist mode: Prioritize relearn queue, use adaptive new_share
+        """
+        # T1: Check relearn queue (highest priority)
+        relearn_card = self._get_due_relearn_card(user_id, exclude_card_id)
+        if relearn_card:
+            return relearn_card
+
+        # T2: Calculate adaptive new_share based on accuracy
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+
+        new_share = self._calculate_adaptive_new_share(user)
+
+        # Get review count for backlog check
+        reviews_due_count = self._count_reviews_due(user_id)
+
+        # T3: Try new card if below adaptive share and below threshold
+        can_introduce_new = (
+            reviews_due_count < 50 and  # Backlog threshold
+            new_share > 0  # Has capacity for new cards
+        )
+
+        if can_introduce_new:
+            progress = self.progression_service.get_or_create_user_progress(user_id)
+
+            # Check current new share
+            session_stats = self.progression_service.get_session_stats_for_today(user_id)
+            current_new_share = 0
+            if session_stats.cards_shown > 0:
+                current_new_share = session_stats.new_cards_shown / session_stats.cards_shown
+
+            if current_new_share < new_share:
+                new_card = self._get_random_new_card(user_id, progress, exclude_card_id)
+                if new_card:
+                    return new_card
+
+        # T4: Try review card
+        review_candidates = self.get_due_review_words(self.db, user_id, max_count=50, exclude_card_id=exclude_card_id)
+        if review_candidates:
+            review_card = self._get_review_card(user_id, review_candidates, exclude_card_id)
+            if review_card:
+                return review_card
+
+        # T5: Fallback
+        progress = self.progression_service.get_or_create_user_progress(user_id)
+        fallback_card = self._get_any_eligible_card(user_id, progress, exclude_card_id)
+        if fallback_card:
+            return fallback_card
+
+        # T6: Only return None if DB is truly empty
+        print(f"DEBUG: No cards available for user {user_id} - DB may be empty")
+        return None
+
     def _get_random_new_card(self, user_id: str, progress: UserFrequencyProgress,
                              exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get a random new card within the user's goal/window
@@ -140,8 +208,8 @@ class CardSelectionService:
             if excluded_card and excluded_card.sentence:
                 excluded_word_id = excluded_card.sentence.word_id
 
-        # Anti-repetition: get recently seen words (last 7 days, max 50)
-        recent_word_ids = self._get_recent_word_ids(user_id, days=7, limit=50)
+        # Anti-repetition: get recently seen words answered CORRECTLY (last 7 days, max 50)
+        recent_word_ids = self._get_recent_correct_word_ids(user_id, days=7, limit=50)
 
         # Build exclusions: current card + recent words
         exclusions = set()
@@ -597,3 +665,108 @@ class CardSelectionService:
                 return {"success": False, "error": str(e)}
 
         return {"success": True, "message": "Incorrect answer, progression not updated"}
+
+    def _get_user_mode(self, user_id: str) -> str:
+        """Get user's learning mode ('spec4' or 'lingvist')"""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        return user.mode if user else 'spec4'
+
+    def _get_recent_correct_word_ids(self, user_id: str, days: int = 7, limit: int = 50) -> set:
+        """
+        Get distinct word IDs from CORRECT answers in recent days (anti-repetition fix).
+
+        Only excludes words that were answered CORRECTLY, allowing wrong answers to repeat.
+
+        Args:
+            user_id: User ID
+            days: Look back period in days (default 7)
+            limit: Maximum number of word IDs to return (default 50)
+
+        Returns:
+            Set of word IDs recently answered correctly
+        """
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+        recent_correct = self.db.query(ReviewEvent)\
+            .join(Card, ReviewEvent.card_id == Card.id)\
+            .join(Sentence, Card.sentence_id == Sentence.id)\
+            .filter(
+                and_(
+                    ReviewEvent.user_id == user_id,
+                    ReviewEvent.created_at >= cutoff_date,
+                    ReviewEvent.was_correct == True  # ONLY correct answers
+                )
+            )\
+            .distinct(Sentence.word_id)\
+            .limit(limit)\
+            .all()
+
+        return {review_event.card.sentence.word_id for review_event in recent_correct if review_event.card and review_event.card.sentence}
+
+    def _get_due_relearn_card(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get next due relearn card (highest priority in Lingvist mode)"""
+        from sqlalchemy import desc
+
+        query = self.db.query(UserCardState, Word).join(
+            Card, UserCardState.card_id == Card.id
+        ).join(
+            Sentence, Card.sentence_id == Sentence.id
+        ).join(
+            Word, Sentence.word_id == Word.id
+        ).filter(
+            UserCardState.user_id == user_id,
+            UserCardState.is_relearn == True,
+            UserCardState.relearn_due <= datetime.utcnow()
+        )
+
+        if exclude_card_id:
+            query = query.filter(UserCardState.card_id != exclude_card_id)
+
+        # Prioritize by relearn_due (oldest first)
+        result = query.order_by(UserCardState.relearn_due).first()
+
+        if not result:
+            return None
+
+        ucs, word = result
+        sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
+        card_context = self._build_card_context(user_id, word, sentence, is_new=False)
+
+        # Record as review card
+        self.progression_service.record_card_shown(user_id, is_new_card=False)
+
+        return card_context
+
+    def _count_reviews_due(self, user_id: str) -> int:
+        """Count cards due for review (excluding new cards)"""
+        from app.models.user_card_state import MemoryStage
+
+        count = self.db.query(UserCardState).filter(
+            UserCardState.user_id == user_id,
+            UserCardState.next_review_at <= datetime.utcnow(),
+            UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE])
+        ).count()
+
+        return count
+
+    def _calculate_adaptive_new_share(self, user: User) -> float:
+        """Calculate adaptive new card share based on user accuracy"""
+
+        # Count reviews due
+        reviews_due_count = self._count_reviews_due(user.id)
+
+        # Rule 1: High backlog -> 0% new
+        if reviews_due_count > 50:
+            return 0.0
+
+        # Rule 2: Accuracy-based adjustment
+        if user.accuracy_last_20 is not None:
+            if user.accuracy_last_20 < 0.7:
+                return 0.10  # Struggling -> only 10% new
+            elif user.accuracy_last_20 > 0.9:
+                return 0.25  # Excelling -> 25% new
+            else:
+                return 0.15  # Average -> 15% new
+
+        # Rule 3: No accuracy data yet -> default 15%
+        return 0.15
