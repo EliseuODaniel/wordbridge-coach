@@ -16,6 +16,11 @@ const normalizeText = (text: string): string => {
   return text.toLowerCase().trim().replace(/\s+/g, ' ');
 };
 
+// Helper: Check if translation is available (defensive - treats "", null, undefined as unavailable)
+const isTranslationAvailable = (translation: string | null | undefined): boolean => {
+  return translation != null && typeof translation === 'string' && translation.trim().length > 0;
+};
+
 const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => {
   // State management
   const [currentCard, setCurrentCard] = useState<LingvistCardResponse | null>(null);
@@ -371,7 +376,9 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
                 <div>
                   <div className="text-xs text-gray-400 mb-1">Palavra</div>
                   <div className="text-base text-gray-100">
-                    {currentCard.word_translation_pt ?? (
+                    {isTranslationAvailable(currentCard.word_translation_pt) ? (
+                      currentCard.word_translation_pt
+                    ) : (
                       <span className="text-gray-500 italic">Tradução indisponível</span>
                     )}
                   </div>
@@ -380,7 +387,9 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
                 <div>
                   <div className="text-xs text-gray-400 mb-1">Frase</div>
                   <div className="text-base text-gray-100">
-                    {currentCard.sentence_translation_pt ?? (
+                    {isTranslationAvailable(currentCard.sentence_translation_pt) ? (
+                      currentCard.sentence_translation_pt
+                    ) : (
                       <span className="text-gray-500 italic">Tradução indisponível</span>
                     )}
                   </div>
