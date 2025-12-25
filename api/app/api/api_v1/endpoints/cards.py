@@ -83,7 +83,7 @@ def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card
     Priority:
     1. Existing translation in DB (do nothing)
     2. TSV override (curated translations)
-    3. MT (Argos Translate) if LINGVIST_TRANSLATIONS_AUTOFILL=true
+    3. MT (Argos Translate or Google Translate) if LINGVIST_TRANSLATIONS_AUTOFILL=true
 
     Args:
         db: Database session
@@ -111,7 +111,7 @@ def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card
         word_lower = word.lemma.lower() if word.lemma else ""
         if word_lower in tsv_override:
             word_translation = tsv_override[word_lower]
-            logger.debug(f"✅ Word translation from TSV: {word.lemma} → {word_translation}")
+            logger.info(f"✅ Word translation from TSV: {word.lemma} → {word_translation}")
 
         # Fallback to MT if enabled
         else:
@@ -119,7 +119,7 @@ def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card
             if translation_service.is_enabled():
                 word_translation = translation_service.translate(word.lemma or word.text)
                 if word_translation:
-                    logger.debug(f"🤖 Word translation from MT: {word.lemma} → {word_translation}")
+                    logger.info(f"🤖 Word translation from {translation_service.get_provider()}: {word.lemma} → {word_translation}")
 
         # Save to DB if translation found
         if word_translation:
@@ -127,6 +127,7 @@ def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card
                 word.features = {}
             word.features['pt_translation'] = word_translation
             db.flush()  # Flush without commit (caller commits)
+            logger.debug(f"💾 Saved word translation to DB: {word.lemma}")
 
     # --- Sentence translation ---
     sentence_needs_translation = (
@@ -144,9 +145,12 @@ def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card
         if translation_service.is_enabled():
             sentence_translation = translation_service.translate(sentence_with_word)
             if sentence_translation:
-                logger.debug(f"🤖 Sentence translation from MT: '{sentence_with_word[:50]}...' → '{sentence_translation[:50]}...'")
+                logger.info(f"🤖 Sentence translation from {translation_service.get_provider()}: '{sentence_with_word[:50]}...' → '{sentence_translation[:50]}...'")
                 sentence.translation = sentence_translation
                 db.flush()  # Flush without commit (caller commits)
+                logger.debug(f"💾 Saved sentence translation to DB")
+        else:
+            logger.debug(f"⚠️ Translation service disabled, skipping sentence translation")
 
 def create_sample_data_if_needed(db: Session):
     """Create minimal sample data for testing"""
@@ -947,6 +951,9 @@ async def get_next_card_lingvist(
         sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
         sentence_text_encoded = quote(sentence_with_word)
         audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
+        # Commit database changes (including autofilled translations)
+        db.commit()
 
         # Build enriched response
         return LingvistCardResponse(
