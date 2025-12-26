@@ -128,6 +128,7 @@ services:
     volumes:
       - ./llm_models:/models
     command: >
+      ./server
       -m /models/model.gguf
       -c 4096
       --host 0.0.0.0
@@ -136,15 +137,14 @@ services:
       --parallel 2
     networks:
       - filltheword-net
-    # GPU support (optional, requires nvidia-docker)
-    # Uncomment if you have NVIDIA GPU and nvidia-container-toolkit installed
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # GPU support (enabled for NVIDIA RTX 4070 Laptop)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   # LanguageTool Service (Grammar/Spell Checking)
   languagetool:

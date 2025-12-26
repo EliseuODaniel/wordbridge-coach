@@ -265,6 +265,179 @@ class LlamaCppLLMProvider(LLMProvider):
         logger.debug("autocomplete: using heuristic analysis (Mock)")
         return await self._mock.autocomplete(context, lesson_frame, draft, student_profile)
 
+    async def generate_teacher_analysis(
+        self,
+        user_message: str,
+        context: str,
+        lesson_frame: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Generate teacher analysis as JSON (non-streaming, robust parser).
+
+        PASSO 1:
+        - Uses stream=False for complete JSON response
+        - Prompt: "RETURN JSON ONLY. NO markdown. NO extra text."
+        - Robust parser: removes code fences, extracts JSON
+        - Fallback with error reason if parsing fails
+
+        Returns structured analysis with:
+        - rewrite: Corrected version of user's message
+        - corrections: List of {mistake, fix, why}
+        - teacher_summary: Brief pedagogical feedback
+        - next_practice: 2-3 suggested practice sentences
+        """
+        # Build teacher-only context (user messages only)
+        # PASSO 3: Contextos independentes
+        teacher_system_prompt = f"""You are an expert English teacher. Analyze the student's message and return JSON ONLY.
+
+**CRITICAL: RETURN JSON ONLY**
+- NO markdown
+- NO code blocks (no ```json)
+- NO extra text
+- ONLY raw JSON
+
+Example format:
+{{
+  "rewrite": "I enjoyed sleeping.",
+  "corrections": [
+    {{
+      "mistake": "enjoyed to sleep",
+      "fix": "enjoyed sleeping",
+      "why": "After 'enjoy', use gerund (-ing), not infinitive."
+    }}
+  ],
+  "teacher_summary": "Good attempt! Remember: enjoy + gerund.",
+  "next_practice": [
+    "I enjoy reading books.",
+    "She enjoys playing tennis."
+  ]
+}}
+
+Student message: "{user_message}"
+
+Return JSON NOW:"""
+
+        try:
+            # PASSO 1: Non-streaming call for complete JSON
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": teacher_system_prompt}],
+                "stream": False,  # CRITICAL: Non-streaming for JSON
+                "temperature": 0.3,  # Lower temperature for consistent JSON
+                "max_tokens": 500
+            }
+
+            url = f"{self.base_url}/chat/completions"
+
+            logger.info(f"[TEACHER_LLM] Calling llama.cpp for teacher analysis (non-streaming)")
+
+            async with self.client.stream("POST", url, json=payload) as response:
+                response.raise_for_status()
+
+                # Parse response (non-streaming)
+                import json
+                response_data = json.loads(await response.aread())
+
+                # Extract content from OpenAI-compatible response
+                raw_text = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                logger.info(f"[TEACHER_LLM] Raw output (first 500 chars): {raw_text[:500]}")
+
+                # PASSO 1: Robust JSON parser
+                parsed_analysis = self._parse_teacher_json(raw_text)
+
+                logger.info(f"[TEACHER_LLM] Successfully parsed teacher analysis")
+                return parsed_analysis
+
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            logger.error(f"[TEACHER_LLM] llama.cpp error: {e}")
+            if self.strict:
+                raise
+
+            # Fallback to Mock provider
+            logger.info(f"[TEACHER_LLM] Falling back to Mock provider")
+            return await self._mock.generate_teacher_analysis(user_message, context, lesson_frame)
+
+        except Exception as e:
+            logger.exception(f"[TEACHER_LLM] Unexpected error: {e}")
+            # PASSO 1: NUNCA retorne "temporarily unavailable" silencioso
+            # Retorne com debug_reason
+            return {
+                "rewrite": None,
+                "corrections": [],
+                "teacher_summary": f"Teacher analysis error: {str(e)[:100]}",
+                "next_practice": [],
+                "debug_reason": str(e)[:200]
+            }
+
+    def _parse_teacher_json(self, raw_text: str) -> Dict[str, Any]:
+        """
+        Parse JSON from LLM response with robust error handling.
+
+        PASSO 1: Parser robusto
+        - Remove code fences (```json, ```)
+        - Extract substring from first "{" to last "}"
+        - Try json.loads
+        - If fail, return Mock analysis
+
+        Args:
+            raw_text: Raw text from LLM
+
+        Returns:
+            Parsed teacher analysis dict
+        """
+        import json
+        import re
+
+        try:
+            # Step 1: Remove code fences if present
+            cleaned = raw_text.strip()
+
+            # Remove ```json and ``` markers
+            cleaned = re.sub(r'^```json\s*', '', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'^```\s*', '', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'\s*```$', '', cleaned, flags=re.IGNORECASE)
+
+            # Step 2: Extract JSON from first { to last }
+            first_brace = cleaned.find('{')
+            last_brace = cleaned.rfind('}')
+
+            if first_brace == -1 or last_brace == -1 or last_brace <= first_brace:
+                logger.warning(f"[TEACHER_PARSE] No valid JSON braces found in: {raw_text[:200]}")
+                raise ValueError("No valid JSON object found")
+
+            json_str = cleaned[first_brace:last_brace + 1]
+
+            # Step 3: Parse JSON
+            parsed = json.loads(json_str)
+
+            # Validate required keys
+            required_keys = ["rewrite", "corrections", "teacher_summary", "next_practice"]
+            missing_keys = [k for k in required_keys if k not in parsed]
+
+            if missing_keys:
+                logger.warning(f"[TEACHER_PARSE] Missing keys: {missing_keys}, adding defaults")
+                for key in missing_keys:
+                    if key == "rewrite":
+                        parsed[key] = None
+                    elif key == "corrections":
+                        parsed[key] = []
+                    elif key == "teacher_summary":
+                        parsed[key] = "Analysis incomplete."
+                    elif key == "next_practice":
+                        parsed[key] = []
+
+            return parsed
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[TEACHER_PARSE] JSON decode error: {e} in: {raw_text[:300]}")
+            # Return Mock fallback instead of crashing
+            return self._mock._analyze_text(raw_text, lesson_frame={})
+        except Exception as e:
+            logger.error(f"[TEACHER_PARSE] Parse error: {e}")
+            # Return Mock fallback
+            return self._mock._analyze_text(raw_text, lesson_frame={})
+
     async def close(self):
         """Close HTTP client."""
         await self.client.aclose()

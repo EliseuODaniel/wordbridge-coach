@@ -271,7 +271,12 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
    * Handle teacher analysis from server
    */
   const handleTeacherAnalysis = (event: TeacherAnalysisEvent) => {
-    console.log('Teacher analysis received:', event);
+    console.log('[TEACHER_ANALYSIS_RX] Received event:', {
+      type: event.type,
+      conversation_id: event.conversation_id,
+      analysis_keys: event.analysis ? Object.keys(event.analysis) : 'null',
+      analysis: event.analysis
+    });
     setTeacherAnalysis(event.analysis);
   };
 

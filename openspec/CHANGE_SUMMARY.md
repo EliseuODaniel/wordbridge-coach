@@ -1,5 +1,61 @@
 # FillTheWord OpenSpec - Histórico de Mudanças
 
+## ✅ Aplicado: Chat Coach - LLM Teacher + Chat Sanitizer (2025-12-26)
+
+**Status**: ✅ Applied & Validated
+**Change Document**: `openspec/changes/archived/2025-12-chat-coach-draft-llm-teacher-v1.md`
+**Escopo**: Backend (Teacher analysis, chat sanitizer), Frontend (Professor panel)
+**Branch**: `feature/chat-coach-mvp`
+**Commits**: (pending merge to main)
+
+### Resumo
+
+Implementação da **arquitetura de dois calls (Chat + Teacher)** para separar conversa natural de análise pedagógica:
+
+1. **Teacher Analysis (LLM)**: Análise pedagógica separada em JSON via WS
+2. **Chat Sanitizer**: Bloqueio em 3 camadas para evitar meta-commentary no chat
+3. **Contextos Independentes**: Chat usa user/assistant, Teacher usa somente user messages
+4. **Parser JSON Robusto**: Remove code fences, extrai JSON, fallback com debug_reason
+
+### Implementação
+
+**Backend**:
+- ✅ `LlamaCppLLMProvider.generate_teacher_analysis()` com stream=False
+- ✅ Parser robusto `_parse_teacher_json()` (remove ```json, extrai primeiro { ao último })
+- ✅ `_build_teacher_context()` - somente user messages (role='user')
+- ✅ `_build_context_messages()` - user+assistant messages (exclui system)
+- ✅ System prompt curto (sem "CRITICAL INSTRUCTIONS")
+- ✅ Stop sequences: `"CRITICAL INSTRUCTIONS"`, `"Note:"`, `"(Note:"`, etc.
+- ✅ Sanitizer em 3 camadas: remove parenthetical, remove lines, truncate em "CRITICAL INSTRUCTIONS"
+- ✅ `assistant_done` envia `sanitized_response`
+
+**Frontend**:
+- ✅ `ChatCoachSession`: `teacherAnalysis` state, handler `handleTeacherAnalysis()`
+- ✅ `AnalysisPanel`: "Professor (LLM)" card com rewrite, corrections, summary, next_practice
+- ✅ Auto-scroll pinned: useLayoutEffect + requestAnimationFrame
+- ✅ "Jump to latest" button quando usuário scrolla pra cima
+
+**GPU**:
+- ⚠️ CPU-only documentado (imagem oficial llama.cpp sem CUDA)
+- Host: NVIDIA RTX 4070, nvidia-smi funciona no container
+- Imagem CUDA oficial indisponível/desatualizada
+- Workaround: CPU adequado para demo/MVP
+
+### Validação
+
+**CA1-CA4, CA6: ✅ Validated**
+- Chat sem meta-commentary
+- Teacher panel aparece com rewrite + corrections
+- Viewport locked (no global scroll)
+- Right panel fixed
+- Auto-scroll funciona
+
+**CA5: ⚠️ Documented (CPU-Only)**
+- llama.cpp rodando em CPU
+- GPU disponível mas imagem não compila com CUDA
+
+---
+
 ## ✅ Aplicado: Chat Coach - Real LLM (Local llama.cpp + OpenAI) (2025-12-25)
 
 **Status**: ✅ Applied & Validated (Partial - Model Download Required)

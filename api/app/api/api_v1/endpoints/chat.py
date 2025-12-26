@@ -325,13 +325,12 @@ def _sanitize_assistant_response(response: str) -> str:
     """
     Remove meta-commentary and extra user simulation from LLM response.
 
-    Defensive post-processing ("airbag") to handle cases where LLM ignores
-    instructions and generates meta-commentary or simulates user's speech.
-
-    Removes:
-    1. Meta-commentary patterns: "(Note:", "Note:", "(Teacher:", "(Analysis:"
-    2. Quoted paragraph at the end (often looks like user simulation)
-    3. Any text after role labels (User:, Student:, etc.)
+    PASSO 2: Sanitizer melhorado (bloqueio em 3 camadas)
+    1. Remove parenthetical meta-commentary: "(Note:", "(Teacher:", etc.
+    2. Remove lines starting with meta labels
+    3. Truncate at "CRITICAL INSTRUCTIONS" (remove do match até o fim)
+    4. Remove quoted paragraph at the end (user simulation)
+    5. Truncate at role labels (User:, Student:, etc.)
 
     Args:
         response: Raw LLM response
@@ -339,16 +338,17 @@ def _sanitize_assistant_response(response: str) -> str:
     Returns:
         Sanitized response with meta-commentary and user simulation removed
     """
-    # First, remove parenthetical meta-commentary at any position
-    # Pattern: "(Note: ...)", "(Teacher: ...)", "(Analysis: ...)"
     import re
-    # Remove parenthetical meta-commentary
+
+    # PASSO 2: Bloqueio em 3 camadas
+
+    # Camada 1: Remove parenthetical meta-commentary at any position
     response = re.sub(r'\(Note:[^)]*\)', '', response, flags=re.IGNORECASE)
     response = re.sub(r'\(Teacher:[^)]*\)', '', response, flags=re.IGNORECASE)
     response = re.sub(r'\(Analysis:[^)]*\)', '', response, flags=re.IGNORECASE)
+    response = re.sub(r'\(Correction:[^)]*\)', '', response, flags=re.IGNORECASE)
 
-    # Remove non-parenthetical meta-commentary (e.g., "Note: ...")
-    # Remove entire line if it starts with meta-commentary
+    # Camada 2: Remove non-parenthetical meta-commentary lines
     lines = response.split('\n')
     filtered_lines = []
     for line in lines:
@@ -360,8 +360,18 @@ def _sanitize_assistant_response(response: str) -> str:
 
     response = '\n'.join(filtered_lines)
 
+    # Camada 3: PASSO 2 - Truncate se "CRITICAL INSTRUCTIONS" aparecer
+    # Remove tudo a partir da linha contendo "CRITICAL INSTRUCTIONS"
+    lines = response.split('\n')
+    truncated_lines = []
+    for line in lines:
+        if 'CRITICAL INSTRUCTIONS' in line:
+            break  # Truncate aqui
+        truncated_lines.append(line)
+
+    response = '\n'.join(truncated_lines)
+
     # Remove quoted paragraph at the end (looks like user simulation)
-    # Pattern: blank line followed by line starting with quote
     lines = response.split('\n')
     if len(lines) >= 2 and not lines[-2].strip():
         if lines[-1].strip().startswith('"'):
@@ -381,6 +391,10 @@ def _build_context_messages(conversation_id: str, db: Session, limit: int = 10,
                           exclude_system: bool = False) -> List[dict]:
     """
     Build context messages for LLM, ensuring the most recent user message is included.
+
+    PASSO 3: Contextos independentes
+    - Chat context: usa user/assistant messages (exclui system)
+    - Teacher context: SOMENTE user messages (role='user')
 
     Strategy:
     1. Optionally exclude system message (when exclude_system=True)
@@ -414,6 +428,9 @@ def _build_context_messages(conversation_id: str, db: Session, limit: int = 10,
     # 3. Reverse to get chronological order
     last_non_system.reverse()
 
+    # PASSO 3: Log context size for debugging
+    logger.info(f"[CONTEXT_BUILDER] chat_context: {len(last_non_system)} messages (user+assistant)")
+
     # 4. Build messages list
     messages = []
     if system_msg:
@@ -423,6 +440,46 @@ def _build_context_messages(conversation_id: str, db: Session, limit: int = 10,
         {"role": m.role, "content": m.content}
         for m in last_non_system
     ])
+
+    return messages
+
+
+def _build_teacher_context(conversation_id: str, db: Session, limit: int = 10) -> List[dict]:
+    """
+    Build teacher-only context with USER messages ONLY.
+
+    PASSO 3: Contextos independentes
+    - Teacher context: SOMENTE user messages (role='user')
+    - NÃO inclui assistant replies
+    - NÃO inclui system prompt
+
+    This ensures teacher analysis is based purely on student input.
+
+    Args:
+        conversation_id: UUID of the conversation
+        db: Database session
+        limit: Maximum number of user messages to include (default: 10)
+
+    Returns:
+        List of message dicts with 'role' and 'content' keys (user only)
+    """
+    # Get last N user messages in descending order
+    last_user_messages = db.query(ChatMessage).filter(
+        ChatMessage.conversation_id == conversation_id,
+        ChatMessage.role == "user"
+    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
+
+    # Reverse to get chronological order
+    last_user_messages.reverse()
+
+    # PASSO 3: Log teacher context size
+    logger.info(f"[CONTEXT_BUILDER] teacher_context: {len(last_user_messages)} user messages (assistant excluded)")
+
+    # Build messages list (user only)
+    messages = [
+        {"role": m.role, "content": m.content}
+        for m in last_user_messages
+    ]
 
     return messages
 
@@ -877,34 +934,31 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
     messages = _build_context_messages(str(conversation.id), db, limit=10, exclude_system=True)
 
     # Build system prompt from lesson_frame
+    # PASSO 2: Remover header "CRITICAL INSTRUCTIONS" (incentiva eco)
+    # Manter instruções curtas (5-7 linhas), sem listas enormes
     lesson_frame = conversation.lesson_frame_json
-    system_prompt = f"""You are an English conversation tutor helping a {lesson_frame.get('cefr_target', 'A2')} level student.
+    system_prompt = f"""You are an English tutor helping a {lesson_frame.get('cefr_target', 'A2')} student.
+Topic: {lesson_frame.get('topic', 'conversation')}
+Goal: {lesson_frame.get('learning_goal', 'practice conversation')}
 
-Learning Goal: {lesson_frame.get('learning_goal', 'conversation practice')}
-Topic: {lesson_frame.get('topic', 'general conversation')}
-Expected Intent: {lesson_frame.get('expected_intent', 'general conversation')}
-
-CRITICAL INSTRUCTIONS:
-- Reply as the assistant ONLY - natural conversation response.
-- NEVER include meta-commentary like "Please note that..." or "I noticed you used..."
-- NEVER give grammar explanations or corrections in your response.
-- DO NOT teach or analyze in the chat - just have a natural conversation.
-- Never write the student's next message or simulate their speech.
-- Do not include quoted example replies.
-- No role labels like "User:", "Assistant:", "Student:".
-- Answer naturally and briefly in 1-3 sentences.
-- Always ask one relevant follow-up question to keep the conversation going.
-- If the user writes in Portuguese/Spanish, gently encourage them to switch to English.
-- Do NOT continue the conversation by writing what the user might say next.
+Keep it natural:
+- Reply briefly (1-3 sentences) as if chatting with a friend
+- Always ask a follow-up question
+- Never correct grammar or explain rules
+- If they write in Portuguese/Spanish, encourage them to use English
+- No examples, quotes, or meta-commentary
 """
     full_response = ""
 
-    # Generation config (standard LLM params only, no internal objects)
-    # Build stop sequences without empty strings (empty strings cause LLM to generate 0 tokens)
+    # PASSO 2: Stop sequences do CHAT (sem strings vazias)
+    # Adicionar stops para cortar se o modelo começar a ecoar meta
     stop_sequences = [
         '\n\n"',
         '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:',
         '">', '<|',
+        '\n\nCRITICAL INSTRUCTIONS',  # PASSO 2: Cortar se começar ecoar sistema
+        '\nNote:', '\n(Note:', '\nTeacher:', '\nAnalysis:',  # PASSO 2: Cortar meta commentary
+        '\nExplanation:', '\nCorrection:', '\nMeta:', '\nSystem:',
     ]
     # Filter out any empty strings or whitespace-only strings
     stop_sequences = [s for s in stop_sequences if isinstance(s, str) and s.strip()]
@@ -926,14 +980,20 @@ CRITICAL INSTRUCTIONS:
             token=token
         ).model_dump())
 
-    # Defensive sanitization to remove any user simulation LLM may have generated
-    full_response = _sanitize_assistant_response(full_response)
+    # PASSO 2: Defensive sanitization to remove any user simulation LLM may have generated
+    # Aplique sanitizer ANTES de persistir e no assistant_done content
+    sanitized_response = _sanitize_assistant_response(full_response)
 
-    # Persist assistant message
+    # PASSO 2: Se streaming mostrou meta durante geração, no assistant_done
+    # substitua o conteúdo final com o sanitized
+    # O frontend deve usar assistant_done como fonte final
+    logger.info(f"[CHAT_SANITIZE] Original length: {len(full_response)}, Sanitized length: {len(sanitized_response)}, Removed: {len(full_response) - len(sanitized_response)} chars")
+
+    # Persist assistant message (with sanitized content)
     assistant_message = ChatMessage(
         conversation_id=conversation.id,
         role="assistant",
-        content=full_response
+        content=sanitized_response  # PASSO 2: Persist sanitized version
     )
     db.add(assistant_message)
 
@@ -943,21 +1003,28 @@ CRITICAL INSTRUCTIONS:
     db.commit()
 
     # Send assistant_done
+    # PASSO 2: Enviar sanitized_content para o frontend usar como fonte final
     await websocket.send_json(AssistantDoneOut(
         type="assistant_done",
         conversation_id=str(conversation.id),
-        full_content=full_response,
+        full_content=sanitized_response,  # PASSO 2: Use sanitized version
         lesson_frame=conversation.lesson_frame_json,
         summary_update="Student sent a message."
     ).model_dump())
 
     # Generate teacher analysis (separate LLM call, JSON output only)
+    # PASSO 0: Log errors and raw output for debugging
     try:
+        conv_id_str = str(conversation.id)
+        logger.info(f"[TEACHER_ANALYSIS] Starting generation for conv={conv_id_str[:8]}")
+
         teacher_analysis = await llm_provider.generate_teacher_analysis(
             user_message=content,
             context=conversation.session_summary,
             lesson_frame=conversation.lesson_frame_json
         )
+
+        logger.info(f"[TEACHER_ANALYSIS] Generated successfully, keys={list(teacher_analysis.keys()) if teacher_analysis else 'None'}")
 
         # Persist teacher analysis in user_message metadata (NOT in content)
         if user_message.metadata_json is None:
@@ -966,12 +1033,42 @@ CRITICAL INSTRUCTIONS:
         db.commit()
 
         # Send teacher_analysis event to client
-        await websocket.send_json(TeacherAnalysisOut(
+        event_payload = TeacherAnalysisOut(
             type="teacher_analysis",
-            conversation_id=str(conversation.id),
+            conversation_id=conv_id_str,
             user_message_id=str(user_message.id),
             analysis=teacher_analysis
-        ).model_dump())
+        ).model_dump()
+
+        has_rewrite = bool(teacher_analysis and teacher_analysis.get('rewrite'))
+        corrections_count = len(teacher_analysis.get('corrections', [])) if teacher_analysis else 0
+
+        logger.info(f"[TEACHER_ANALYSIS] Sending WS event: type={event_payload['type']}, conv={conv_id_str[:8]}, payload_size={len(str(event_payload))}, has_rewrite={has_rewrite}, corrections_count={corrections_count}")
+        await websocket.send_json(event_payload)
+        logger.info(f"[TEACHER_ANALYSIS] WS event sent successfully")
     except Exception as e:
-        logger.error(f"Failed to generate teacher analysis: {e}")
+        logger.error(f"[TEACHER_ANALYSIS] Failed to generate: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # PASSO 1: NUNCA retorne "temporarily unavailable" silencioso
+        # Mostrar motivo real do erro para debug
+        error_reason = str(e)[:100]  # Primeiros 100 chars do erro
+        fallback_analysis = {
+            "teacher_summary": f"Teacher analysis failed: {error_reason}",
+            "rewrite": None,
+            "corrections": [],
+            "next_practice": [],
+            "debug_reason": error_reason  # Só server logs, não UI
+        }
+        try:
+            await websocket.send_json(TeacherAnalysisOut(
+                type="teacher_analysis",
+                conversation_id=str(conversation.id),
+                user_message_id=str(user_message.id),
+                analysis=fallback_analysis
+            ).model_dump())
+            logger.info(f"[TEACHER_ANALYSIS] Sent fallback with reason: {error_reason}")
+        except Exception as fallback_err:
+            logger.error(f"[TEACHER_ANALYSIS] Failed to send fallback: {fallback_err}")
         # Do not block conversation if teacher analysis fails

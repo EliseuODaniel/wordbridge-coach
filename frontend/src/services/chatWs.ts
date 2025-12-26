@@ -135,6 +135,7 @@ export class ChatWS {
           break;
 
         case 'teacher_analysis':
+          console.log('[ChatWS] teacher_analysis event received, calling onTeacherAnalysis callback');
           this.config.onTeacherAnalysis?.(event);
           break;
 

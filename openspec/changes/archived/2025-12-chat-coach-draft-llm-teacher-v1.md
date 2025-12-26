@@ -1,9 +1,10 @@
 # Change Proposal: Chat Coach Draft - LLM Teacher + LT Fixes
 
-**Status:** 🟡 Proposal
+**Status:** ✅ Applied & Validated
 **Created:** 2025-12-26
 **Author:** User (via Claude)
 **Scope:** Chat Coach Draft Feedback Enhancement
+**Validated:** 2025-12-26
 
 ---
 
@@ -180,17 +181,21 @@ Return JSON:
 ## Acceptance Criteria
 
 ### CA1: Chat Reply Without Meta-Commentary (NEW)
-**Status:** 🔴 Pending
+**Status:** ✅ Validated
 **Given** user sends "hello, how are you"
 **When** assistant responds via chat LLM
 **Then** chat reply contains ONLY natural conversation:
-- NO "(Note: ...)", "Note: ...", "(Teacher: ...)", "(Analysis: ...)"
+- NO "(Note: ...)", "Note: ...)", "(Teacher: ...)", "(Analysis: ...)"
 - NO parentheses with meta-commentary
 - NO explanations about grammar or teaching
 - Example valid reply: "Hello! I'm doing well, thank you! How are you doing today?"
+**Implementation:**
+- System prompt curto (sem "CRITICAL INSTRUCTIONS")
+- Stop sequences para "Note:", "(Note:", "CRITICAL INSTRUCTIONS", etc.
+- Sanitizer em 3 camadas (remove meta commentary, truncate em "CRITICAL INSTRUCTIONS")
 
 ### CA2: Teacher Analysis in Right Panel (NEW)
-**Status:** 🔴 Pending
+**Status:** ✅ Validated
 **Given** user sends "I enjoyed to sleep"
 **When** teacher LLM responds
 **Then** right panel shows "Professor (LLM)" section with:
@@ -198,9 +203,14 @@ Return JSON:
 - `rewrite`: "I enjoyed sleeping."
 - `corrections`: [{"mistake":"enjoyed to sleep","fix":"enjoyed sleeping","why":"After enjoy, use gerund (-ing) not infinitive (to + verb)"}]
 - `next_practice`: ["I enjoy reading books.", "She enjoys playing tennis."]
+**Implementation:**
+- `LlamaCppLLMProvider.generate_teacher_analysis()` com stream=False
+- Parser robusto JSON (remove code fences, extrai do primeiro { ao último })
+- Evento WS `teacher_analysis` separado
+- Teacher JSON persiste em `ChatMessage.metadata_json['teacher_analysis']`
 
 ### CA3: No Global Scroll (NEW)
-**Status:** 🔴 Pending
+**Status:** ✅ Validated
 **Given** user opens Chat Coach page
 **When** page renders
 **Then**:
@@ -208,15 +218,23 @@ Return JSON:
 - Message list has internal scrollbar (overflow-y-auto)
 - Right panel has internal scrollbar (overflow-y-auto)
 - Both columns are viewport-locked (fill 100% of viewport height)
+**Implementation:**
+- `ChatCoachSession.tsx`: Root `fixed inset-0 overflow-hidden`
+- Left column: `flex flex-col min-h-0`, messages: `flex-1 overflow-y-auto`
+- Right panel: `h-full overflow-y-auto`
 
 ### CA4: Right Panel Fixed (NEW)
-**Status:** 🔴 Pending
+**Status:** ✅ Validated
 **Given** user sends multiple messages
 **When** chat grows
 **Then**:
 - Right panel does NOT move up/down
 - Right panel stays fixed in viewport
 - Only message list scrolls internally
+**Implementation:**
+- Viewport locked layout (useLayoutEffect + requestAnimationFrame)
+- Auto-scroll com `isNearBottom()` check
+- "Jump to latest" button quando usuário scrolla pra cima
 
 ### CA1: LT Detects "ioy" Typo (COMPLETED ✅)
 **Status:** Validated - LT correctly detects "ioy" as spelling error with highlight at position 12-15
@@ -253,20 +271,42 @@ Return JSON:
 - Bullets are helpful and accurate
 
 ### CA5: GPU Confirmed
+**Status:** ⚠️ CPU-Only (Documented)
 **Given** llama.cpp container is running
 **When** checking logs with `docker compose logs llm | grep -iE "cuda|gpu|offload|n_gpu_layers"`
 **Then** output shows:
-- "BLAS = 1" or "CUDA" or "GPU"
-- "n_gpu_layers > 0" (e.g., "n_gpu_layers = 28")
-- No "CPU only" messages
+- **EXPECTED:** "BLAS = 1" or "CUDA" or "GPU" + "n_gpu_layers > 0"
+- **ACTUAL:** "no devices with dedicated memory found" (CPU-only)
+**Evidence:**
+```
+$ docker compose exec llm nvidia-smi
+Fri Dec 26 17:35:05 2025
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.102.01             Driver Version: 581.57         CUDA Version: 13.0     |
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Disp.A |
+|   0  NVIDIA GeForce RTX 4070 ...    On   |   00000000:01:00.0  On |
++-----------------------------------------------------------------------------------------+
+
+$ docker compose logs llm | grep -i "BLAS\|CUDA\|dedicated memory"
+llama_params_fit_impl: no devices with dedicated memory found
+```
+**Root Cause:** Imagem oficial `ghcr.io/ggml-org/llama.cpp:server` não foi compilada com CUDA support.
+**Resolution:** Imagens CUDA (`ghcr.io/ggml-org/llama.cpp:server-cuda`, `full-cuda`) não estão disponíveis publicamente ou estão desatualizadas.
+**Workaround:** Sistema funciona com CPU (adequado para demo/MVP). Para produção, compilar llama.cpp localmente com CUDA ou usar imagem customizada.
 
 ### CA6: Chat Reply Natural (No Meta-Commentary)
+**Status:** ✅ Validated
 **Given** user sends "I enjoyed to sleep"
 **When** assistant responds
 **Then** chat message contains ONLY natural conversation:
 - No "Please note that..." blocks
 - No meta-commentary about grammar
 - No explanations or corrections
+**Implementation:**
+- System prompt: "Keep it natural: Reply briefly (1-3 sentences) as if chatting with a friend. Always ask a follow-up question. Never correct grammar or explain rules. No examples, quotes, or meta-commentary."
+- Stop sequences: `["\n\nCRITICAL INSTRUCTIONS", "\nNote:", "\n(Note:", "\nTeacher:", "\nAnalysis:", "\nExplanation:", "\nCorrection:", "\nMeta:", "\nSystem:"]`
+- Sanitizer: remove linhas com "CRITICAL INSTRUCTIONS", remove "(Note:", "(Teacher:", etc.
+- `assistant_done` envia `sanitized_response` (não raw)
 - Example valid reply: "That's great! Sleep is important for health."
 
 ### CA7: Teacher Analysis in Right Panel
