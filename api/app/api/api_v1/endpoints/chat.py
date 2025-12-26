@@ -627,9 +627,12 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
     """
     await websocket.accept()
 
+    # Create database session for this WebSocket connection
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+
     try:
         # Verify conversation exists
-        db = next(get_db())
         conversation = db.query(ChatConversation).filter(
             ChatConversation.id == conversation_id
         ).first()
@@ -684,6 +687,8 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
         print(f"WebSocket disconnected: conversation_id={conversation_id}")
     except Exception as e:
         print(f"WebSocket error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         try:
             await websocket.send_json(ErrorOut(
                 type="error",
@@ -693,8 +698,7 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
         except:
             pass
     finally:
-        if 'db' in locals():
-            db.close()
+        db.close()
 
 
 async def handle_draft_update(websocket: WebSocket, data: dict, conversation: ChatConversation, now_ms: int, db: Session):
