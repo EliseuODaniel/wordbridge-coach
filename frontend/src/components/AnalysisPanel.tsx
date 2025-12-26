@@ -8,6 +8,19 @@
 import React from 'react';
 import type { DraftIssue } from '../services/api';
 
+interface Correction {
+  mistake: string;
+  fix: string;
+  why: string;
+}
+
+interface TeacherAnalysis {
+  rewrite: string;
+  corrections: Correction[];
+  teacher_summary: string;
+  next_practice: string[];
+}
+
 interface AnalysisPanelProps {
   draftText?: string;
   issues: DraftIssue[];
@@ -16,6 +29,7 @@ interface AnalysisPanelProps {
   topic?: string | null;
   intent?: string | null;
   rewrite?: string | null;
+  teacherAnalysis?: TeacherAnalysis | null;
   className?: string;
 }
 
@@ -193,6 +207,52 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
       {micro_tip && (
         <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3 mb-3">
           <p className="text-sm text-blue-200">💡 {micro_tip}</p>
+        </div>
+      )}
+
+      {/* Professor (LLM) Analysis */}
+      {teacherAnalysis && (
+        <div className="bg-purple-900 bg-opacity-20 border border-purple-600 rounded-lg p-3 mb-3">
+          <p className="text-xs text-purple-300 mb-2 font-semibold">👨‍🏫 Professor (LLM)</p>
+
+          {/* Rewrite */}
+          {teacherAnalysis.rewrite && (
+            <div className="mb-3">
+              <p className="text-xs text-gray-400 mb-1">Better version:</p>
+              <p className="text-sm text-purple-100 italic">"{teacherAnalysis.rewrite}"</p>
+            </div>
+          )}
+
+          {/* Corrections */}
+          {teacherAnalysis.corrections && teacherAnalysis.corrections.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs text-gray-400 mb-2">Corrections:</p>
+              {teacherAnalysis.corrections.map((correction, idx) => (
+                <div key={idx} className="mb-2 pb-2 border-b border-purple-700 last:border-0 last:mb-0">
+                  <p className="text-xs text-red-300 mb-0.5">❌ {correction.mistake}</p>
+                  <p className="text-xs text-green-300 mb-0.5">✓ {correction.fix}</p>
+                  <p className="text-xs text-gray-400">{correction.why}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Teacher Summary */}
+          {teacherAnalysis.teacher_summary && (
+            <div className="mb-3">
+              <p className="text-xs text-blue-200">💡 {teacherAnalysis.teacher_summary}</p>
+            </div>
+          )}
+
+          {/* Next Practice */}
+          {teacherAnalysis.next_practice && teacherAnalysis.next_practice.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Practice these:</p>
+              {teacherAnalysis.next_practice.map((practice, idx) => (
+                <p key={idx} className="text-xs text-gray-300 mb-1">• {practice}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

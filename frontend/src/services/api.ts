@@ -424,10 +424,29 @@ export interface ErrorEvent {
   code: string;
 }
 
+export interface Correction {
+  mistake: string;
+  fix: string;
+  why: string;
+}
+
+export interface TeacherAnalysisEvent {
+  type: 'teacher_analysis';
+  conversation_id: string;
+  user_message_id: string;
+  analysis: {
+    rewrite: string;
+    corrections: Correction[];
+    teacher_summary: string;
+    next_practice: string[];
+  };
+}
+
 export type WebSocketServerEvent =
   | DraftFeedbackEvent
   | AssistantStreamTokenEvent
   | AssistantDoneEvent
+  | TeacherAnalysisEvent
   | PongEvent
   | ErrorEvent;
 

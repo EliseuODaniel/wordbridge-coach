@@ -17,10 +17,24 @@ import type {
   DraftFeedbackEvent,
   AssistantStreamTokenEvent,
   AssistantDoneEvent,
+  TeacherAnalysisEvent,
   ErrorEvent,
 } from '../services/api';
 import ScoreBar from './ScoreBar';
 import AnalysisPanel from './AnalysisPanel';
+
+interface Correction {
+  mistake: string;
+  fix: string;
+  why: string;
+}
+
+interface TeacherAnalysis {
+  rewrite: string;
+  corrections: Correction[];
+  teacher_summary: string;
+  next_practice: string[];
+}
 
 interface ChatCoachSessionProps {
   userId: string;
@@ -52,6 +66,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   const [topic, setTopic] = useState<string | null>(null);
   const [intent, setIntent] = useState<string | null>(null);
   const [rewrite, setRewrite] = useState<string | null>(null);
+  const [teacherAnalysis, setTeacherAnalysis] = useState<TeacherAnalysis | null>(null);
 
   // Track if we're showing feedback from a sent message
   const [isShowingLastFeedback, setIsShowingLastFeedback] = useState<boolean>(false);
@@ -66,6 +81,10 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
   // Input ref
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Message list ref for auto-scroll
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const isUserScrolledUpRef = useRef(false);
 
   // Autocomplete idle timer
   const autocompleteTimeoutRef = useRef<number | null>(null);
@@ -122,6 +141,42 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   }, [userId]);
 
   /**
+   * Auto-scroll to bottom when new messages arrive (if user is near bottom)
+   */
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!messageList) return;
+
+    // Check if user is near bottom (within 100px)
+    const isNearBottom = () => {
+      const { scrollTop, scrollHeight, clientHeight } = messageList;
+      return scrollHeight - scrollTop - clientHeight < 100;
+    };
+
+    // Scroll to bottom if near bottom or first message
+    if (isNearBottom() || messages.length === 0) {
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+  }, [messages]);
+
+  /**
+   * Track scroll position to detect if user scrolled up
+   */
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!messageList) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = messageList;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      isUserScrolledUpRef.current = distanceFromBottom > 100;
+    };
+
+    messageList.addEventListener('scroll', handleScroll);
+    return () => messageList.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  /**
    * Connect WebSocket for real-time communication
    */
   const connectWebSocket = (conversationId: string) => {
@@ -130,6 +185,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
       onDraftFeedback: handleDraftFeedback,
       onStreamToken: handleStreamToken,
       onAssistantDone: handleAssistantDone,
+      onTeacherAnalysis: handleTeacherAnalysis,
       onError: handleError,
       onConnectionChange: (connected) => {
         console.log('WebSocket connection:', connected);
@@ -189,6 +245,14 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
    */
   const handleError = (event: ErrorEvent) => {
     console.error('WebSocket error:', event);
+  };
+
+  /**
+   * Handle teacher analysis from server
+   */
+  const handleTeacherAnalysis = (event: TeacherAnalysisEvent) => {
+    console.log('Teacher analysis received:', event);
+    setTeacherAnalysis(event.analysis);
   };
 
   /**
@@ -301,9 +365,9 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div className="h-screen bg-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-2xl">💬</span>
           <div>
@@ -325,9 +389,9 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Chat area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4" ref={messageListRef}>
             {messages.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-gray-400 mb-2">
@@ -373,7 +437,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
           </div>
 
           {/* Input area */}
-          <div className="border-t border-gray-700 bg-gray-800 px-4 py-4">
+          <div className="border-t border-gray-700 bg-gray-800 px-4 py-4 flex-shrink-0">
             <div className="max-w-4xl mx-auto">
               {/* Score bar */}
               <div className="mb-3">
@@ -434,6 +498,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
             topic={topic}
             intent={intent}
             rewrite={rewrite}
+            teacherAnalysis={teacherAnalysis}
           />
         </div>
       </div>

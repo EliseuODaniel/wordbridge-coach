@@ -17,6 +17,7 @@ import type {
   DraftFeedbackEvent,
   AssistantStreamTokenEvent,
   AssistantDoneEvent,
+  TeacherAnalysisEvent,
   PongEvent,
   ErrorEvent,
 } from './api';
@@ -28,6 +29,7 @@ export interface ChatWSConfig {
   onDraftFeedback?: (event: DraftFeedbackEvent) => void;
   onStreamToken?: (event: AssistantStreamTokenEvent) => void;
   onAssistantDone?: (event: AssistantDoneEvent) => void;
+  onTeacherAnalysis?: (event: TeacherAnalysisEvent) => void;
   onPong?: (event: PongEvent) => void;
   onError?: (event: ErrorEvent) => void;
   onConnectionChange?: (connected: boolean) => void;
@@ -130,6 +132,10 @@ export class ChatWS {
 
         case 'assistant_done':
           this.config.onAssistantDone?.(event);
+          break;
+
+        case 'teacher_analysis':
+          this.config.onTeacherAnalysis?.(event);
           break;
 
         case 'pong':
