@@ -51,7 +51,13 @@ class LanguageToolClient:
 
     def _lt_category_to_our_category(self, lt_category: str) -> str:
         """Map LanguageTool category to our category."""
-        return LT_CATEGORY_MAP.get(lt_category.upper(), 'style')
+        # Handle both string and dict (in case API structure changes)
+        if isinstance(lt_category, dict):
+            lt_category = lt_category.get('name', 'OTHER')
+        elif not isinstance(lt_category, str):
+            lt_category = str(lt_category)
+
+        return LT_CATEGORY_MAP.get(lt_category.upper() if lt_category else 'OTHER', 'style')
 
     def _match_to_issue(
         self,
