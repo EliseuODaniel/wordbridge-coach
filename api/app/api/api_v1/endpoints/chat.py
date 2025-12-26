@@ -20,6 +20,7 @@ from app.schemas.chat import (
     DraftFeedbackOut,
     AssistantStreamTokenOut,
     AssistantDoneOut,
+    TeacherAnalysisOut,
     ErrorOut,
     Pong,
 )
@@ -863,7 +864,10 @@ Topic: {lesson_frame.get('topic', 'general conversation')}
 Expected Intent: {lesson_frame.get('expected_intent', 'general conversation')}
 
 CRITICAL INSTRUCTIONS:
-- Reply as the assistant ONLY.
+- Reply as the assistant ONLY - natural conversation response.
+- NEVER include meta-commentary like "Please note that..." or "I noticed you used..."
+- NEVER give grammar explanations or corrections in your response.
+- DO NOT teach or analyze in the chat - just have a natural conversation.
 - Never write the student's next message or simulate their speech.
 - Do not include quoted example replies.
 - No role labels like "User:", "Assistant:", "Student:".
@@ -925,3 +929,28 @@ CRITICAL INSTRUCTIONS:
         lesson_frame=conversation.lesson_frame_json,
         summary_update="Student sent a message."
     ).model_dump())
+
+    # Generate teacher analysis (separate LLM call, JSON output only)
+    try:
+        teacher_analysis = await llm_provider.generate_teacher_analysis(
+            user_message=content,
+            context=conversation.session_summary,
+            lesson_frame=conversation.lesson_frame_json
+        )
+
+        # Persist teacher analysis in user_message metadata (NOT in content)
+        if user_message.metadata_json is None:
+            user_message.metadata_json = {}
+        user_message.metadata_json['teacher_analysis'] = teacher_analysis
+        db.commit()
+
+        # Send teacher_analysis event to client
+        await websocket.send_json(TeacherAnalysisOut(
+            type="teacher_analysis",
+            conversation_id=str(conversation.id),
+            user_message_id=str(user_message.id),
+            analysis=teacher_analysis
+        ).model_dump())
+    except Exception as e:
+        logger.error(f"Failed to generate teacher analysis: {e}")
+        # Do not block conversation if teacher analysis fails
