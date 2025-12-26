@@ -632,10 +632,12 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
     db = SessionLocal()
 
     try:
-        # Verify conversation exists
-        conversation = db.query(ChatConversation).filter(
-            ChatConversation.id == conversation_id
-        ).first()
+        # Use explicit transaction to avoid PostgreSQL set_session issues
+        with db.begin():
+            # Verify conversation exists
+            conversation = db.query(ChatConversation).filter(
+                ChatConversation.id == conversation_id
+            ).first()
 
         if not conversation:
             await websocket.send_json(ErrorOut(
