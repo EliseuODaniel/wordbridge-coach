@@ -700,6 +700,8 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
     draft_text = data.get("draft_text", "")
     conversation_id = str(conversation.id)
 
+    logger.info(f"[DRAFT_UPDATE] text='{draft_text}', len={len(draft_text)}, conv={conversation_id[:8]}")
+
     # Check if draft text changed
     last_draft_text = _last_draft_texts.get(conversation_id, "")
     text_changed = (draft_text != last_draft_text)
@@ -710,14 +712,16 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
     time_passed_enough = (now_ms - last_eval_ts) >= CHAT_MICRO_EVAL_MIN_INTERVAL_MS
     should_run_micro_eval = time_passed_enough or text_changed
 
-    logger.info(f"Draft update: text_changed={text_changed}, time_passed={time_passed_enough}, should_run={should_run_micro_eval}")
+    logger.info(f"[THROTTLE] text_changed={text_changed}, time_passed={time_passed_enough}, should_run={should_run_micro_eval}")
 
     if should_run_micro_eval:
         # Update timestamp
         _micro_eval_timestamps[conversation.id] = now_ms
 
         # Step 1: Get real grammar issues from LanguageTool (if enabled)
+        logger.info(f"[LT_CHECK] CHAT_DRAFT_GRAMMAR_PROVIDER={CHAT_DRAFT_GRAMMAR_PROVIDER}")
         lt_issues = await _get_grammar_issues(draft_text)
+        logger.info(f"[LT_RESULT] {len(lt_issues)} issues from LT for '{draft_text[:30]}...'")
 
         # Step 2: Run micro_eval (MockLLMProvider) for rich signals + heuristic issues
         eval_result = await llm_provider.micro_eval(
