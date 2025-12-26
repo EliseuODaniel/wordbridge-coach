@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { chatApi } from '../services/api';
 import ChatWS from '../services/chatWs';
+import { LLMSettingsPanel } from './LLMSettingsPanel';
 import type {
   ChatConversation,
   DraftFeedbackEvent,
@@ -75,6 +76,9 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   // Streaming state
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentAssistantResponse, setCurrentAssistantResponse] = useState('');
+
+  // LLM Settings panel state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // WebSocket ref
   const chatWsRef = useRef<ChatWS | null>(null);
@@ -403,12 +407,21 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
           </div>
         </div>
 
-        <button
-          onClick={handleExitClick}
-          className="px-3 py-1.5 bg-gray-700 text-gray-300 text-sm rounded hover:bg-gray-600 transition-colors"
-        >
-          Exit
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="px-3 py-1.5 bg-gray-700 text-gray-300 text-sm rounded hover:bg-gray-600 transition-colors"
+            title="LLM Settings"
+          >
+            ⚙️
+          </button>
+          <button
+            onClick={handleExitClick}
+            className="px-3 py-1.5 bg-gray-700 text-gray-300 text-sm rounded hover:bg-gray-600 transition-colors"
+          >
+            Exit
+          </button>
+        </div>
       </div>
 
       {/* Main content */}
@@ -538,6 +551,13 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
           />
         </div>
       </div>
+
+      {/* LLM Settings Panel */}
+      <LLMSettingsPanel
+        userId={userId}
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 };

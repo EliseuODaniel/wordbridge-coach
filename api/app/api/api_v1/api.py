@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import cards, stats, settings, users, chat
+from app.api.api_v1.endpoints import cards, stats, settings, users, chat, llm_profiles
 from app.api.api_v1.endpoints.analytics import insights
 
 api_router = APIRouter()
@@ -47,4 +47,10 @@ api_router.include_router(
     chat.router,
     prefix="/chat",
     tags=["chat"]
+)
+
+# Include LLM profile endpoints
+api_router.include_router(
+    llm_profiles.router,
+    tags=["llm-profiles"]
 )

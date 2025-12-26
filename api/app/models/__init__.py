@@ -22,6 +22,7 @@ from app.models.review_event import ReviewEvent
 from app.models.chat_conversation import ChatConversation
 from app.models.chat_message import ChatMessage, MessageRole
 from app.models.chat_lesson_history import ChatLessonHistory
+from app.models.user_llm_preferences import UserLLMPreferences
 
 __all__ = [
     "BaseModel",
@@ -47,4 +48,5 @@ __all__ = [
     "ChatMessage",
     "MessageRole",
     "ChatLessonHistory",
+    "UserLLMPreferences",
 ]

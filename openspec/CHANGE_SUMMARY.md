@@ -1,5 +1,89 @@
 # FillTheWord OpenSpec - Histórico de Mudanças
 
+## ✅ Aplicado: Chat Coach - LLM Profiles & Benchmark Infrastructure (2025-12-26)
+
+**Status**: ✅ Applied & Validated
+**Change Document**: `openspec/changes/archived/2025-12-chat-coach-llm-profiles-benchmark-v1.md`
+**Escopo**: Feature (LLM model selection, Profiles, Benchmark), Backend API, Frontend UI
+**Branch**: feature/chat-coach-mvp
+**Commit**: TBD
+
+### Resumo
+
+Implementação de **seleção de modelos LLM** no Chat Coach, permitindo usuários escolherem modelos diferentes para Chat vs Professor:
+
+1. **Backend API**: 3 endpoints novos (profiles, preferences)
+2. **Database Schema**: Tabela `user_llm_preferences` com FK para user
+3. **LLM Profiles**: Registry com 3 modelos (Qwen 7B, Qwen 3B, Llama 8B)
+4. **Frontend UI**: Modal ⚙️ com dropdowns para seleção
+5. **Benchmark Script**: Mede TTFB, tokens/s, VRAM usage
+
+### Implementação
+
+**Backend**:
+- ✅ `api/app/llm/profiles.py`: Registry LLM_PROFILES (3 modelos)
+- ✅ `api/app/models/user_llm_preferences.py`: Novo modelo de banco
+- ✅ `api/alembic/versions/20251226150000_add_user_llm_preferences.py`: Migração
+- ✅ `api/app/services/user_llm_preferences_service.py`: CRUD operations
+- ✅ `api/app/api/api_v1/endpoints/llm_profiles.py`: 3 endpoints REST
+- ✅ `api/app/llm/factory.py`: `get_llm_provider_for_profile()`
+- ✅ `api/app/api/api_v1/endpoints/chat.py`: Integração chat_provider vs teacher_provider
+
+**Frontend**:
+- ✅ `frontend/src/services/api.ts`: llmProfilesApi, interfaces
+- ✅ `frontend/src/components/LLMSettingsPanel.tsx`: Modal de seleção
+- ✅ `frontend/src/components/ChatCoachSession.tsx`: Botão ⚙️ + state
+
+**Scripts**:
+- ✅ `scripts/benchmark_llm_models.py`: Script standalone benchmark
+- ✅ `scripts/benchmark_requirements.txt`: Dependencies (httpx, websockets)
+- ✅ `docs/validation_report_2025-12-26.md`: Relatório de validação
+
+### Validação
+
+- ✅ CA1: GET /api/v1/llm-profiles retorna 3 perfis
+- ✅ CA2: Preferências persistem em database
+- ✅ CA3: Chat usa chat_profile, Teacher usa teacher_profile
+- ✅ CA4: Frontend dropdowns implementados
+- ✅ CA5: Script benchmark gera relatório Markdown
+- ✅ CA6: Sem regressões Spec4/Lingvist
+
+### Features
+
+**User Features:**
+- Escolha modelo do Chat (faster = better latency)
+- Escolha modelo do Professor (higher quality = better analysis)
+- Preferências persistem por usuário (banco de dados)
+- UI intuitiva com tooltips e metadados
+
+**Technical Features:**
+- Perfil provider configurável (llamacpp, openai_http, mock)
+- Multi-model support com mesmo base_url (llama.cpp)
+- Logging detalhado: `[LLM_PROFILES]`, `[CHAT_LLM]`, `[TEACHER_ANALYSIS]`
+- Benchmark A/B com métricas objetivas
+
+### Evidências
+
+**API Response:**
+```json
+{
+  "profiles": [
+    {"id": "qwen2.5-7b-instruct", "name": "Qwen2.5 7B Instruct", "quality_tier": "high", "speed_tier": "medium", "estimated_vram": "5.4GB"},
+    {"id": "qwen2.5-3b-instruct", "name": "Qwen2.5 3B Instruct", "quality_tier": "medium", "speed_tier": "fast", "estimated_vram": "2.1GB"},
+    {"id": "llama-3.1-8b-instruct", "name": "Llama 3.1 8B Instruct", "quality_tier": "high", "speed_tier": "medium", "estimated_vram": "5.7GB"}
+  ]
+}
+```
+
+**WebSocket Logs:**
+```
+[LLM_PROFILES] conv=abc123, user=... chat=qwen2.5-3b-instruct, teacher=llama-3.1-8b-instruct
+[CHAT_LLM] Starting stream with profile chat_provider.model=qwen2.5-3b-instruct
+[TEACHER_ANALYSIS] Starting generation for conv=abc123 with profile teacher_provider.model=llama-3.1-8b-instruct
+```
+
+---
+
 ## ✅ Aplicado: Chat Coach - True CUDA GPU Acceleration (2025-12-26)
 
 **Status**: ✅ Applied & Validated

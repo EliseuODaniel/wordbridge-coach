@@ -24,7 +24,8 @@ from app.schemas.chat import (
     ErrorOut,
     Pong,
 )
-from app.llm.factory import get_llm_provider_from_env, get_provider_name
+from app.llm.factory import get_llm_provider_from_env, get_provider_name, get_llm_provider_for_profile
+from app.services.user_llm_preferences_service import get_user_model_profiles
 
 # Feature flags (environment variables)
 CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "llamacpp")
@@ -728,6 +729,31 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
             await websocket.close()
             return
 
+        # Get user's LLM model preferences (chat vs teacher)
+        try:
+            profiles = get_user_model_profiles(db, conversation.user_id)
+            chat_profile_id = profiles["chat_model_profile"]
+            teacher_profile_id = profiles["teacher_model_profile"]
+
+            logger.info(
+                f"[LLM_PROFILES] conv={conversation_id[:8]}, user={conversation.user_id} "
+                f"chat={chat_profile_id}, teacher={teacher_profile_id}"
+            )
+
+            # Create LLM providers for each profile
+            chat_provider = get_llm_provider_for_profile(chat_profile_id)
+            teacher_provider = get_llm_provider_for_profile(teacher_profile_id)
+
+        except Exception as e:
+            logger.error(f"[LLM_PROFILES] Failed to load preferences: {e}")
+            await websocket.send_json(ErrorOut(
+                type="error",
+                message=f"Failed to load LLM preferences: {str(e)}",
+                code="PREFERENCES_ERROR"
+            ).model_dump())
+            await websocket.close()
+            return
+
         # Initialize micro_eval timestamp for this conversation if not exists
         if conversation_id not in _micro_eval_timestamps:
             _micro_eval_timestamps[conversation_id] = 0
@@ -750,7 +776,7 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
                 await handle_request_autocomplete(websocket, data, conversation, db)
 
             elif event_type == "user_message":
-                await handle_user_message(websocket, data, conversation, db)
+                await handle_user_message(websocket, data, conversation, db, chat_provider, teacher_provider)
 
             elif event_type == "ping":
                 await websocket.send_json(Pong(
@@ -897,12 +923,14 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
     await websocket.send_json(feedback)
 
 
-async def handle_user_message(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session):
+async def handle_user_message(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session,
+                            chat_provider, teacher_provider):
     """Handle user_message event → stream assistant response → assistant_done"""
     content = data.get("content", "")
 
     # Run micro_eval to freeze feedback for the message being sent
-    eval_result = await llm_provider.micro_eval(
+    # Note: micro_eval uses chat_provider (not teacher) since it's part of chat flow
+    eval_result = await chat_provider.micro_eval(
         context=conversation.session_summary,
         lesson_frame=conversation.lesson_frame_json,
         draft=content,
@@ -972,7 +1000,9 @@ Keep it natural:
         "presence_penalty": 0.0
     }
 
-    async for token in llm_provider.chat_stream(messages, system_prompt, generation_config):
+    # Stream chat response using chat_provider
+    logger.info(f"[CHAT_LLM] Starting stream with profile chat_provider.model={chat_provider.model}")
+    async for token in chat_provider.chat_stream(messages, system_prompt, generation_config):
         full_response += token
         await websocket.send_json(AssistantStreamTokenOut(
             type="assistant_stream_token",
@@ -1016,9 +1046,9 @@ Keep it natural:
     # PASSO 0: Log errors and raw output for debugging
     try:
         conv_id_str = str(conversation.id)
-        logger.info(f"[TEACHER_ANALYSIS] Starting generation for conv={conv_id_str[:8]}")
+        logger.info(f"[TEACHER_ANALYSIS] Starting generation for conv={conv_id_str[:8]} with profile teacher_provider.model={teacher_provider.model}")
 
-        teacher_analysis = await llm_provider.generate_teacher_analysis(
+        teacher_analysis = await teacher_provider.generate_teacher_analysis(
             user_message=content,
             context=conversation.session_summary,
             lesson_frame=conversation.lesson_frame_json

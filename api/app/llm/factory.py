@@ -150,3 +150,52 @@ def get_provider_name(provider: LLMProvider) -> str:
         return f"OpenAILLMProvider(model={provider.model}, strict={not provider.fallback_to_mock})"
     else:
         return f"Unknown({type(provider).__name__})"
+
+
+def get_llm_provider_for_profile(profile_id: str) -> LLMProvider:
+    """
+    Get LLM provider for a specific profile ID.
+
+    Reads profile configuration from profiles.py and creates appropriate provider.
+    All profiles currently use llamacpp provider with same base_url, different model names.
+
+    Args:
+        profile_id: Profile ID (e.g., "qwen2.5-7b-instruct", "qwen2.5-3b-instruct")
+
+    Returns:
+        LLMProvider instance configured for the specified profile
+
+    Raises:
+        ValueError: If profile_id not found
+    """
+    from app.llm.profiles import get_profile
+
+    # Get profile configuration
+    profile = get_profile(profile_id)
+
+    # Currently all profiles use llamacpp provider
+    # Future: support openai_http, mock providers via profile.provider field
+    if profile.provider != "llamacpp":
+        raise ValueError(f"Unsupported provider in profile: {profile.provider}")
+
+    # Read environment config (shared across all profiles)
+    base_url = os.getenv("CHAT_LLM_BASE_URL")
+    if not base_url:
+        raise ValueError("CHAT_LLM_BASE_URL not set")
+
+    timeout = int(os.getenv("CHAT_OPENAI_TIMEOUT_S", "60"))
+    strict = os.getenv("CHAT_LLM_STRICT", "false").lower() == "true"
+
+    # Create provider with profile-specific model name
+    logger.info(
+        f"Creating LlamaCppLLMProvider for profile '{profile_id}' "
+        f"(model={profile.model}, base_url={base_url})"
+    )
+
+    return LlamaCppLLMProvider(
+        base_url=base_url,
+        model=profile.model,  # Use model name from profile
+        timeout=timeout,
+        strict=strict
+    )
+
