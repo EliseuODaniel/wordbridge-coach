@@ -27,28 +27,9 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   rewrite,
   className = ''
 }) => {
-  // Case 1: No issues + micro_tip available
-  if (issues.length === 0 && micro_tip) {
-    return (
-      <div className={`text-center py-4 ${className}`}>
-        <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3 mb-2">
-          <p className="text-sm text-blue-200">💡 {micro_tip}</p>
-        </div>
-        <p className="text-gray-500 text-xs">No issues detected. Keep up the good work!</p>
-      </div>
-    );
-  }
+  // REMOVED: Early returns for issues.length === 0
+  // Now always render rich signals first, then issues
 
-  // Case 2: No issues + no micro_tip
-  if (issues.length === 0) {
-    return (
-      <div className={`text-center py-4 ${className}`}>
-        <p className="text-gray-500 text-sm">No issues detected. Great job!</p>
-      </div>
-    );
-  }
-
-  // Case 3: Has issues
   const getCategoryIcon = (category: string): string => {
     const icons: Record<string, string> = {
       spelling: '🔤',
@@ -75,6 +56,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     <div className={`space-y-3 ${className}`}>
       <h3 className="text-sm font-semibold text-gray-300 mb-3">Feedback</h3>
 
+      {/* Rich signals - ALWAYS RENDER THESE FIRST */}
       {/* Context tags: topic/intent */}
       {(topic || intent) && (
         <div className="flex flex-wrap gap-2 mb-3">
@@ -116,41 +98,55 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         </div>
       )}
 
-      {issues.map((issue, index) => (
-        <div
-          key={index}
-          className={`border-l-4 ${getCategoryColor(issue.category)} rounded-r-lg p-3`}
-        >
-          {/* Issue header */}
-          <div className="flex items-start gap-2 mb-2">
-            <span className="text-xl">{getCategoryIcon(issue.category)}</span>
-            <div className="flex-1">
-              <h4 className="text-sm font-semibold text-gray-200">{issue.title}</h4>
-              <p className="text-xs text-gray-400 capitalize">{issue.category}</p>
-            </div>
-          </div>
+      {/* Micro tip */}
+      {micro_tip && (
+        <div className="bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg p-3 mb-3">
+          <p className="text-sm text-blue-200">💡 {micro_tip}</p>
+        </div>
+      )}
 
-          {/* Explanation */}
-          <p className="text-sm text-gray-300 mb-2">{issue.explanation}</p>
-
-          {/* Suggestions */}
-          {issue.suggestions && issue.suggestions.length > 0 && (
-            <div className="mt-2">
-              <p className="text-xs text-gray-400 mb-1">Suggestions:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {issue.suggestions.map((suggestion, si) => (
-                  <span
-                    key={si}
-                    className="px-2 py-1 bg-gray-700 text-gray-200 text-xs rounded border border-gray-600"
-                  >
-                    {suggestion}
-                  </span>
-                ))}
+      {/* Issues - render if present, otherwise show success message */}
+      {issues.length > 0 ? (
+        issues.map((issue, index) => (
+          <div
+            key={index}
+            className={`border-l-4 ${getCategoryColor(issue.category)} rounded-r-lg p-3`}
+          >
+            {/* Issue header */}
+            <div className="flex items-start gap-2 mb-2">
+              <span className="text-xl">{getCategoryIcon(issue.category)}</span>
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-gray-200">{issue.title}</h4>
+                <p className="text-xs text-gray-400 capitalize">{issue.category}</p>
               </div>
             </div>
-          )}
+
+            {/* Explanation */}
+            <p className="text-sm text-gray-300 mb-2">{issue.explanation}</p>
+
+            {/* Suggestions */}
+            {issue.suggestions && issue.suggestions.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-gray-400 mb-1">Suggestions:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {issue.suggestions.map((suggestion, si) => (
+                    <span
+                      key={si}
+                      className="px-2 py-1 bg-gray-700 text-gray-200 text-xs rounded border border-gray-600"
+                    >
+                      {suggestion}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))
+      ) : (
+        <div className="text-center py-4">
+          <p className="text-gray-500 text-sm">✅ No issues detected. Great job!</p>
         </div>
-      ))}
+      )}
     </div>
   );
 };
