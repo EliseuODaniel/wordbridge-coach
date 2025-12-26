@@ -1,7 +1,8 @@
 # Change: Chat Coach - Fix Response Duplication + Rich Analysis Panel
 
-**Status:** 📋 Planned
+**Status:** 🔥 Hotfix In Progress
 **Created:** 2025-12-25
+**Updated:** 2025-12-25 (Hotfix for critical issues)
 **Author:** Claude (executor)
 **Related Specs:** 2025-12-chat-coach-mode-v1
 
@@ -9,17 +10,78 @@
 
 ## Overview
 
-**Problems:**
+**Original Problems:**
 1. **Response Duplication:** LLM generates a 2nd turn (often in quotes, simulating student's speech)
 2. **Poor Analysis Panel:** Lacks rich signals and doesn't update frequently during typing (throttle issues)
 
-**Impact:** Chat Coach feels unnatural and unhelpful despite having real LLM
+**Hotfix Issues (CRITICAL - discovered during testing):**
+1. **Empty Response Bug:** Stop sequences include empty strings `''`, causing LLM to generate 0 tokens
+2. **Hidden Rich Signals:** AnalysisPanel returns early when `issues=[]`, hiding all rich signals
+
+**Impact:** Chat Coach completely broken (no responses) and analysis panel appears empty
 
 ---
 
 ## Root Cause Analysis
 
-### Issue 1: Duplicate Response
+### CRITICAL: Hotfix Issue 1 - Empty Stop Strings
+
+**Location:** `api/app/api/api_v1/endpoints/chat.py:761`
+
+**Current code:**
+```python
+generation_config = {
+    "temperature": 0.5,
+    "max_tokens": 300,
+    "top_p": 0.9,
+    "stop": ['\n"', '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:', '', ''],  # ← BUG HERE
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0
+}
+```
+
+**Problem:**
+- Empty strings `''` in stop list cause Llama.cpp to stop immediately
+- LLM generates 0 tokens → empty response
+- User sees no assistant message at all
+
+**Evidence:**
+- Llama.cpp treats empty string as "stop on next token"
+- Since next token is at position 0, generation never starts
+
+### CRITICAL: Hotfix Issue 2 - AnalysisPanel Early Return
+
+**Location:** `frontend/src/components/AnalysisPanel.tsx:30-49`
+
+**Current code:**
+```tsx
+// Case 1: No issues + micro_tip available
+if (issues.length === 0 && micro_tip) {
+    return (
+      <div className="text-center py-4">
+        <div className="bg-blue-900">💡 {micro_tip}</div>
+      </div>
+    );
+}
+
+// Case 2: No issues + no micro_tip
+if (issues.length === 0) {
+    return <div className="text-center py-4"><p>No issues detected.</p></div>;
+}
+
+// Case 3: Has issues (only reaches here if issues.length > 0)
+```
+
+**Problem:**
+- When `issues.length === 0`, function returns early
+- Never renders: `suggested_next_words`, `topic`, `intent`, `rewrite`
+- User sees empty panel even when backend sends rich signals
+
+**Impact:**
+- Panel appears dead/useless even when working correctly
+- Users can't see helpful suggestions (next words, topic, intent, rewrite)
+
+### Issue 3: Duplicate Response (Original)
 
 **Current code (chat.py:668-691):**
 ```python
@@ -199,16 +261,186 @@ if not should_run_micro_eval:
 
 ---
 
-## Acceptance Criteria (Measurable)
+## HOTFIX SOLUTION (Critical Issues)
 
-### Chat Quality
+### Hotfix A) Fix Empty Stop Strings
+
+**A1. Filter empty strings in chat.py (api/app/api/api_v1/endpoints/chat.py):**
+```python
+# Build stop sequences without empty strings
+stop_sequences = [
+    '\n\n"',
+    '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:',
+    '">', '<|',
+]
+
+# Filter out any empty strings or whitespace-only strings
+stop_sequences = [s for s in stop_sequences if isinstance(s, str) and s.strip()]
+
+generation_config = {
+    "temperature": 0.5,
+    "max_tokens": 300,
+    "top_p": 0.9,
+    "stop": stop_sequences,  # ← Clean list without ''
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0
+}
+```
+
+**A2. Add defensive filter in llamacpp_provider.py (api/app/llm/llamacpp_provider.py):**
+```python
+def _filter_generation_config(config: dict) -> dict:
+    """Filter and validate generation config before passing to llama.cpp."""
+    filtered = {}
+
+    for key, value in config.items():
+        if key == "stop":
+            # Handle stop sequences
+            if isinstance(value, list):
+                # Filter out empty/whitespace strings
+                filtered_stop = [s for s in value if isinstance(s, str) and s.strip()]
+                if filtered_stop:
+                    filtered[key] = filtered_stop
+            elif isinstance(value, str):
+                # Single stop string
+                if value.strip():
+                    filtered[key] = value
+            # else: ignore empty stop
+        else:
+            filtered[key] = value
+
+    return filtered
+```
+
+**A3. Add empty response detection (optional but recommended):**
+```python
+# After streaming loop in handle_user_message
+if not full_response.strip():
+    # Send error to client
+    await websocket.send_json(ErrorOut(
+        type="error",
+        message="Assistant returned empty response. Please try again.",
+        code="EMPTY_LLM_RESPONSE"
+    ).model_dump())
+    return  # Don't persist empty message
+```
+
+### Hotfix B) Fix AnalysisPanel Early Return
+
+**B1. Remove early returns in AnalysisPanel.tsx (frontend/src/components/AnalysisPanel.tsx):**
+```tsx
+const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
+  issues, micro_tip, suggested_next_words, topic, intent, rewrite, className = ''
+}) => {
+  // REMOVED: Early returns for issues.length === 0
+  // Now always render rich signals first
+
+  return (
+    <div className={`space-y-3 ${className}`}>
+      <h3 className="text-sm font-semibold text-gray-300 mb-3">Feedback</h3>
+
+      {/* Rich signals - ALWAYS RENDER THESE FIRST */}
+      {(topic || intent) && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {topic && <span className="badge topic">🏷️ Topic: {topic}</span>}
+          {intent && <span className="badge intent">🎯 Intent: {intent}</span>}
+        </div>
+      )}
+
+      {suggested_next_words && suggested_next_words.length > 0 && (
+        <div className="suggested-words">
+          <span>✨ Try these words:</span>
+          {suggested_next_words.map(word => (
+            <span key={word} className="chip">{word}</span>
+          ))}
+        </div>
+      )}
+
+      {rewrite && (
+        <div className="rewrite-suggestion">
+          <h4>💡 Suggested Rewrite:</h4>
+          <p>"{rewrite}"</p>
+        </div>
+      )}
+
+      {micro_tip && (
+        <div className="micro-tip">
+          <p>💡 {micro_tip}</p>
+        </div>
+      )}
+
+      {/* Issues - render if present, otherwise show "no issues" message */}
+      {issues.length > 0 ? (
+        issues.map((issue, index) => (
+          <div key={index} className="issue-card">
+            {/* Render issue */}
+          </div>
+        ))
+      ) : (
+        <div className="no-issues">
+          <p className="text-gray-500 text-sm">✅ No issues detected. Great job!</p>
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+### Hotfix C) Enrich draft_feedback Data
+
+**C1. Add topic/intent/rewrite to MockLLMProvider.micro_eval() (api/app/llm/mock_provider.py):**
+```python
+async def micro_eval(self, context: str, lesson_frame: dict, draft: str, student_profile: dict):
+    analysis = self._analyze_text(draft, lesson_frame)
+
+    # ... existing code ...
+
+    return {
+        # ... existing fields ...
+        "top_issues": detected_errors,
+
+        # NEW: Add rich signals
+        "suggested_next_words": analysis.get("suggested_next_words", []),
+        "topic": analysis.get("topic"),
+        "intent": analysis.get("intent"),
+        "rewrite": analysis.get("rewrite"),  # Priority: use analysis rewrite first
+    }
+```
+
+**C2. Prioritize rewrite in _build_draft_feedback() (api/app/api/api_v1/endpoints/chat.py):**
+```python
+# Extract rich signals from eval_result (if available)
+suggested_next_words = eval_result.get("suggested_next_words", [])
+topic = eval_result.get("topic")
+intent = eval_result.get("intent")
+
+# Use rewrite from eval_result as priority
+rewrite = eval_result.get("rewrite")
+
+# Fallback: if no rewrite from eval_result, use first suggestion from first issue
+if not rewrite and issues and issues[0].get("suggestions"):
+    rewrite = issues[0]["suggestions"][0]
+```
+
+---
+
+## Acceptance Criteria (Updated for Hotfix)
+
+### Critical - Chat Response
+- **Send "hello":** Assistant responds with streaming text (NOT empty)
+- **Send "lets go":** Assistant responds with streaming text (NOT empty)
+- **No empty responses:** 10 messages → all have visible assistant replies
+
+### Critical - Analysis Panel
+- **Type "I go" (no errors yet):** Panel shows topic/intent/suggested_next_words
+- **Panel NEVER empty:** Always shows at least one signal (tip, topic, words, or issues)
+- **Rich signals visible:** topic, intent, rewrite appear when available
+
+### Original - Chat Quality
 - **10 messages sent:** 0 occurrences with block looking like "user's speech"
-  - No paragraph starting with quotes after blank line
-  - No "User:", "Student:" labels
 
-### Analysis Panel
+### Original - Analysis Panel
 - **Typing for 5s:** Panel updates at least 5 times
-- **Shows:** issues OR micro_tip + suggested_next_words
 - **No dead periods:** Panel always shows something (cached or fresh)
 
 ### No Regression
