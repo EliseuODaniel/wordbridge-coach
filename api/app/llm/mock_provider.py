@@ -785,7 +785,11 @@ class MockLLMProvider(LLMProvider):
             "lesson_alignment_score": float(lesson_alignment_score),
             "top_issues": issues[:3],  # Max 3 issues
             "suggested_next_words": suggested_next_words,
-            "micro_tip": micro_tip
+            "micro_tip": micro_tip,
+            # Rich signals for analysis panel
+            "topic": analysis.get("topic"),
+            "intent": analysis.get("intent"),
+            "rewrite": analysis.get("rewrite")
         }
 
     async def autocomplete(
