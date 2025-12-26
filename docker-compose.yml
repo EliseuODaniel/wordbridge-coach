@@ -118,9 +118,9 @@ services:
       timeout: 10s
       retries: 3
 
-  # LLM Service (llama.cpp)
+  # LLM Service (llama.cpp with CUDA)
   llm:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: filltheword-llm
     restart: unless-stopped
     ports:
@@ -128,16 +128,15 @@ services:
     volumes:
       - ./llm_models:/models
     command: >
-      ./server
       -m /models/model.gguf
       -c 4096
       --host 0.0.0.0
       --port 8080
-      --n-gpu-layers -1
+      --n-gpu-layers 999
       --parallel 2
     networks:
       - filltheword-net
-    # GPU support (enabled for NVIDIA RTX 4070 Laptop)
+    # GPU support (CUDA enabled for NVIDIA RTX 4070 Laptop)
     deploy:
       resources:
         reservations:
