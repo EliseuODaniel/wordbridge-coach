@@ -1,6 +1,6 @@
 """UserCardState model for SRS SM-2 algorithm"""
 
-from sqlalchemy import Column, Integer, Float, ForeignKey, DateTime, Enum
+from sqlalchemy import Column, Integer, Float, ForeignKey, DateTime, Enum, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -31,7 +31,9 @@ class UserCardState(BaseModel):
     status = Column(Enum(MemoryStage), default=MemoryStage.NEW, nullable=False)
     total_reviews = Column(Integer, default=0, nullable=False)
     correct_reviews = Column(Integer, default=0, nullable=False)
-    
+    is_relearn = Column(Boolean, default=False, nullable=False)
+    relearn_due = Column(DateTime, nullable=True)
+
     # Relationships - Temporarily disabled to fix seed
     user = relationship("User", back_populates="card_states")
     card = relationship("Card", back_populates="user_states")

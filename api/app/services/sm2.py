@@ -230,8 +230,46 @@ class SM2Algorithm:
         
         # Remove extra whitespace
         normalized = re.sub(r'\s+', ' ', normalized).strip()
-        
+
         return normalized
+
+    @classmethod
+    def calculate_relearn_interval(cls, relearn_count: int) -> timedelta:
+        """
+        Calculate relearn interval based on number of consecutive relearn attempts.
+
+        Progressive intervals: 10min → 30min → 2h → 6h → 24h
+
+        Args:
+            relearn_count: Number of times this card has been in relearn queue
+
+        Returns:
+            Timedelta for next relearn due time
+        """
+        intervals = [
+            timedelta(minutes=10),   # 1st relearn: 10 minutes
+            timedelta(minutes=30),   # 2nd relearn: 30 minutes
+            timedelta(hours=2),      # 3rd relearn: 2 hours
+            timedelta(hours=6),      # 4th relearn: 6 hours
+            timedelta(hours=24),     # 5th+ relearn: 24 hours
+        ]
+
+        # Cap at 24 hours (index 4)
+        index = min(relearn_count, len(intervals) - 1)
+        return intervals[index]
+
+    @classmethod
+    def should_enter_relearn(cls, quality: int) -> bool:
+        """
+        Determine if card should enter relearn queue based on quality.
+
+        Args:
+            quality: SM-2 quality score (0-5)
+
+        Returns:
+            True if quality < 3 (failed or struggled)
+        """
+        return quality < 3
 
 
 # Example usage and testing

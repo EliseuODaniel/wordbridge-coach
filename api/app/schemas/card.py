@@ -50,12 +50,16 @@ class AnswerRequest(BaseModel):
     """Request schema for POST /api/cards/{id}/answer"""
     answer: str = Field(..., description="User's answer")
     response_time_ms: int = Field(..., description="Response time in milliseconds")
-    
+    attempts: int = Field(default=1, description="Number of attempts taken")
+    hints_used: int = Field(default=0, description="Number of hints used")
+
     class Config:
         json_schema_extra = {
             "example": {
                 "answer": "book",
-                "response_time_ms": 3200
+                "response_time_ms": 3200,
+                "attempts": 1,
+                "hints_used": 0
             }
         }
 

@@ -19,6 +19,9 @@ from app.models.user_daily_stats import UserDailyStats
 from app.models.user_session_stats import UserSessionStats
 from app.models.user_frequency_progress import UserFrequencyProgress
 from app.models.review_event import ReviewEvent
+from app.models.chat_conversation import ChatConversation
+from app.models.chat_message import ChatMessage, MessageRole
+from app.models.chat_lesson_history import ChatLessonHistory
 
 __all__ = [
     "BaseModel",
@@ -40,4 +43,8 @@ __all__ = [
     "UserSessionStats",
     "UserFrequencyProgress",
     "ReviewEvent",
+    "ChatConversation",
+    "ChatMessage",
+    "MessageRole",
+    "ChatLessonHistory",
 ]

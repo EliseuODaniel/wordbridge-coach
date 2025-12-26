@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from datetime import datetime, timedelta
 import uuid
+import os
+import logging
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -20,6 +22,135 @@ from app.models.user_theme_stats import UserThemeStats
 from app.models.word_theme_mapping import WordThemeMapping
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Global cache for TSV translations (override priority over MT)
+_tsv_translations_cache: Optional[dict[str, str]] = None
+
+
+def _load_tsv_translations() -> dict[str, str]:
+    """Load EN-PT translations from TSV file (priority over MT).
+
+    Returns:
+        Dict mapping lowercase word -> pt_translation
+    """
+    global _tsv_translations_cache
+
+    if _tsv_translations_cache is not None:
+        return _tsv_translations_cache
+
+    _tsv_translations_cache = {}
+    tsv_path = "/app/data/en_pt_word_translations_sample.tsv"
+
+    if not os.path.exists(tsv_path):
+        logger.info(f"TSV file not found: {tsv_path}")
+        return _tsv_translations_cache
+
+    try:
+        logger.info(f"Loading TSV translations from {tsv_path}...")
+        with open(tsv_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+
+                # Skip comments and empty lines
+                if not line or line.startswith('#'):
+                    continue
+
+                parts = line.split('\t')
+                if len(parts) < 2:
+                    continue
+
+                word = parts[0].strip()
+                pt_translation = parts[1].strip()
+
+                # Skip empty translations
+                if not pt_translation:
+                    continue
+
+                # Store with lowercase key for matching
+                _tsv_translations_cache[word.lower()] = pt_translation
+
+        logger.info(f"✅ Loaded {len(_tsv_translations_cache)} TSV translations")
+    except Exception as e:
+        logger.error(f"Failed to load TSV translations: {e}")
+
+    return _tsv_translations_cache
+
+
+def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card: 'Card'):
+    """Auto-generate translations if missing (on-demand with DB cache).
+
+    Priority:
+    1. Existing translation in DB (do nothing)
+    2. TSV override (curated translations)
+    3. MT (Argos Translate or Google Translate) if LINGVIST_TRANSLATIONS_AUTOFILL=true
+
+    Args:
+        db: Database session
+        word: Word object
+        sentence: Sentence object
+        card: Card object (for sentence reconstruction)
+    """
+    from app.services.translation_service import get_translation_service
+
+    # Load TSV cache (priority override)
+    tsv_override = _load_tsv_translations()
+
+    # --- Word translation ---
+    word_needs_translation = (
+        not word.features or
+        not isinstance(word.features, dict) or
+        not word.features.get("pt_translation") or
+        not word.features["pt_translation"].strip()
+    )
+
+    if word_needs_translation:
+        word_translation = None
+
+        # Try TSV override first
+        word_lower = word.lemma.lower() if word.lemma else ""
+        if word_lower in tsv_override:
+            word_translation = tsv_override[word_lower]
+            logger.info(f"✅ Word translation from TSV: {word.lemma} → {word_translation}")
+
+        # Fallback to MT if enabled
+        else:
+            translation_service = get_translation_service()
+            if translation_service.is_enabled():
+                word_translation = translation_service.translate(word.lemma or word.text)
+                if word_translation:
+                    logger.info(f"🤖 Word translation from {translation_service.get_provider()}: {word.lemma} → {word_translation}")
+
+        # Save to DB if translation found
+        if word_translation:
+            if not word.features:
+                word.features = {}
+            word.features['pt_translation'] = word_translation
+            db.flush()  # Flush without commit (caller commits)
+            logger.debug(f"💾 Saved word translation to DB: {word.lemma}")
+
+    # --- Sentence translation ---
+    sentence_needs_translation = (
+        not sentence.translation or
+        not sentence.translation.strip()
+    )
+
+    if sentence_needs_translation:
+        # Reconstruct sentence with word filled in
+        sentence_with_gap = sentence.text or ""
+        sentence_with_word = sentence_with_gap.replace("___", word.text or "", 1)
+
+        # Try MT if enabled (no TSV for sentences)
+        translation_service = get_translation_service()
+        if translation_service.is_enabled():
+            sentence_translation = translation_service.translate(sentence_with_word)
+            if sentence_translation:
+                logger.info(f"🤖 Sentence translation from {translation_service.get_provider()}: '{sentence_with_word[:50]}...' → '{sentence_translation[:50]}...'")
+                sentence.translation = sentence_translation
+                db.flush()  # Flush without commit (caller commits)
+                logger.debug(f"💾 Saved sentence translation to DB")
+        else:
+            logger.debug(f"⚠️ Translation service disabled, skipping sentence translation")
 
 def create_sample_data_if_needed(db: Session):
     """Create minimal sample data for testing"""
@@ -411,13 +542,13 @@ async def submit_answer(
         print(f"DEBUG: SM2 validation result: is_correct={is_correct}, normalized_correct={normalized_correct}")
 
         # Calculate SM-2 quality
-        print(f"DEBUG: Calculating quality for response_time_ms={answer_data.response_time_ms}")
+        print(f"DEBUG: Calculating quality for response_time_ms={answer_data.response_time_ms}, attempts={answer_data.attempts}, hints={answer_data.hints_used}")
         try:
             quality = SM2Algorithm.calculate_quality_from_response(
                 was_correct=is_correct,
                 response_time_ms=answer_data.response_time_ms,
-                hints_used=0,  # TODO: Track hints usage
-                attempts=1     # TODO: Track attempts
+                hints_used=answer_data.hints_used,
+                attempts=answer_data.attempts
             )
             print(f"DEBUG: SM2 quality calculated: {quality}")
         except Exception as e:
@@ -486,14 +617,15 @@ async def submit_answer(
             user_answer=answer_data.answer,
             correct_answer=correct_answer,
             was_correct=is_correct,
-            hints_used=0,
+            hints_used=answer_data.hints_used,
+            attempts=answer_data.attempts,
             previous_easiness=previous_easiness,
             new_easiness=sm2_result["easiness_factor"],
             previous_interval=previous_interval,
             new_interval=sm2_result["interval_days"]
         )
         db.add(review_event)
-        print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}")
+        print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}, attempts={answer_data.attempts}")
 
         # Update or create UserDailyStats
         from app.models.user_daily_stats import UserDailyStats
@@ -539,6 +671,56 @@ async def submit_answer(
             user_card_state.status = MemoryStage.LEARNING
         else:
             user_card_state.status = MemoryStage.NEW
+
+        # Update user's accuracy_last_20 (adaptive scheduler)
+        from sqlalchemy import desc
+
+        recent_20 = db.query(ReviewEvent)\
+            .filter(ReviewEvent.user_id == user_id)\
+            .order_by(desc(ReviewEvent.created_at))\
+            .limit(19)\
+            .all()  # Get last 19 (plus current = 20)
+
+        correct_count = sum(1 for r in recent_20 if r.was_correct)
+        if is_correct:
+            correct_count += 1
+
+        total_count = len(recent_20) + 1  # +1 for current answer
+
+        # Get user and update accuracy
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.accuracy_last_20 = correct_count / total_count if total_count > 0 else None
+            print(f"DEBUG: Updated user accuracy_last_20={user.accuracy_last_20}")
+
+            # Adaptive Scheduler: Relearn queue logic (Lingvist mode only)
+            if user.mode == 'lingvist':
+                # Check if card should enter/exit relearn queue
+                should_relearn = SM2Algorithm.should_enter_relearn(quality)
+
+                if should_relearn:
+                    # Enter or advance in relearn queue
+                    user_card_state.is_relearn = True
+
+                    # Calculate next relearn interval
+                    # Count how many times this card has been in relearn
+                    relearn_count = db.query(ReviewEvent)\
+                        .filter(
+                            ReviewEvent.user_id == user_id,
+                            ReviewEvent.card_id == card_id,
+                            ReviewEvent.quality < 3  # Previous failures
+                        )\
+                        .count()
+
+                    relearn_interval = SM2Algorithm.calculate_relearn_interval(relearn_count)
+                    user_card_state.relearn_due = datetime.utcnow() + relearn_interval
+                    print(f"DEBUG: Card entered relearn queue, due in {relearn_interval}, count={relearn_count}")
+                else:
+                    # Exit relearn queue (quality >= 4, well-recalled)
+                    if user_card_state.is_relearn:
+                        user_card_state.is_relearn = False
+                        user_card_state.relearn_due = None
+                        print(f"DEBUG: Card exited relearn queue, returning to normal SM-2")
 
         print(f"DEBUG: UserCardState updated successfully")
 
@@ -737,6 +919,9 @@ async def get_next_card_lingvist(
     enriched payload.
 
     Mix: 20% new / 80% review (more conservative than Spec4).
+
+    Auto-translation: If LINGVIST_TRANSLATIONS_AUTOFILL is enabled and
+    translations are missing, generates them on-demand using Argos Translate.
     """
     try:
         from app.schemas.lingvist import LingvistCardResponse, MicroProgress
@@ -792,12 +977,16 @@ async def get_next_card_lingvist(
                 detail={"error": "Card data incomplete", "message": "Missing card/word/sentence"}
             )
 
+        # Auto-generate translations if missing (on-demand with DB cache)
+        _autofill_translations(db, word, sentence, card)
+
         # Build grammar_tag_pt from word.part_of_speech and word.features
         grammar_tag_pt = _build_grammar_tag_pt(word)
 
         # Extract PT-BR translations
         word_translation_pt = _extract_word_translation(word)
-        sentence_translation_pt = sentence.translation  # Already in Sentence model
+        # Normalize sentence.translation: treat ""/whitespace as None
+        sentence_translation_pt = (sentence.translation or "").strip() or None
 
         # Get micro_progress from UserSessionStats
         micro_progress = _get_micro_progress(db, user_id, user)
@@ -813,6 +1002,9 @@ async def get_next_card_lingvist(
         sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
         sentence_text_encoded = quote(sentence_with_word)
         audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
+        # Commit database changes (including autofilled translations)
+        db.commit()
 
         # Build enriched response
         return LingvistCardResponse(
@@ -891,9 +1083,15 @@ def _build_grammar_tag_pt(word: 'Word') -> str:
 
 
 def _extract_word_translation(word: 'Word') -> Optional[str]:
-    """Extract PT-BR translation from Word.features.pt_translation"""
+    """Extract PT-BR translation from Word.features.pt_translation
+
+    Returns None if translation is missing, None, empty string, or whitespace.
+    """
     if word.features and isinstance(word.features, dict):
-        return word.features.get("pt_translation")
+        translation = word.features.get("pt_translation")
+        # Normalize: treat None, "", and whitespace as None
+        if translation and isinstance(translation, str) and translation.strip():
+            return translation.strip()
     return None
 
 

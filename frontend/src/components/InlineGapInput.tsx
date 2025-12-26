@@ -10,6 +10,8 @@ interface InlineGapInputProps {
   onSubmit: (answer: string) => void;
   disabled?: boolean;
   isCorrect?: boolean;
+  isIncorrect?: boolean;
+  onUserEdit?: () => void;
 }
 
 const InlineGapInput: React.FC<InlineGapInputProps> = ({
@@ -19,6 +21,8 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
   onSubmit,
   disabled = false,
   isCorrect = false,
+  isIncorrect = false,
+  onUserEdit,
 }) => {
   const [value, setValue] = useState('');
   const [isLocked, setIsLocked] = useState(false);
@@ -36,6 +40,17 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
     }
   }, [disabled, isLocked]);
 
+  // Auto-unlock when submission completes and answer is not correct
+  useEffect(() => {
+    // Unlock when disabled changes from true to false AND answer is not correct
+    // This allows retry after incorrect answer
+    if (!disabled && !isCorrect && isLocked) {
+      setIsLocked(false);
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [disabled, isCorrect, isLocked]);
+
   // Split sentence into parts: before gap, gap (input), after gap
   const beforeGap = sentence.slice(0, gap.start);
   const afterGap = sentence.slice(gap.end);
@@ -45,6 +60,12 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
     if (isLocked) return;
 
     const newValue = e.target.value;
+
+    // If editing after incorrect answer, clear feedback
+    if (isIncorrect && newValue !== value) {
+      onUserEdit?.();
+    }
+
     setValue(newValue);
 
     // Auto-submit on exact match (normalized)

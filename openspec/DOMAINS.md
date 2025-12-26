@@ -175,6 +175,12 @@ Usuário do sistema para controle de progresso individual com idiomas configurad
 - `word_goal_rank` (int, default 100) - **Objetivo de vocabulário** Spec4: {100, 500, 1500, 3000, 5000, 10000}
 - `daily_new_limit` (int, default 10)
 - `easiness_factor` (float, default 2.5)
+- `mode` (string, default "spec4") - **Modo de aprendizado**: "spec4" | "lingvist"
+  - "spec4": Scheduler SM-2 clássico com 25% new / 75% review fixo
+  - "lingvist": Scheduler adaptativo com relearn queue + new_share dinâmico
+- `accuracy_last_20` (float, optional) - **Accuracy das últimas 20 respostas** (0.0-1.0)
+  - Usado para ajustar new_share no modo lingvist
+  - Null se usuário tem menos de 20 respostas
 - `created_at` (datetime)
 - `last_login` (datetime, optional)
 
@@ -214,6 +220,12 @@ Estado individual do cartão para cada usuário com algoritmo SM-2 completo.
 - `status` (enum) - "new", "learning", "review", "relearn", "mature"
 - `total_reviews` (int, default 0) - Total de revisões
 - `correct_reviews` (int, default 0) - Revisões corretas
+- `is_relearn` (boolean, default false) - **Está na fila de relearn?** (Lingvist mode)
+  - True: quality < 3, precisa revisar em minutos
+  - False: seguindo scheduler SM-2 normal
+- `relearn_due` (datetime, optional) - **Quando revisar novamente** (Lingvist mode)
+  - Setado quando is_relearn = true
+  - Intervalos progressivos: 10min → 30min → 2h → 6h → 24h
 - `created_at` (datetime)
 - `updated_at` (datetime)
 
@@ -242,7 +254,8 @@ Registro individual de cada sessão de revisão para analytics e ajuste SM-2.
 - `user_answer` (string) - Resposta do usuário
 - `correct_answer` (string) - Resposta correta
 - `was_correct` (boolean) - Se a resposta estava correta
-- `hints_used` (int, default 0) - Quantidade de dicas usadas (Spec4 mode)
+- `hints_used` (int, default 0) - Quantidade de dicas usadas
+- `attempts` (int, default 1) - **Número de tentativas** para acertar - ⚠️ NOVO
 - `typed_answer` (string, nullable) - Resposta digitada no modo Lingvist - ⚠️ NOVO
 - `hints_used_lingvist` (JSON, nullable) - Hints usados no modo Lingvist - ⚠️ NOVO
 - `attempt_index` (int, default 1) - Índice da tentativa (1ª, 2ª, 3ª...) - ⚠️ NOVO
@@ -465,6 +478,192 @@ Senão: priorizar revisões
 **Invariants**:
 - `new_cards_shown <= cards_shown`
 - Uma entrada por `(user_id, date)`
+
+## Entidades Chat Coach (Conversacional com Real-time Feedback)
+
+**Status**: 📝 Proposed (see [change proposal](../changes/2025-12-chat-coach-mode-v1.md))
+
+### ChatConversation
+Conversa entre aluno e professor (AI). Contém metadados da sessão, perfil do aluno e objetivos pedagógicos atuais.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `user_id` (UUID, FK → User.id)
+- `title` (string) - Título da conversa (ex: "Practice Past Simple")
+- `student_profile_json` (JSONB) - Perfil do aluno com CEFR estimado e erros comuns
+  ```json
+  {
+    "cefr_level": "A2",
+    "common_errors": ["past_simple", "articles", "prepositions"],
+    "strengths": ["vocabulary", "basic_fluency"],
+    "weaknesses": ["grammar", "irregular_verbs"]
+  }
+  ```
+- `lesson_frame_json` (JSONB) - Objetivo pedagógico do turno atual (ver schema abaixo)
+- `session_summary` (text) - Resumo incremental do que aconteceu na conversa
+- `created_at` (timedatezone)
+- `updated_at` (timedatezone)
+
+**Indexes**:
+- `idx_chat_conversations_user_id` on `user_id`
+- `idx_chat_conversations_created_at` on `created_at DESC`
+
+**Invariants**:
+- `user_id` deve existir em `users`
+- `lesson_frame_json` deve conter todos os campos obrigatórios do Lesson Frame
+- Título default = "New Chat" se não fornecido
+
+### ChatMessage
+Mensagem individual dentro de uma conversa (user, assistant, or system).
+
+**Attributes**:
+- `id` (UUID, PK)
+- `conversation_id` (UUID, FK → ChatConversation.id, ON DELETE CASCADE)
+- `role` (enum) - "system" | "user" | "assistant"
+- `content` (text) - Conteúdo da mensagem
+- `metadata_json` (JSONB, optional) - Metadados extras
+  ```json
+  {
+    "lesson_frame_snapshot": { ... },
+    "scores": { "grammar": 80, "spelling": 100 },
+    "tokens": 150
+  }
+  ```
+- `created_at` (timedatezone)
+
+**Indexes**:
+- `idx_chat_messages_conversation_id` on `conversation_id`
+- `idx_chat_messages_created_at` on `created_at ASC`
+
+**Invariants**:
+- `conversation_id` deve existir em `chat_conversations`
+- `role` deve ser um dos valores válidos
+- Primeira mensagem sempre é "system" (prompt inicial)
+- Mensagens "user" e "assistant" devem alternar (não duas user seguidas)
+
+**Important**: `draft_update` events **NÃO** são persistidos (são efêmeros, só para feedback em tempo real). Apenas mensagens finais são salvas.
+
+### ChatLessonHistory (Opcional, Fase 2)
+Histórico de Lesson Frames por conversa para análise de progresso pedagógico.
+
+**Attributes**:
+- `id` (UUID, PK)
+- `conversation_id` (UUID, FK → ChatConversation.id)
+- `lesson_frame_json` (JSONB) - Snapshot do Lesson Frame em um ponto no tempo
+- `created_at` (timedatezone)
+
+**Invariants**:
+- Uma entrada por mudança significativa de Lesson Frame
+- Útil para analytics: "Como os objetivos pedagógicos evoluíram durante a conversa?"
+
+### Lesson Frame Schema (JSON)
+Estrutura JSON para `lesson_frame_json` (usado em ChatConversation e ChatLessonHistory):
+
+```typescript
+interface LessonFrame {
+  cefr_target: "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+  learning_goal: string;        // ex: "past_simple_regular_verbs"
+  expected_intent: string;       // ex: "describe_recent_activity"
+  topic: string;                 // ex: "weekend_plans"
+  rubric: {
+    grammar: string[];           // ex: ["past_tense_consistency"]
+    vocab: string[];             // ex: ["yesterday", "last_weekend"]
+    style: string[];             // ex: ["short_clear_sentences"]
+  };
+  scoring_hints: {
+    avoid: string[];             // ex: ["present_continuous_for_past"]
+    encourage: string[];         // ex: ["time_markers", "regular_-ed"]
+  };
+}
+```
+
+**Exemplo Completo**:
+```json
+{
+  "cefr_target": "A2",
+  "learning_goal": "past_simple_regular_verbs",
+  "expected_intent": "describe_recent_activity",
+  "topic": "weekend_plans",
+  "rubric": {
+    "grammar": [
+      "past_tense_consistency",
+      "article_usage",
+      "subject_verb_agreement"
+    ],
+    "vocab": [
+      "yesterday",
+      "last_weekend",
+      "went",
+      "visited",
+      "played"
+    ],
+    "style": [
+      "short_clear_sentences",
+      "time_markers_at_start"
+    ]
+  },
+  "scoring_hints": {
+    "avoid": [
+      "present_continuous_for_past_events_unless_explaining_context",
+      "run-on_sentences"
+    ],
+    "encourage": [
+      "time_markers_at_beginning",
+      "regular_verbs_ed_ending",
+      "irregular_verbs_went_was"
+    ]
+  }
+}
+```
+
+### Relacionamentos Chat Coach
+
+```
+User (1) ←→ (N) ChatConversation
+ChatConversation (1) ←→ (N) ChatMessage
+ChatConversation (1) ←→ (N) ChatLessonHistory [opcional]
+```
+
+### Diferenças para Modelos Existente
+
+| Aspecto | Spec4 / Lingvist | Chat Coach |
+|---------|------------------|------------|
+| Persistência | Cada exercício (Card) | Cada mensagem (ChatMessage) |
+| Feedback | Pós-submissão | Tempo real (não persistido) |
+| Progresso | SM-2 (UserCardState) | Lesson Frame (pedagógico) |
+| Seleção | Algoritmo de prioridade | N/A (conversa aberta) |
+| Histórico | ReviewEvent | ChatMessage + ChatLessonHistory |
+
+### Queries Importantes
+
+**Buscar conversas recentes do usuário**:
+```sql
+SELECT id, title, created_at, updated_at,
+  (SELECT COUNT(*) FROM chat_messages WHERE conversation_id = chat_conversations.id) AS message_count
+FROM chat_conversations
+WHERE user_id = $1
+ORDER BY updated_at DESC
+LIMIT 20;
+```
+
+**Buscar histórico de mensagens com paginação**:
+```sql
+SELECT id, role, content, created_at
+FROM chat_messages
+WHERE conversation_id = $1
+ORDER BY created_at ASC
+LIMIT 50 OFFSET $2;
+```
+
+**Atualizar lesson_frame após resposta do assistant**:
+```sql
+UPDATE chat_conversations
+SET
+  lesson_frame_json = $2,
+  session_summary = session_summary || '\n\n' || $3,
+  updated_at = NOW()
+WHERE id = $1;
+```
 
 ## Corpora Pipeline
 

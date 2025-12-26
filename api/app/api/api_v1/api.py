@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.api_v1.endpoints import cards, stats, settings, users
+from app.api.api_v1.endpoints import cards, stats, settings, users, chat
 from app.api.api_v1.endpoints.analytics import insights
 
 api_router = APIRouter()
@@ -40,4 +40,11 @@ api_router.include_router(
     insights.router,
     prefix="/insights",
     tags=["insights"]
+)
+
+# Include chat endpoints (Chat Coach mode)
+api_router.include_router(
+    chat.router,
+    prefix="/chat",
+    tags=["chat"]
 )

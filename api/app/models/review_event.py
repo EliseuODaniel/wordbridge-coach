@@ -21,6 +21,7 @@ class ReviewEvent(BaseModel):
     correct_answer = Column(String(200), nullable=False)
     was_correct = Column(Boolean, nullable=False)
     hints_used = Column(Integer, default=0, nullable=False)
+    attempts = Column(Integer, default=1, nullable=False)
 
     # Lingvist mode fields (nullable to not break Spec4)
     typed_answer = Column(String(200), nullable=True)  # User's typed answer in Lingvist mode

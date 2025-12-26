@@ -129,6 +129,38 @@ export class AudioService {
     return Math.abs(hash).toString(16).substring(0, 12);
   }
 
+  // Preload audio from URL (non-blocking, for future playback)
+  async preloadFromUrl(url: string): Promise<void> {
+    try {
+      // Check if already cached
+      if (this.audioCache.has(url)) {
+        return;
+      }
+
+      // Resolve absolute URL
+      const resolved = new URL(url, window.location.origin).toString();
+
+      // Create audio element
+      const audio = new Audio(resolved);
+      audio.preload = 'auto';
+
+      // Cache immediately (will load in background)
+      this.audioCache.set(url, audio);
+
+      // Start loading (non-blocking)
+      audio.load();
+
+      // Log when ready
+      audio.addEventListener('canplaythrough', () => {
+        console.log(`✅ Audio preloaded and ready: ${url.substring(0, 50)}...`);
+      }, { once: true });
+
+    } catch (error) {
+      console.error('Error preloading audio:', error);
+      // Don't throw - preload failures are non-critical
+    }
+  }
+
   // Play audio directly from URL (preserves user gesture)
   async playFromUrl(url: string): Promise<void> {
     try {
@@ -196,6 +228,62 @@ export class AudioService {
 
     // Clear cache
     this.audioCache.clear();
+  }
+
+  // Play audio from URL and wait for it to finish (or timeout)
+  async playFromUrlAndWaitEnded(url: string, timeoutMs: number = 60000): Promise<void> {
+    return new Promise((resolve) => {
+      let timeoutHandle: number | null = null;
+      let hasResolved = false;
+
+      const cleanup = () => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+          timeoutHandle = null;
+        }
+        // Don't stop audio - let it finish naturally
+      };
+
+      const resolveOnce = () => {
+        if (!hasResolved) {
+          hasResolved = true;
+          cleanup();
+          resolve();
+        }
+      };
+
+      // Set timeout fallback (only as failsafe for very long audio or stuck playback)
+      timeoutHandle = window.setTimeout(() => {
+        console.log(`Audio timeout after ${timeoutMs}ms (failsafe), advancing anyway`);
+        resolveOnce();
+      }, timeoutMs);
+
+      // Play audio
+      this.playFromUrl(url)
+        .then(() => {
+          // Audio started successfully, wait for it to end
+          if (this.currentAudio) {
+            this.currentAudio.addEventListener('ended', () => {
+              console.log('Audio ended naturally');
+              resolveOnce();
+            }, { once: true });
+
+            this.currentAudio.addEventListener('error', (e) => {
+              console.error('Audio playback error:', e);
+              // Still resolve - don't block the flow on audio error
+              resolveOnce();
+            }, { once: true });
+          } else {
+            // No audio element, resolve immediately
+            resolveOnce();
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to start audio:', error);
+          // Still resolve - don't block the flow on audio failure
+          resolveOnce();
+        });
+    });
   }
 }
 

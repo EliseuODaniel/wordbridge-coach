@@ -1,5 +1,142 @@
 # FillTheWord OpenSpec - Histórico de Mudanças
 
+## ✅ Aplicado: Chat Coach - LLM Teacher + Chat Sanitizer (2025-12-26)
+
+**Status**: ✅ Applied & Validated
+**Change Document**: `openspec/changes/archived/2025-12-chat-coach-draft-llm-teacher-v1.md`
+**Escopo**: Backend (Teacher analysis, chat sanitizer), Frontend (Professor panel)
+**Branch**: `feature/chat-coach-mvp`
+**Commits**: (pending merge to main)
+
+### Resumo
+
+Implementação da **arquitetura de dois calls (Chat + Teacher)** para separar conversa natural de análise pedagógica:
+
+1. **Teacher Analysis (LLM)**: Análise pedagógica separada em JSON via WS
+2. **Chat Sanitizer**: Bloqueio em 3 camadas para evitar meta-commentary no chat
+3. **Contextos Independentes**: Chat usa user/assistant, Teacher usa somente user messages
+4. **Parser JSON Robusto**: Remove code fences, extrai JSON, fallback com debug_reason
+
+### Implementação
+
+**Backend**:
+- ✅ `LlamaCppLLMProvider.generate_teacher_analysis()` com stream=False
+- ✅ Parser robusto `_parse_teacher_json()` (remove ```json, extrai primeiro { ao último })
+- ✅ `_build_teacher_context()` - somente user messages (role='user')
+- ✅ `_build_context_messages()` - user+assistant messages (exclui system)
+- ✅ System prompt curto (sem "CRITICAL INSTRUCTIONS")
+- ✅ Stop sequences: `"CRITICAL INSTRUCTIONS"`, `"Note:"`, `"(Note:"`, etc.
+- ✅ Sanitizer em 3 camadas: remove parenthetical, remove lines, truncate em "CRITICAL INSTRUCTIONS"
+- ✅ `assistant_done` envia `sanitized_response`
+
+**Frontend**:
+- ✅ `ChatCoachSession`: `teacherAnalysis` state, handler `handleTeacherAnalysis()`
+- ✅ `AnalysisPanel`: "Professor (LLM)" card com rewrite, corrections, summary, next_practice
+- ✅ Auto-scroll pinned: useLayoutEffect + requestAnimationFrame
+- ✅ "Jump to latest" button quando usuário scrolla pra cima
+
+**GPU**:
+- ⚠️ CPU-only documentado (imagem oficial llama.cpp sem CUDA)
+- Host: NVIDIA RTX 4070, nvidia-smi funciona no container
+- Imagem CUDA oficial indisponível/desatualizada
+- Workaround: CPU adequado para demo/MVP
+
+### Validação
+
+**CA1-CA4, CA6: ✅ Validated**
+- Chat sem meta-commentary
+- Teacher panel aparece com rewrite + corrections
+- Viewport locked (no global scroll)
+- Right panel fixed
+- Auto-scroll funciona
+
+**CA5: ⚠️ Documented (CPU-Only)**
+- llama.cpp rodando em CPU
+- GPU disponível mas imagem não compila com CUDA
+
+---
+
+## ✅ Aplicado: Chat Coach - Real LLM (Local llama.cpp + OpenAI) (2025-12-25)
+
+**Status**: ✅ Applied & Validated (Partial - Model Download Required)
+**Change Document**: `openspec/changes/archived/2025-12-chat-coach-real-llm-v1.md`
+**Escopo**: Backend (LLM providers, factory, tests), Infrastructure (llama.cpp service)
+**Commits**: 7bafc73, 314a043, 2ef12b2, 04f4ec3
+
+### Resumo
+
+Implementação de **LLM real para Chat Coach**, suportando tanto local (llama.cpp, 8GB VRAM) quanto cloud (OpenAI), com modo strict para evitar fallback silencioso:
+
+1. **LlamaCppLLMProvider**: Cliente HTTP OpenAI-compatible para llama.cpp local
+2. **Factory Pattern**: Seleção de provider via env vars (llamacpp | openai_http | mock)
+3. **Strict Mode**: `CHAT_LLM_STRICT=true` previne fallback silencioso
+4. **Infrastructure**: Serviço docker llama.cpp com volume para modelo GGUF
+5. **SSE Streaming**: Parse de Server-Sent Events para respostas em tempo real
+6. **Config Filtering**: Remove objetos internos (lesson_frame) antes de enviar ao LLM
+
+### Implementação
+
+**Backend**:
+- ✅ `LlamaCppLLMProvider` com HTTP client (httpx) + SSE parsing (`api/app/llm/llamacpp_provider.py`)
+- ✅ `get_llm_provider_from_env()` com suporte a strict mode (`api/app/llm/factory.py`)
+- ✅ Chat endpoint atualizado com system_prompt + cleanup de generation_config (`api/app/api/api_v1/endpoints/chat.py`)
+- ✅ 16 testes unitários com MockTransport (SSE, strict mode, factory)
+
+**Infrastructure**:
+- ✅ Serviço `llm` no docker-compose.yml (ghcr.io/ggml-org/llama.cpp:server)
+- ✅ Volume `llm_models` para modelo GGUF (~5GB)
+- ✅ Script `scripts/download_model.sh` + docs `LOCAL_LLM_SETUP.md`
+
+**Feature Flags**:
+- `CHAT_LLM_PROVIDER`: llamacpp (default) | openai_http | mock
+- `CHAT_LLM_BASE_URL`: URL do servidor llama.cpp (default: http://llm:8080/v1)
+- `CHAT_LLM_MODEL`: Nome do modelo (default: qwen2.5-7b-instruct)
+- `CHAT_LLM_STRICT`: true | false (previne fallback se true)
+- `CHAT_LLM_NETWORK_ENABLED`: true | false (OpenAI respeita, llamacpp ignora)
+
+### Validação
+
+**Unit Tests (16/16 passed)**:
+```bash
+✅ test_llamacpp_provider_chat_stream_sse
+✅ test_llamacpp_provider_filters_generation_config
+✅ test_llamacpp_provider_strict_mode_raises
+✅ test_llamacpp_provider_non_strict_fallback
+✅ test_llamacpp_provider_micro_eval_heuristic
+✅ test_llamacpp_provider_autocomplete_heuristic
+✅ test_factory_llamacpp_provider (10 tests)
+```
+
+**Infrastructure**:
+```bash
+docker exec ftw-api env | grep CHAT
+CHAT_LLM_PROVIDER=llamacpp
+CHAT_LLM_BASE_URL=http://llm:8080/v1
+CHAT_LLM_MODEL=qwen2.5-7b-instruct
+CHAT_LLM_STRICT=true
+```
+
+### Limitações Conhecidas
+
+1. **Model Download**: Requer download manual do modelo Qwen2.5-7B-Instruct GGUF (~5GB)
+   - Script automatizado falhou (rede/tamanho)
+   - Instruções em `LOCAL_LLM_SETUP.md`
+2. **Validação UI End-to-End**: Pendente download do modelo
+   - Unit tests cobrem todos os caminhos de código
+   - Infraestrutura pronta e configurada
+
+### Próximos Passos
+
+Para validação completa:
+```bash
+# 1. Baixar modelo manualmente (veja LOCAL_LLM_SETUP.md)
+# 2. Iniciar serviço LLM
+docker compose up -d llm
+# 3. Testar UI em http://localhost:3007/?mode=chat
+```
+
+---
+
 ## ✅ Aplicado: Lingvist Mode - Inline Cloze + Hints Progressivos (2025-12-24)
 
 **Status**: ✅ Applied → Validated
