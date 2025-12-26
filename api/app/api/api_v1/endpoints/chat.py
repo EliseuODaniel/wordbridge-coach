@@ -653,6 +653,8 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
             data = await websocket.receive_json()
             event_type = data.get("type")
 
+            logger.info(f"[WS_RX] event_type={event_type}, data_keys={list(data.keys())}")
+
             now_ms = int(datetime.now().timestamp() * 1000)
 
             # Route events by type
@@ -699,6 +701,8 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
     """Handle draft_update event → return draft_feedback"""
     draft_text = data.get("draft_text", "")
     conversation_id = str(conversation.id)
+
+    logger.info(f"[DRAFT_UPDATE_START] conv={conversation_id[:8]}, draft_text='{draft_text}'")
 
     logger.info(f"[DRAFT_UPDATE] text='{draft_text}', len={len(draft_text)}, conv={conversation_id[:8]}")
 
