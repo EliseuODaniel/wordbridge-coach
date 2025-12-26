@@ -754,11 +754,20 @@ CRITICAL INSTRUCTIONS:
     full_response = ""
 
     # Generation config (standard LLM params only, no internal objects)
+    # Build stop sequences without empty strings (empty strings cause LLM to generate 0 tokens)
+    stop_sequences = [
+        '\n\n"',
+        '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:',
+        '">', '<|',
+    ]
+    # Filter out any empty strings or whitespace-only strings
+    stop_sequences = [s for s in stop_sequences if isinstance(s, str) and s.strip()]
+
     generation_config = {
         "temperature": 0.5,
         "max_tokens": 300,
         "top_p": 0.9,
-        "stop": ['\n"', '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:', '', ''],
+        "stop": stop_sequences,  # Clean list without empty strings
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0
     }

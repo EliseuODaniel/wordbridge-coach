@@ -74,6 +74,7 @@ class LlamaCppLLMProvider(LLMProvider):
         Filter generation_config to only include supported parameters.
 
         Removes internal params like 'lesson_frame' that llama.cpp doesn't understand.
+        Filters empty strings from 'stop' parameter (empty strings cause LLM to generate 0 tokens).
 
         Args:
             generation_config: Full generation config
@@ -83,11 +84,29 @@ class LlamaCppLLMProvider(LLMProvider):
         """
         filtered = {}
         for key, value in generation_config.items():
-            if key in SUPPORTED_PARAMS:
-                filtered[key] = value
-            else:
+            if key not in SUPPORTED_PARAMS:
                 # Log that we're filtering this param
                 logger.debug(f"Filtering unsupported param: {key}")
+                continue
+
+            # Special handling for 'stop' parameter
+            if key == "stop":
+                if isinstance(value, list):
+                    # Filter out empty/whitespace strings
+                    filtered_stop = [s for s in value if isinstance(s, str) and s.strip()]
+                    if filtered_stop:
+                        filtered[key] = filtered_stop
+                    else:
+                        logger.debug("Filtering empty stop list")
+                elif isinstance(value, str):
+                    # Single stop string - only include if non-empty
+                    if value.strip():
+                        filtered[key] = value
+                    else:
+                        logger.debug("Filtering empty stop string")
+                # else: ignore other types
+            else:
+                filtered[key] = value
 
         return filtered
 
