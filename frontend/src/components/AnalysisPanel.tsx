@@ -9,6 +9,7 @@ import React from 'react';
 import type { DraftIssue } from '../services/api';
 
 interface AnalysisPanelProps {
+  draftText?: string;
   issues: DraftIssue[];
   micro_tip?: string | null;
   suggested_next_words?: string[];
@@ -19,6 +20,7 @@ interface AnalysisPanelProps {
 }
 
 const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
+  draftText,
   issues,
   micro_tip,
   suggested_next_words,
@@ -52,9 +54,98 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     return colors[category] || 'border-gray-500 bg-gray-800';
   };
 
+  const getHighlightClass = (category: string): string => {
+    const classes: Record<string, string> = {
+      spelling: 'bg-red-900/50 border-b-2 border-red-500 text-red-100',
+      grammar: 'bg-yellow-900/50 border-b-2 border-yellow-500 text-yellow-100',
+      syntax: 'bg-orange-900/50 border-b-2 border-orange-500 text-orange-100',
+      semantic: 'bg-purple-900/50 border-b-2 border-purple-500 text-purple-100',
+      style: 'bg-blue-900/50 border-b-2 border-blue-500 text-blue-100'
+    };
+    return classes[category] || 'bg-gray-700/50 border-b-2 border-gray-500';
+  };
+
+  /**
+   * Render text with highlighted error spans
+   */
+  const renderHighlightedText = (text: string, issues: DraftIssue[]): React.ReactNode => {
+    if (!text) return null;
+
+    // Extract all highlight_spans with category
+    const spans = issues.flatMap(issue =>
+      (issue.highlight_spans || []).map(span => ({
+        start: span.start,
+        end: span.end,
+        category: issue.category,
+        title: issue.title
+      }))
+    );
+
+    // Filter and sort spans
+    const validSpans = spans
+      .filter(s => s.start >= 0 && s.end <= text.length && s.start < s.end)
+      .sort((a, b) => a.start - b.start);
+
+    if (validSpans.length === 0) {
+      return <span className="text-gray-300">{text}</span>;
+    }
+
+    // Render text with <span> wrappers for highlights
+    let lastEnd = 0;
+    const parts: React.ReactNode[] = [];
+
+    for (const span of validSpans) {
+      // Skip overlapping spans
+      if (span.start < lastEnd) continue;
+
+      // Text before highlight
+      if (span.start > lastEnd) {
+        parts.push(
+          <span key={`text-${lastEnd}`} className="text-gray-300">
+            {text.slice(lastEnd, span.start)}
+          </span>
+        );
+      }
+
+      // Highlighted text
+      parts.push(
+        <span
+          key={`highlight-${span.start}-${span.end}`}
+          className={getHighlightClass(span.category)}
+          title={span.title}
+        >
+          {text.slice(span.start, span.end)}
+        </span>
+      );
+
+      lastEnd = span.end;
+    }
+
+    // Remaining text
+    if (lastEnd < text.length) {
+      parts.push(
+        <span key={`text-${lastEnd}`} className="text-gray-300">
+          {text.slice(lastEnd)}
+        </span>
+      );
+    }
+
+    return <>{parts}</>;
+  };
+
   return (
     <div className={`space-y-3 ${className}`}>
       <h3 className="text-sm font-semibold text-gray-300 mb-3">Feedback</h3>
+
+      {/* Your text with error highlights */}
+      {draftText && draftText.trim() && (
+        <div className="bg-gray-800 border border-gray-600 rounded-lg p-3 mb-3">
+          <p className="text-xs text-gray-400 mb-2">Seu texto:</p>
+          <p className="text-sm leading-relaxed">
+            {renderHighlightedText(draftText, issues)}
+          </p>
+        </div>
+      )}
 
       {/* Rich signals - ALWAYS RENDER THESE FIRST */}
       {/* Context tags: topic/intent */}
@@ -120,6 +211,23 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 <p className="text-xs text-gray-400 capitalize">{issue.category}</p>
               </div>
             </div>
+
+            {/* Error snippet from draft text */}
+            {draftText && issue.highlight_spans && issue.highlight_spans.length > 0 && (
+              <div className="mb-2 bg-gray-900 rounded px-2 py-1">
+                <p className="text-xs text-gray-500 mb-1">Error in:</p>
+                <p className="text-sm">
+                  {issue.highlight_spans.map((span, si) => (
+                    <span
+                      key={si}
+                      className={`px-1 py-0.5 rounded ${getHighlightClass(issue.category)}`}
+                    >
+                      {draftText.slice(span.start, span.end)}
+                    </span>
+                  ))}
+                </p>
+              </div>
+            )}
 
             {/* Explanation */}
             <p className="text-sm text-gray-300 mb-2">{issue.explanation}</p>
