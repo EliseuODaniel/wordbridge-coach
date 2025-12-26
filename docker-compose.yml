@@ -67,6 +67,12 @@ services:
       CHAT_LLM_BASE_URL: http://llm:8080/v1
       CHAT_LLM_MODEL: qwen2.5-7b-instruct
       CHAT_LLM_STRICT: "true"
+      # Chat Coach Draft Grammar Configuration
+      CHAT_DRAFT_GRAMMAR_PROVIDER: languagetool
+      CHAT_LANGUAGETOOL_URL: http://languagetool:8010
+      CHAT_DRAFT_SUGGESTIONS_ENABLED: "true"
+      CHAT_DRAFT_SUGGESTIONS_MAX: "8"
+      CHAT_MICRO_EVAL_MIN_INTERVAL_MS: "250"
     ports:
       - "8000:8000"
     volumes:
@@ -139,6 +145,25 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+
+  # LanguageTool Service (Grammar/Spell Checking)
+  languagetool:
+    image: erikvl72/languagetool:latest
+    container_name: ftw-languagetool
+    restart: unless-stopped
+    ports:
+      - "8010:8010"
+    environment:
+      - LANGUAGETOOL_PORT=8010
+      - LANGUAGETOOL_LANGUAGE_TOOL__ANONYMIZED__TEXT__MIN_LENGTH=0
+      - LANGUAGETOOL_LANGUAGE_TOOL__ANONYMIZED__TEXT__MIN_LENGTH__FOR__CHECKING=0
+    networks:
+      - filltheword-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/v2/check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Frontend Service
   frontend:
