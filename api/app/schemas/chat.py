@@ -213,3 +213,18 @@ class Pong(BaseModel):
     """Server event: pong (response to ping)"""
     type: str = Field(default="pong", description="Event type")
     ts: int = Field(..., description="Timestamp (milliseconds)")
+
+
+class Correction(BaseModel):
+    """Single correction from teacher analysis"""
+    mistake: str = Field(..., description="Original mistake")
+    fix: str = Field(..., description="Corrected version")
+    why: str = Field(..., description="Explanation of why this is correct")
+
+
+class TeacherAnalysisOut(BaseModel):
+    """Server event: teacher_analysis (separate from chat messages)"""
+    type: str = Field(default="teacher_analysis", description="Event type")
+    conversation_id: str = Field(..., description="Conversation ID")
+    user_message_id: str = Field(..., description="ID of user message being analyzed")
+    analysis: Dict[str, Any] = Field(..., description="Teacher analysis JSON with keys: rewrite, corrections, teacher_summary, next_practice")
