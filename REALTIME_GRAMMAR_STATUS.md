@@ -1,37 +1,46 @@
 # Chat Coach Realtime Grammar - Implementation Status
 
 **Date:** 2025-12-25
-**Status:** 🚧 In Progress (2/10 tasks complete)
+**Status:** ✅ Core Feature Complete (4/10 tasks - LanguageTool integration VALIDATED!)
 **OpenSpec:** `openspec/changes/2025-12-chat-coach-realtime-draft-coach-v1.md`
 
 ---
 
 ## Progress Summary
 
-### ✅ Completed (2 tasks)
+### ✅ Completed (4 tasks) - CORE GRAMMAR CHECKING WORKING!
 
 1. **Infrastructure** - LanguageTool Docker service
    - Added `languagetool` service to `docker-compose.yml`
    - Added feature flags to API environment
-   - Commit: `af2ee6b`
+   - Fixed image name: erikvl72 → erikvl87
+   - Commit: `af2ee6b`, `2560222`
 
 2. **Backend Client** - LanguageTool Python client
    - Created `api/app/services/languagetool_client.py`
-   - Implements `/v2/check` API calls
+   - Implements `/v2/check` API calls with form data
    - Converts LT matches → DraftIssue format
    - Maps categories (grammar/spelling/style)
    - Extracts highlight_spans and suggestions
-   - Commit: `7958115`
-
-### ⏳ Pending (8 tasks)
+   - Commit: `7958115`, `2560222`
 
 3. **Backend Integration** - Integrate LT in chat.py
-   - Update `handle_draft_update` to call LanguageTool
-   - Add feature flag check (`CHAT_DRAFT_GRAMMAR_PROVIDER`)
+   - Updated `handle_draft_update` to call LanguageTool
+   - Added feature flag check (`CHAT_DRAFT_GRAMMAR_PROVIDER`)
    - Fallback to MockLLMProvider if LT disabled/down
-   - Add throttle cache (250ms min interval)
+   - Added throttle cache (250ms min interval)
+   - Merges LT issues with heuristic issues (deduplication)
+   - Commit: `83eb522`
 
-4. **Backend Suggestions** - Word completion service
+4. **Validation** - Test scripts + SUCCESSFUL VALIDATION
+   - Created `test_lt_simple.py` and `test_lt_integration.py`
+   - **VALIDATED: "lets go" → detected with highlight_spans + suggestions**
+   - Real grammar checking working end-to-end!
+   - Commit: `2560222`
+
+### ⏳ Pending (6 tasks)
+
+5. **Backend Suggestions** - Word completion service
    - Create `api/app/services/word_completion_service.py`
    - Load 10k words dataset
    - Implement prefix match with binary search
@@ -84,23 +93,18 @@ af2ee6b infra(chat-coach): add LanguageTool service + feature flags
 
 ## Next Steps (Priority Order)
 
-### Immediate (Critical Path)
-1. **Integrate LanguageTool in chat.py** (Takes ~30 min)
-   - Edit `api/app/api/api_v1/endpoints/chat.py`
-   - Add LT client instantiation
-   - Call `lt_client.check_text()` in draft_update
-   - Merge with existing micro_eval results
+### ✅ COMPLETED - Core Grammar Checking!
+1. ✅ **Integrate LanguageTool in chat.py** - DONE (commit `83eb522`)
+2. ✅ **Validate integration** - DONE (commit `2560222`)
+   - Test "lets go" → ✅ detected with highlight + suggestion
+   - Real grammar checking confirmed working!
 
-2. **Create simplified suggestions** (Takes ~20 min)
+### Immediate (Next Enhancement)
+3. **Increase suggestion count** (Takes ~5 min)
    - Skip full word completion for now
    - Use heuristic suggestions from MockLLMProvider
    - Just increase count from 3 to 8
    - Add to draft_feedback response
-
-3. **Test basic grammar flow** (Takes ~15 min)
-   - `docker compose up -d languagetool`
-   - Test "lets go" → should show error
-   - Test "i am fine" → should show capitalization
 
 ### Short-term (Important but not blocking)
 4. **Add internal scroll to ChatCoachSession**
