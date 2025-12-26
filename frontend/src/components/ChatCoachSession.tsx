@@ -365,7 +365,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   }
 
   return (
-    <div className="h-screen bg-gray-900 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -387,11 +387,11 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4" ref={messageListRef}>
+          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 min-h-0" ref={messageListRef}>
             {messages.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-gray-400 mb-2">
@@ -489,7 +489,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
         </div>
 
         {/* Analysis sidebar */}
-        <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto p-4">
+        <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto p-4 min-h-0">
           <AnalysisPanel
             draftText={draftText}
             issues={issues}
