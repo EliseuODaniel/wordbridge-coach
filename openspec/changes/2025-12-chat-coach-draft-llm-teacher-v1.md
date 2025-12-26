@@ -34,7 +34,7 @@ The Chat Coach draft feedback system has several critical issues that reduce its
 
 ## Proposed Solution
 
-### CRITICAL REQUIREMENT: Chat vs Teacher Separation
+### CRITICAL REQUIREMENT: Chat vs Teacher Separation (Two-Call Architecture)
 
 **UX Principle:**
 - **Left column (Chat)**: Natural conversation only, NO meta-commentary, NO "Please note..." blocks
@@ -43,12 +43,31 @@ The Chat Coach draft feedback system has several critical issues that reduce its
   - **NEW**: "Professor (LLM)" section with pedagogical analysis
 
 **Technical Requirements:**
-1. Teacher analysis MUST NEVER appear as a chat message
-2. Teacher analysis delivered via separate WebSocket event: `teacher_analysis`
-3. Teacher analysis persisted in `ChatMessage.metadata_json` (key: `teacher_analysis`), NOT in `content`
-4. Chat reply uses strict "conversation only" prompt
-5. Layout: No global scroll; only message list has internal scrollbar
-6. Auto-scroll: New messages scroll to bottom UNLESS user manually scrolled up
+1. **Two-Call Architecture**: DUAS requisições separadas à mesma LLM local:
+   - **A) Chat LLM call** (conversa natural):
+     - Context: últimas N mensagens user/assistant (SEM teacher metadata)
+     - System prompt: "Output only the assistant reply. Do NOT include notes, analysis, or parentheses commentary."
+     - Output: texto conversacional puro, stream via `assistant_stream_token` e `assistant_done`
+     - NUNCA inclui "(Note:", "Note:", "Teacher:", "Analysis:", ou parênteses
+   - **B) Teacher LLM call** (professor):
+     - Context: últimas N mensagens do USUÁRIO apenas (role=user)
+     - System prompt: retorna JSON estrito com `teacher_summary`, `rewrite`, `corrections[{mistake,fix,why}]`, `next_practice[]`
+     - Output: JSON via evento WS separado `teacher_analysis`
+     - NUNCA vai para `ChatMessage.content`
+2. **Defensive Sanitizer** (airbag):
+   - Remover do chat reply qualquer trecho que comece com: "(Note:", "Note:", "Teacher:", "Analysis:"
+   - Aplicar mesmo que LLM prometa obedecer (proteção contra falhas)
+3. **Separate Persistence**:
+   - Teacher JSON persiste em `ChatMessage.metadata_json['teacher_analysis']`
+   - Chat content é apenas texto conversacional
+4. **Layout - Viewport Locked**:
+   - Root: `fixed inset-0 overflow-hidden` (ou `h-screen overflow-hidden`)
+   - Coluna esquerda: `flex flex-col min-h-0`, messages: `flex-1 overflow-y-auto`
+   - Coluna direita: `h-full overflow-y-auto`
+   - SEM scrollbar no browser page, apenas scroll interno
+5. **Auto-scroll**:
+   - Scrolla para baixo se usuário está perto do fim (<100px)
+   - NÃO força scroll se usuário subiu manualmente
 
 ### 1. Fix LanguageTool Pipeline (High Priority)
 
@@ -159,6 +178,45 @@ Return JSON:
 ---
 
 ## Acceptance Criteria
+
+### CA1: Chat Reply Without Meta-Commentary (NEW)
+**Status:** 🔴 Pending
+**Given** user sends "hello, how are you"
+**When** assistant responds via chat LLM
+**Then** chat reply contains ONLY natural conversation:
+- NO "(Note: ...)", "Note: ...", "(Teacher: ...)", "(Analysis: ...)"
+- NO parentheses with meta-commentary
+- NO explanations about grammar or teaching
+- Example valid reply: "Hello! I'm doing well, thank you! How are you doing today?"
+
+### CA2: Teacher Analysis in Right Panel (NEW)
+**Status:** 🔴 Pending
+**Given** user sends "I enjoyed to sleep"
+**When** teacher LLM responds
+**Then** right panel shows "Professor (LLM)" section with:
+- `teacher_summary`: "Good attempt! After 'enjoy', we use the -ing form (gerund), not infinitive."
+- `rewrite`: "I enjoyed sleeping."
+- `corrections`: [{"mistake":"enjoyed to sleep","fix":"enjoyed sleeping","why":"After enjoy, use gerund (-ing) not infinitive (to + verb)"}]
+- `next_practice`: ["I enjoy reading books.", "She enjoys playing tennis."]
+
+### CA3: No Global Scroll (NEW)
+**Status:** 🔴 Pending
+**Given** user opens Chat Coach page
+**When** page renders
+**Then**:
+- Browser window has NO global scrollbar (document.body.scrollHeight === window.innerHeight)
+- Message list has internal scrollbar (overflow-y-auto)
+- Right panel has internal scrollbar (overflow-y-auto)
+- Both columns are viewport-locked (fill 100% of viewport height)
+
+### CA4: Right Panel Fixed (NEW)
+**Status:** 🔴 Pending
+**Given** user sends multiple messages
+**When** chat grows
+**Then**:
+- Right panel does NOT move up/down
+- Right panel stays fixed in viewport
+- Only message list scrolls internally
 
 ### CA1: LT Detects "ioy" Typo (COMPLETED ✅)
 **Status:** Validated - LT correctly detects "ioy" as spelling error with highlight at position 12-15

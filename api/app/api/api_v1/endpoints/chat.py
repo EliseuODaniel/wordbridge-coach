@@ -323,25 +323,46 @@ def _build_draft_feedback(
 
 def _sanitize_assistant_response(response: str) -> str:
     """
-    Remove extra user simulation from LLM response.
+    Remove meta-commentary and extra user simulation from LLM response.
 
-    Defensive post-processing to handle cases where LLM ignores instructions
-    and generates a second turn simulating the user's speech.
+    Defensive post-processing ("airbag") to handle cases where LLM ignores
+    instructions and generates meta-commentary or simulates user's speech.
 
     Removes:
-    1. Quoted paragraph at the end (often looks like user simulation)
-    2. Any text after role labels (User:, Student:, etc.)
+    1. Meta-commentary patterns: "(Note:", "Note:", "(Teacher:", "(Analysis:"
+    2. Quoted paragraph at the end (often looks like user simulation)
+    3. Any text after role labels (User:, Student:, etc.)
 
     Args:
         response: Raw LLM response
 
     Returns:
-        Sanitized response with user simulation removed
+        Sanitized response with meta-commentary and user simulation removed
     """
+    # First, remove parenthetical meta-commentary at any position
+    # Pattern: "(Note: ...)", "(Teacher: ...)", "(Analysis: ...)"
+    import re
+    # Remove parenthetical meta-commentary
+    response = re.sub(r'\(Note:[^)]*\)', '', response, flags=re.IGNORECASE)
+    response = re.sub(r'\(Teacher:[^)]*\)', '', response, flags=re.IGNORECASE)
+    response = re.sub(r'\(Analysis:[^)]*\)', '', response, flags=re.IGNORECASE)
+
+    # Remove non-parenthetical meta-commentary (e.g., "Note: ...")
+    # Remove entire line if it starts with meta-commentary
     lines = response.split('\n')
+    filtered_lines = []
+    for line in lines:
+        stripped = line.strip()
+        # Skip lines that are pure meta-commentary
+        if re.match(r'^(Note|Teacher|Analysis|Explanation|Correction|Meta|System):', stripped, re.IGNORECASE):
+            continue
+        filtered_lines.append(line)
+
+    response = '\n'.join(filtered_lines)
 
     # Remove quoted paragraph at the end (looks like user simulation)
     # Pattern: blank line followed by line starting with quote
+    lines = response.split('\n')
     if len(lines) >= 2 and not lines[-2].strip():
         if lines[-1].strip().startswith('"'):
             lines = lines[:-1]
