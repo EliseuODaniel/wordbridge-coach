@@ -34,6 +34,22 @@ The Chat Coach draft feedback system has several critical issues that reduce its
 
 ## Proposed Solution
 
+### CRITICAL REQUIREMENT: Chat vs Teacher Separation
+
+**UX Principle:**
+- **Left column (Chat)**: Natural conversation only, NO meta-commentary, NO "Please note..." blocks
+- **Right panel (Analysis)**:
+  - Existing: LT issues, highlights, suggestions
+  - **NEW**: "Professor (LLM)" section with pedagogical analysis
+
+**Technical Requirements:**
+1. Teacher analysis MUST NEVER appear as a chat message
+2. Teacher analysis delivered via separate WebSocket event: `teacher_analysis`
+3. Teacher analysis persisted in `ChatMessage.metadata_json` (key: `teacher_analysis`), NOT in `content`
+4. Chat reply uses strict "conversation only" prompt
+5. Layout: No global scroll; only message list has internal scrollbar
+6. Auto-scroll: New messages scroll to bottom UNLESS user manually scrolled up
+
 ### 1. Fix LanguageTool Pipeline (High Priority)
 
 **Diagnosis First:**
@@ -144,7 +160,10 @@ Return JSON:
 
 ## Acceptance Criteria
 
-### CA1: LT Detects "ioy" Typo
+### CA1: LT Detects "ioy" Typo (COMPLETED ✅)
+**Status:** Validated - LT correctly detects "ioy" as spelling error with highlight at position 12-15
+
+### CA2: Feedback Persists After Send
 **Given** user types "hi, how are ioy?" (without sending)
 **When** draft_update event is sent
 **Then** draft_feedback includes:
@@ -183,45 +202,95 @@ Return JSON:
 - "n_gpu_layers > 0" (e.g., "n_gpu_layers = 28")
 - No "CPU only" messages
 
+### CA6: Chat Reply Natural (No Meta-Commentary)
+**Given** user sends "I enjoyed to sleep"
+**When** assistant responds
+**Then** chat message contains ONLY natural conversation:
+- No "Please note that..." blocks
+- No meta-commentary about grammar
+- No explanations or corrections
+- Example valid reply: "That's great! Sleep is important for health."
+
+### CA7: Teacher Analysis in Right Panel
+**Given** user sends "I enjoyed to sleep"
+**When** assistant responds
+**Then** right panel shows "Professor (LLM)" section with:
+- `rewrite`: "I enjoyed sleeping."
+- `corrections`: [{"mistake":"enjoyed to sleep","fix":"enjoyed sleeping","why":"After 'enjoy', use gerund (-ing) not infinitive"}]
+- `teacher_summary`: Brief feedback (max 200 chars)
+- `next_practice`: 2-3 suggested practice sentences
+
+### CA8: Layout - No Global Scroll
+**Given** user opens Chat Coach page
+**When** page renders
+**Then**:
+- Browser window has NO global scrollbar
+- Message list (left column) has internal scrollbar
+- Right panel is fixed (may have its own internal scroll if content is long)
+- Both columns fill viewport height (`h-screen`)
+
+### CA9: Auto-Scroll Behavior
+**Given** user is at bottom of message list
+**When** new message arrives
+**Then** message list automatically scrolls to bottom
+
+**Given** user manually scrolled up to read previous messages
+**When** new message arrives
+**Then** NO auto-scroll; show "Jump to latest" button (optional)
+
 ---
 
 ## Implementation Plan
 
-### Phase 1: Diagnose + Fix LT (Critical Path)
-1. Create diagnostic script for LT
-2. Test "hi, how are ioy?" via direct LT API
-3. Test via WebSocket
-4. Fix language code + overwrite issues
-5. Add regression test
-6. Validate CA1, CA2
+### Phase 1: Diagnose + Fix LT (COMPLETED ✅)
+1. ✅ Create diagnostic script for LT
+2. ✅ Test "hi, how are ioy?" via direct LT API
+3. ✅ Test via WebSocket
+4. ✅ Fix DB session management
+5. ✅ Fix LT category parsing (dict vs string)
+6. ✅ Add regression test
+7. ✅ Validate CA1
 
-### Phase 2: Token-Aware Suggestions
+### Phase 1.5: Teacher LLM Backend (NEW)
+1. Design separate teacher prompt (JSON output only)
+2. Add `generate_teacher_analysis()` function to LLM provider
+3. Update `handle_user_message()` to call teacher LLM after chat reply
+4. Send `teacher_analysis` WS event with JSON payload
+5. Persist in `ChatMessage.metadata_json['teacher_analysis']`
+6. Add defensive sanitization to chat reply (remove meta-commentary)
+7. Validate CA6, CA7
+
+### Phase 2: Frontend Teacher Panel (NEW)
+1. Create `TeacherAnalysisPanel.tsx` component
+2. Handle `teacher_analysis` WS event in `ChatCoachSession.tsx`
+3. Render teacher data in right panel (separate from LT issues)
+4. Ensure teacher analysis never renders as chat message
+5. Validate CA7
+
+### Phase 3: Layout & Scroll (NEW)
+1. Update `ChatCoachSession.tsx` layout:
+   - Main wrapper: `h-screen overflow-hidden`
+   - Left col: `flex-1 overflow-y-auto` for message list
+   - Right panel: `w-80` or similar, `h-full overflow-y-auto`
+2. Implement auto-scroll logic:
+   - Track scroll position
+   - Auto-scroll to bottom on new messages if near bottom
+   - Show "Jump to latest" button if user scrolled up
+3. Validate CA8, CA9
+
+### Phase 4: Token-Aware Suggestions (DEFERRED)
 1. Create WordCompletionService
 2. Build next-word model script
 3. Create NextWordService
 4. Integrate into draft_update
 5. Validate CA3
 
-### Phase 3: Teacher LLM (Idle)
-1. Design teacher prompt (JSON output)
-2. Add idle detection to draft_update
-3. Implement LLM call with throttle
-4. Parse JSON + graceful degradation
-5. Integrate into DraftFeedbackOut
-6. Validate CA4
-
-### Phase 4: GPU + Model
+### Phase 5: GPU + Model (DEFERRED)
 1. Update docker-compose.yml for CUDA
 2. Download Qwen2.5-7B Q4_K_M model
 3. Configure llama.cpp with GPU offload
 4. Verify GPU usage in logs
 5. Validate CA5
-
-### Phase 5: Frontend
-1. Update AnalysisPanel for teacher feedback
-2. Improve suggestion chips display
-3. Ensure feedback persistence
-4. Full E2E validation
 
 ---
 
