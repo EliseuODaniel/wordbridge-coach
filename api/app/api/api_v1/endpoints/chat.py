@@ -28,6 +28,8 @@ from app.llm.factory import get_llm_provider_from_env, get_provider_name
 # Feature flags (environment variables)
 CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "llamacpp")
 CHAT_MICRO_EVAL_MIN_INTERVAL_MS = int(os.getenv("CHAT_MICRO_EVAL_MIN_INTERVAL_MS", "90"))
+CHAT_DRAFT_GRAMMAR_PROVIDER = os.getenv("CHAT_DRAFT_GRAMMAR_PROVIDER", "heuristic")
+CHAT_LANGUAGETOOL_URL = os.getenv("CHAT_LANGUAGETOOL_URL", "http://languagetool:8010")
 
 router = APIRouter()
 
@@ -43,6 +45,83 @@ _micro_eval_timestamps = {}
 # Cache for last feedback (conversation_id -> last_feedback_dict)
 # Used to prevent "dead" panel when throttled
 _feedback_cache = {}
+
+
+async def _get_grammar_issues(draft_text: str) -> List[dict]:
+    """
+    Get grammar issues from LanguageTool if enabled.
+
+    Args:
+        draft_text: Text to check
+
+    Returns:
+        List of issue dicts from LanguageTool or empty list on error/fallback
+    """
+    # Only check if LanguageTool is enabled AND text has minimum length
+    if CHAT_DRAFT_GRAMMAR_PROVIDER != "languagetool":
+        return []
+
+    if len(draft_text) < 3:
+        return []
+
+    try:
+        from app.services.languagetool_client import LanguageToolClient
+
+        lt_client = LanguageToolClient(base_url=CHAT_LANGUAGETOOL_URL)
+        lt_issues = await lt_client.check_text(draft_text)
+        await lt_client.close()
+
+        logger.info(f"LanguageTool returned {len(lt_issues)} issues for draft length {len(draft_text)}")
+        return lt_issues
+
+    except Exception as e:
+        logger.warning(f"LanguageTool check failed, using heuristic only: {e}")
+        return []  # Fallback to heuristic issues from micro_eval
+
+
+def _merge_issues(lt_issues: List[dict], heuristic_issues: List[dict]) -> List[dict]:
+    """
+    Merge LanguageTool issues with heuristic issues, avoiding duplicates.
+
+    Args:
+        lt_issues: Issues from LanguageTool (with highlight_spans)
+        heuristic_issues: Issues from micro_eval (may have highlight_spans)
+
+    Returns:
+        Merged list of unique issues
+    """
+    # Create set of seen issue signatures (category + start + end)
+    seen = set()
+    merged = []
+
+    # Add LanguageTool issues first (they have real highlight_spans)
+    for issue in lt_issues:
+        signature = (
+            issue.get("category"),
+            issue.get("highlight_spans", [{}])[0].get("start", 0),
+            issue.get("highlight_spans", [{}])[0].get("end", 0)
+        )
+        if signature not in seen:
+            seen.add(signature)
+            merged.append(issue)
+
+    # Add heuristic issues that don't overlap
+    for issue in heuristic_issues:
+        # Skip if no highlight_spans (can't detect duplicates)
+        if not issue.get("highlight_spans"):
+            merged.append(issue)
+            continue
+
+        signature = (
+            issue.get("category"),
+            issue.get("highlight_spans", [{}])[0].get("start", 0),
+            issue.get("highlight_spans", [{}])[0].get("end", 0)
+        )
+        if signature not in seen:
+            seen.add(signature)
+            merged.append(issue)
+
+    return merged
 
 
 def get_default_lesson_frame() -> dict:
@@ -624,7 +703,10 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
         # Update timestamp
         _micro_eval_timestamps[conversation.id] = now_ms
 
-        # Run micro_eval (MockLLMProvider)
+        # Step 1: Get real grammar issues from LanguageTool (if enabled)
+        lt_issues = await _get_grammar_issues(draft_text)
+
+        # Step 2: Run micro_eval (MockLLMProvider) for rich signals + heuristic issues
         eval_result = await llm_provider.micro_eval(
             context=conversation.session_summary,
             lesson_frame=conversation.lesson_frame_json,
@@ -632,7 +714,14 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
             student_profile=conversation.student_profile_json
         )
 
-        # Build and send draft_feedback using helper (no ghost suggestion)
+        # Step 3: Merge LanguageTool issues with heuristic issues
+        heuristic_issues = eval_result.get("top_issues", [])
+        merged_issues = _merge_issues(lt_issues, heuristic_issues)
+
+        # Step 4: Override eval_result issues with merged issues
+        eval_result["top_issues"] = merged_issues
+
+        # Step 5: Build and send draft_feedback using helper (no ghost suggestion)
         feedback = _build_draft_feedback(
             conversation_id=str(conversation.id),
             eval_result=eval_result,
@@ -652,6 +741,7 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
         if last_feedback:
             # Update timestamp and draft text to keep panel alive
             last_feedback["server_ts_ms"] = now_ms
+            last_feedback["draft"] = draft_text
             await websocket.send_json(last_feedback)
         # else: first draft, no cache yet, just skip (rare case)
 
