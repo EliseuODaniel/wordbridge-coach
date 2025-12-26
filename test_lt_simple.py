@@ -17,12 +17,27 @@ async def test_lt():
         async with websockets.connect(WS_URL) as ws:
             print("✓ Connected")
 
-            # Test "lets go"
-            print("\n2. Testing 'lets go'...")
+            # Test "lets go" first
+            print("\n2. Testing 'lets go' (baseline)...")
             await ws.send(json.dumps({
                 "type": "draft_update",
                 "conversation_id": "117ff80d-bcb7-4356-a0c9-7fedca019237",
                 "draft_text": "lets go"
+            }))
+
+            response = await ws.recv()
+            data = json.loads(response)
+
+            if data.get("type") == "draft_feedback":
+                issues_baseline = data.get("issues", [])
+                print(f"   ✓ Baseline: {len(issues_baseline)} issues")
+
+            # Test "hi, how are ioy?"
+            print("\n3. Testing 'hi, how are ioy?'...")
+            await ws.send(json.dumps({
+                "type": "draft_update",
+                "conversation_id": "117ff80d-bcb7-4356-a0c9-7fedca019237",
+                "draft_text": "hi, how are ioy?"
             }))
 
             response = await ws.recv()

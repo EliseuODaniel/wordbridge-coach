@@ -46,6 +46,10 @@ _micro_eval_timestamps = {}
 # Used to prevent "dead" panel when throttled
 _feedback_cache = {}
 
+# Cache for last processed draft text (conversation_id -> last_draft_text)
+# Used to bypass throttle when text changes
+_last_draft_texts = {}
+
 
 async def _get_grammar_issues(draft_text: str) -> List[dict]:
     """
@@ -694,10 +698,19 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
 async def handle_draft_update(websocket: WebSocket, data: dict, conversation: ChatConversation, now_ms: int, db: Session):
     """Handle draft_update event → return draft_feedback"""
     draft_text = data.get("draft_text", "")
+    conversation_id = str(conversation.id)
+
+    # Check if draft text changed
+    last_draft_text = _last_draft_texts.get(conversation_id, "")
+    text_changed = (draft_text != last_draft_text)
 
     # Check throttle for micro_eval (10-15 Hz max)
+    # CRITICAL FIX: Bypass throttle if text changed to catch new errors
     last_eval_ts = _micro_eval_timestamps.get(conversation.id, 0)
-    should_run_micro_eval = (now_ms - last_eval_ts) >= CHAT_MICRO_EVAL_MIN_INTERVAL_MS
+    time_passed_enough = (now_ms - last_eval_ts) >= CHAT_MICRO_EVAL_MIN_INTERVAL_MS
+    should_run_micro_eval = time_passed_enough or text_changed
+
+    logger.info(f"Draft update: text_changed={text_changed}, time_passed={time_passed_enough}, should_run={should_run_micro_eval}")
 
     if should_run_micro_eval:
         # Update timestamp
@@ -732,12 +745,15 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
         )
 
         # Cache feedback for reuse when throttled
-        _feedback_cache[str(conversation.id)] = feedback
+        _feedback_cache[conversation_id] = feedback
+
+        # Cache last processed draft text
+        _last_draft_texts[conversation_id] = draft_text
 
         await websocket.send_json(feedback)
     else:
         # Micro_eval throttled: reuse last feedback to prevent "dead" panel
-        last_feedback = _feedback_cache.get(str(conversation.id))
+        last_feedback = _feedback_cache.get(conversation_id)
         if last_feedback:
             # Update timestamp and draft text to keep panel alive
             last_feedback["server_ts_ms"] = now_ms
