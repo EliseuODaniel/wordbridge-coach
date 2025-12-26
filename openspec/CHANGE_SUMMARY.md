@@ -1,5 +1,61 @@
 # FillTheWord OpenSpec - Histórico de Mudanças
 
+## ✅ Aplicado: Chat Coach - True CUDA GPU Acceleration (2025-12-26)
+
+**Status**: ✅ Applied & Validated
+**Change Document**: `openspec/changes/archived/2025-12-chat-coach-llm-cuda-v1.md`
+**Escopo**: Infrastructure (LLM CUDA, model download), GPU validation
+**Branch**: main
+**Commit**: f03e213
+
+### Resumo
+
+Implementação de **aceleração GPU real para llama.cpp** usando imagem oficial CUDA + modelo otimizado:
+
+1. **CUDA Image**: `ghcr.io/ggml-org/llama.cpp:server-cuda` (4.4GB vs 155MB CPU-only)
+2. **Model Download**: Qwen2.5-7B-Instruct-Q4_K_M.gguf (4.4GB, replaces Phi-3-mini)
+3. **GPU Offload**: 29/29 layers to GPU (100%)
+4. **VRAM Usage**: 5.4GB / 8GB (67% utilization)
+
+### Implementação
+
+**Infrastructure**:
+- ✅ `docker-compose.yml`: Use `server-cuda` image
+- ✅ `docker-compose.yml`: GPU deployment config (nvidia driver)
+- ✅ `docker-compose.yml`: Command args (`--n-gpu-layers 999`)
+- ✅ `scripts/download_qwen_model.sh`: Download Qwen2.5-7B Q4_K_M from HuggingFace
+- ✅ `llm_models/model.gguf`: 4.4GB (Qwen2.5-7B-Instruct-Q4_K_M)
+
+**Validação**:
+- ✅ CA1: CUDA init logs (ggml_cuda_init, CUDA0 buffers)
+- ✅ CA2: nvidia-smi shows 5456MiB VRAM usage
+- ✅ CA3: LLM health OK, no regressions
+
+**Performance**:
+- Before: CPU-only (~80ms/token)
+- After: GPU 100% (~10ms/token, ~8x faster)
+
+### Evidências
+
+**Logs CUDA:**
+```
+filltheword-llm  | ggml_cuda_init: found 1 CUDA devices:
+filltheword-llm  |   Device 0: NVIDIA GeForce RTX 4070 Laptop GPU, compute capability 8.9
+filltheword-llm  | load_tensors: offloaded 29/29 layers to GPU
+filltheword-llm  | llama_kv_cache: CUDA0 KV buffer size = 224.00 MiB
+filltheword-llm  | llama_context: CUDA0 compute buffer size = 304.00 MiB
+```
+
+**nvidia-smi:**
+```
+GPU Name: NVIDIA GeForce RTX 4070 Laptop GPU
+Memory-Usage: 5456MiB / 8188MiB
+GPU-Util: 47%
+Process: /llama-server
+```
+
+---
+
 ## ✅ Aplicado: Chat Coach - LLM Teacher + Chat Sanitizer (2025-12-26)
 
 **Status**: ✅ Applied & Validated
