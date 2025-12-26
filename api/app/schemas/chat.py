@@ -154,6 +154,7 @@ class DraftFeedbackOut(BaseModel):
     topic: Optional[str] = Field(None, description="Detected conversation topic")
     intent: Optional[str] = Field(None, description="Detected user intent")
     rewrite: Optional[str] = Field(None, description="Suggested rewrite of the entire draft")
+    draft: str = Field(default="", description="Draft text (for debugging/display)")
     server_ts_ms: int = Field(..., description="Server timestamp (milliseconds)")
 
     class Config:

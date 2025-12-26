@@ -315,6 +315,7 @@ def _build_draft_feedback(
         topic=topic,
         intent=intent,
         rewrite=rewrite,
+        draft=draft or "",  # Include draft text in response
         server_ts_ms=now_ms
     ).model_dump()
 
