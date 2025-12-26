@@ -9,7 +9,7 @@
  * - Issue analysis panel
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { chatApi } from '../services/api';
 import ChatWS from '../services/chatWs';
 import type {
@@ -84,7 +84,8 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
   // Message list ref for auto-scroll
   const messageListRef = useRef<HTMLDivElement | null>(null);
-  const isUserScrolledUpRef = useRef(false);
+  const pinnedToBottomRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
   // Autocomplete idle timer
   const autocompleteTimeoutRef = useRef<number | null>(null);
@@ -141,40 +142,59 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   }, [userId]);
 
   /**
-   * Auto-scroll to bottom when new messages arrive (if user is near bottom)
+   * Helper: Check if element is near bottom
    */
-  useEffect(() => {
-    const messageList = messageListRef.current;
-    if (!messageList) return;
-
-    // Check if user is near bottom (within 100px)
-    const isNearBottom = () => {
-      const { scrollTop, scrollHeight, clientHeight } = messageList;
-      return scrollHeight - scrollTop - clientHeight < 100;
-    };
-
-    // Scroll to bottom if near bottom or first message
-    if (isNearBottom() || messages.length === 0) {
-      messageList.scrollTop = messageList.scrollHeight;
-    }
-  }, [messages]);
+  const isNearBottom = (el: HTMLDivElement | null, thresholdPx: number = 120): boolean => {
+    if (!el) return false;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    return scrollHeight - scrollTop - clientHeight <= thresholdPx;
+  };
 
   /**
-   * Track scroll position to detect if user scrolled up
+   * Helper: Scroll to bottom (using requestAnimationFrame)
+   */
+  const scrollToBottom = () => {
+    const messageList = messageListRef.current;
+    if (!messageList) return;
+    requestAnimationFrame(() => {
+      messageList.scrollTop = messageList.scrollHeight;
+    });
+  };
+
+  /**
+   * Auto-scroll to bottom when new messages arrive (if pinned)
+   */
+  useLayoutEffect(() => {
+    if (pinnedToBottomRef.current) {
+      scrollToBottom();
+    }
+  }, [messages.length, currentAssistantResponse, isStreaming]);
+
+  /**
+   * Track scroll position to detect if user scrolled away from bottom
    */
   useEffect(() => {
     const messageList = messageListRef.current;
     if (!messageList) return;
 
     const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = messageList;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      isUserScrolledUpRef.current = distanceFromBottom > 100;
+      const nearBottom = isNearBottom(messageList, 120);
+      pinnedToBottomRef.current = nearBottom;
+      setShowJumpToLatest(!nearBottom);
     };
 
     messageList.addEventListener('scroll', handleScroll);
     return () => messageList.removeEventListener('scroll', handleScroll);
   }, []);
+
+  /**
+   * Jump to latest button handler
+   */
+  const handleJumpToLatest = () => {
+    pinnedToBottomRef.current = true;
+    setShowJumpToLatest(false);
+    scrollToBottom();
+  };
 
   /**
    * Connect WebSocket for real-time communication
@@ -389,7 +409,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 min-h-0" ref={messageListRef}>
             {messages.length === 0 ? (
@@ -435,6 +455,17 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
               </div>
             )}
           </div>
+
+          {/* Jump to latest button */}
+          {showJumpToLatest && (
+            <button
+              onClick={handleJumpToLatest}
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-primary-600 text-white text-sm rounded-full shadow-lg hover:bg-primary-700 transition-colors flex items-center gap-2 z-10"
+            >
+              <span>↓</span>
+              <span>Jump to latest</span>
+            </button>
+          )}
 
           {/* Input area */}
           <div className="border-t border-gray-700 bg-gray-800 px-4 py-4 flex-shrink-0">
