@@ -41,6 +41,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
   topic,
   intent,
   rewrite,
+  teacherAnalysis,
   className = ''
 }) => {
   // REMOVED: Early returns for issues.length === 0
