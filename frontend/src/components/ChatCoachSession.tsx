@@ -177,6 +177,11 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     setCurrentAssistantResponse('');
     setDraftText('');
     setGhostSuggestion(null);
+
+    // Refocus textarea for next message
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
   };
 
   /**
@@ -267,6 +272,11 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     if (autocompleteTimeoutRef.current) {
       window.clearTimeout(autocompleteTimeoutRef.current);
     }
+
+    // Keep textarea focused for next message
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
   };
 
   /**
@@ -380,7 +390,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
                   placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
                   className="w-full px-4 py-3 bg-gray-700 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                   rows={3}
-                  disabled={isStreaming}
+                  autoFocus
                 />
 
                 {/* Ghost suggestion */}
@@ -417,6 +427,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
         {/* Analysis sidebar */}
         <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto p-4">
           <AnalysisPanel
+            draftText={draftText}
             issues={issues}
             micro_tip={microTip}
             suggested_next_words={suggestedNextWords}
