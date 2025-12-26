@@ -78,6 +78,11 @@ tts_models/
 *.piper
 *.onnx
 
+# LLM models (large GGUF files, not committed)
+llm_models/*.gguf
+llm_models/model.gguf
+!llm_models/.gitkeep
+
 # Frontend build
 frontend/dist/
 frontend/build/

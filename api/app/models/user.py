@@ -36,7 +36,8 @@ class User(BaseModel):
     daily_stats = relationship("UserDailyStats", back_populates="user")
     frequency_progress = relationship("UserFrequencyProgress", back_populates="user", uselist=False)
     session_stats = relationship("UserSessionStats", back_populates="user")
-    
+    chat_conversations = relationship("ChatConversation", back_populates="user", cascade="all, delete-orphan")
+
     # User settings as JSON for flexibility
     @property
     def settings(self):

@@ -526,6 +526,128 @@ FillTheWord supports multiple training modes to accommodate different learning p
 
 See [openspec/changes/2025-12-lingvist-mode-v1.md](openspec/changes/2025-12-lingvist-mode-v1.md) for complete specification.
 
+### Chat Coach Mode (Conversational Training with Real-time Feedback)
+
+**Route**: `/train/chat`
+
+**Status**: 📝 Proposed (see [change proposal](openspec/changes/2025-12-chat-coach-mode-v1.md))
+
+**Description**: Conversational chat-based training with real-time writing feedback, inspired by FluentChat. Unlike Spec4 and Lingvist (which are exercise-based), Chat Coach is an open-ended chat with an AI teacher that provides immediate feedback while you type.
+
+**Key Features**:
+- **Open-ended conversation**: Chat freely with an AI teacher (no fill-in-the-gap exercises)
+- **Real-time feedback**: Score bar (0-100) + grammar analysis updates while typing
+- **Live scoring**: Combines spelling, grammar, syntax, and lesson alignment scores
+- **Ghost suggestions**: Auto-complete appears after inactivity (1.2s), accept with TAB
+- **Streaming responses**: Teacher responses arrive token-by-token (like ChatGPT)
+- **Lesson Frames**: Teacher sets learning goals per turn (e.g., "past simple practice")
+- **Incremental summary**: Conversation context summarized for efficient LLM usage
+
+**Key Differences from Other Modes**:
+| Feature | Spec4 Mode | Lingvist Mode | Chat Coach Mode |
+|---------|------------|---------------|-----------------|
+| Format | Fill-in-the-gap | Inline cloze | Open chat |
+| Feedback | After submission | Real-time prefix | Real-time full analysis |
+| Goal | Vocabulary mastery | Muscle memory | Conversational fluency |
+| Input Type | Single word | Single word | Full sentences |
+| Evaluation | SM-2 algorithm | SM-2 algorithm | Lesson Frame alignment |
+| Connection | REST API | REST API | WebSocket + REST |
+
+**Architecture**:
+- **WebSocket Protocol**: Bidirectional communication for real-time feedback
+  - Client → Server: `draft_update`, `user_message`, `request_autocomplete`, `ping`
+  - Server → Client: `draft_feedback`, `assistant_stream_token`, `assistant_done`, `error`, `pong`
+- **Throttling**: Backend "heavy" evaluation at 10-15 Hz (100ms min_interval), frontend can update per keystroke
+- **Smoothing**: UI uses Exponential Moving Average (EMA) for stable score bar display
+- **LLM Provider**: Pluggable (Mock for development, llama.cpp for production, OpenAI optional)
+
+**Lesson Frame System**:
+Each conversation turn has a pedagogical objective:
+```json
+{
+  "cefr_target": "A2",
+  "learning_goal": "past_simple_regular_verbs",
+  "expected_intent": "describe_recent_activity",
+  "topic": "weekend plans",
+  "rubric": {
+    "grammar": ["past tense consistency", "article usage"],
+    "vocab": ["yesterday", "last weekend", "played", "visited"],
+    "style": ["short clear sentences"]
+  },
+  "scoring_hints": {
+    "avoid": ["present continuous for past events"],
+    "encourage": ["time markers", "regular verbs -ed"]
+  }
+}
+```
+
+**Score Components**:
+- **Spelling (20%)**: Detect typos and misspellings
+- **Grammar Rules (25%)**: LanguageTool-based grammar errors
+- **Syntax (10%)**: Sentence structure (subject/verb/object)
+- **Lesson Alignment (30%)**: How well draft matches learning goal (LLM-evaluated)
+- **Naturalness (15%)**: Fluidity and phrasing (LLM-evaluated)
+
+**Frontend Components**:
+- `ChatCoachSession`: Main container with WebSocket client
+- `ChatHistory`: Scrollable message list (user + assistant)
+- `DraftInput`: Textarea with real-time draft_update events
+- `ScoreBar`: 0-100 progress bar with EMA smoothing
+- `AnalysisPanel`: Cards showing spelling/grammar/syntax issues
+- `GhostSuggestion`: Gray text after cursor (TAB to accept)
+
+**Backend Components**:
+- `LLMProvider`: Abstract interface for pluggable LLM backends
+  - `MockLLMProvider`: Stub responses (no GPU required)
+  - `LlamaCppProvider`: Local llama.cpp server (Phi-3 Mini Q4, 4-6GB VRAM)
+- `Analyzers`: Fast CPU-based text analysis
+  - `SpellingAnalyzer`: Dictionary-based spell check
+  - `GrammarAnalyzer`: LanguageTool rules (or heuristics)
+  - `SyntaxAnalyzer`: spaCy-based structure analysis
+- `ScoreAggregator`: Weighted combination of all scores
+- `WebSocket Handler`: Route events, throttle LLM calls, manage connections
+
+**Data Model**:
+- `chat_conversations`: Chat metadata, student profile, lesson frame, session summary
+- `chat_messages`: All messages (user/assistant/system) with timestamps
+- `chat_lesson_history`: (Optional) Track lesson frame evolution
+
+**Technical Implementation**:
+- **REST Endpoints**:
+  - `POST /api/v1/chat/conversations` - Create new conversation
+  - `GET /api/v1/chat/conversations` - List user's conversations
+  - `GET /api/v1/chat/conversations/{id}/messages` - Get conversation history
+- **WebSocket Endpoint**:
+  - `WS /api/v1/chat/ws/{conversation_id}` - Real-time bidirectional channel
+- **Database**: PostgreSQL (shares existing Users, adds chat_* tables)
+- **Offline-first**: All data stored locally; LLM runs in Docker container
+
+**Feature Flags**:
+```bash
+CHAT_LLM_PROVIDER=mock              # mock | llamacpp | openai
+CHAT_LLM_BASE_URL=http://llm:8080   # llama.cpp server URL
+CHAT_MICRO_EVAL_MIN_INTERVAL_MS=100 # Throttle LLM to 10 Hz
+CHAT_IDLE_SOFT_MS=1200              # Ghost suggestion delay
+CHAT_IDLE_HARD_MS=2500              # Extended idle timeout
+CHAT_EMA_ALPHA=0.4                  # Smoothing factor (0-1)
+```
+
+**Best For**: Users who want conversational practice, natural dialogue flow, and immediate feedback on sentence construction (not just individual words).
+
+**Coexistence with Other Modes**:
+- ✅ **Additive only**: Does not modify Spec4 or Lingvist behavior
+- ✅ **Separate data**: Uses `chat_conversations` and `chat_messages` tables
+- ✅ **Independent UI**: ChatCoachSession component isolated from StudySession/LingvistSession
+- ✅ **Optional**: Users can choose any mode; Chat Coach is just another option
+
+**Risks & Mitigations**:
+- **LLM latency**: Throttle + timeout; Mock provider for development
+- **GPU usage**: llama.cpp optional; default is Mock (no GPU required)
+- **WebSocket stability**: Auto-reconnect on frontend; message buffering
+- **Spec4/Lingvist regression**: Separate code paths; existing tests must pass
+
+See [openspec/changes/2025-12-chat-coach-mode-v1.md](openspec/changes/2025-12-chat-coach-mode-v1.md) for complete specification.
+
 ## Future Considerations
 
 ### Post-MVP Features
