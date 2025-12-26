@@ -16,6 +16,7 @@ class LLMProfileResponse(BaseModel):
     name: str = Field(..., description="Human-readable name")
     provider: str = Field(..., description="Provider type (llamacpp, openai_http, mock)")
     model: str = Field(..., description="Model identifier")
+    service_url: str = Field(..., description="llama.cpp service URL (e.g., 'http://llm:8080')")
     context_window: int = Field(..., description="Max context tokens")
     supports_streaming: bool = Field(..., description="Supports streaming responses")
     supports_json: bool = Field(..., description="Supports JSON mode")
@@ -31,6 +32,7 @@ class LLMProfileResponse(BaseModel):
                 "name": "Qwen2.5 7B Instruct",
                 "provider": "llamacpp",
                 "model": "qwen2.5-7b-instruct",
+                "service_url": "http://llm:8080",
                 "context_window": 4096,
                 "supports_streaming": True,
                 "supports_json": True,

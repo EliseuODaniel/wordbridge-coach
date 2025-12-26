@@ -157,16 +157,16 @@ def get_llm_provider_for_profile(profile_id: str) -> LLMProvider:
     Get LLM provider for a specific profile ID.
 
     Reads profile configuration from profiles.py and creates appropriate provider.
-    All profiles currently use llamacpp provider with same base_url, different model names.
+    Each profile has its own service_url, enabling multi-model routing.
 
     Args:
-        profile_id: Profile ID (e.g., "qwen2.5-7b-instruct", "qwen2.5-3b-instruct")
+        profile_id: Profile ID (e.g., "qwen2.5-7b-instruct", "phi-3-mini-4k-instruct")
 
     Returns:
         LLMProvider instance configured for the specified profile
 
     Raises:
-        ValueError: If profile_id not found
+        ValueError: If profile_id not found or provider unsupported
     """
     from app.llm.profiles import get_profile
 
@@ -178,22 +178,20 @@ def get_llm_provider_for_profile(profile_id: str) -> LLMProvider:
     if profile.provider != "llamacpp":
         raise ValueError(f"Unsupported provider in profile: {profile.provider}")
 
-    # Read environment config (shared across all profiles)
-    base_url = os.getenv("CHAT_LLM_BASE_URL")
-    if not base_url:
-        raise ValueError("CHAT_LLM_BASE_URL not set")
+    # Use service_url from profile (each profile maps to specific llama.cpp service)
+    base_url = profile.service_url
 
     timeout = int(os.getenv("CHAT_OPENAI_TIMEOUT_S", "60"))
     strict = os.getenv("CHAT_LLM_STRICT", "false").lower() == "true"
 
-    # Create provider with profile-specific model name
+    # Create provider with profile-specific model name and service URL
     logger.info(
         f"Creating LlamaCppLLMProvider for profile '{profile_id}' "
         f"(model={profile.model}, base_url={base_url})"
     )
 
     return LlamaCppLLMProvider(
-        base_url=base_url,
+        base_url=base_url,  # Use service_url from profile
         model=profile.model,  # Use model name from profile
         timeout=timeout,
         strict=strict

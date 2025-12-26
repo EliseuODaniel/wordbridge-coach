@@ -144,6 +144,73 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LLM Chat Service (Phi-3 Mini 4K - Fast Chat)
+  llm_chat:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: filltheword-llm-chat
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./llm_models:/models
+    command: >
+      -m /models/Phi-3-mini-4k-instruct-q4.gguf
+      -c 4096
+      --host 0.0.0.0
+      --port 8081
+      --n-gpu-layers 999
+      --parallel 2
+    networks:
+      - filltheword-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LLM Teacher Service (Qwen 2.5 3B - Fast Teacher Analysis)
+  llm_teacher:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: filltheword-llm-teacher
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./llm_models:/models
+    command: >
+      -m /models/qwen2.5-3b-instruct-q4_k_m.gguf
+      -c 2048
+      --host 0.0.0.0
+      --port 8082
+      --n-gpu-layers 999
+      --parallel 2
+    networks:
+      - filltheword-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # LanguageTool Service (Grammar/Spell Checking)
   languagetool:

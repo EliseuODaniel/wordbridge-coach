@@ -1,3 +1,125 @@
+# FillTheWord - Changelog de Mudanças
+
+Este documento rastreia todas as mudanças aplicadas ao projeto via OpenSpec.
+
+
+## 🚨 Hotfix: Chat Coach - LLM Profiles Multi-Service (2025-12-26)
+
+**Status**: ✅ Applied & Validated
+**Change Document**: `openspec/changes/2025-12-chat-coach-llm-profiles-hotfix-v1.md`
+**Escopo**: Hotfix (Frontend rebuild, multi-service LLM, profile routing)
+**Branch**: main
+**Commit**: TBD
+
+### Problema Resolvido
+
+**Antes**: Feature LLM Profiles implementada (commit 74509fc) mas **INVISÍVEL** ao usuário:
+- Frontend Docker com bundle stale (5h old, sem LLMSettingsPanel)
+- Apenas 1 modelo carregado (Qwen 7B)
+- Sem escolha real de modelo (chat e teacher travados no mesmo)
+- Logs mostravam roteamento mas UI não funcionava
+
+**Depois**: UI funcional + **3 modelos realmente diferentes** em serviços separados:
+- ✅ Frontend rebuildado (LLMSettingsPanel no bundle)
+- ✅ 3 serviços CUDA: llm (Qwen 7B), llm_chat (Phi-3), llm_teacher (Qwen 3B)
+- ✅ Perfil com service_url para roteamento multi-service
+- ✅ VRAM: 7826MB / 8188MB (95.6%, mas dentro do limite)
+
+### Mudanças Principais
+
+**Frontend:**
+- Corrigido TypeScript errors (type imports, unused vars)
+- Rebuild Docker image (index-CXDDitc1.js, 275KB vs 264KB)
+- `LLMSettingsPanel.tsx`: Componente com 2 dropdowns (Chat/Professor)
+
+**Backend:**
+- `profiles.py`: Adicionado `service_url` field aos perfis
+  - qwen2.5-7b-instruct → http://llm:8080
+  - phi-3-mini-4k-instruct → http://llm_chat:8081
+  - qwen2.5-3b-instruct → http://llm_teacher:8082
+- `factory.py`: `get_llm_provider_for_profile()` usa `profile.service_url`
+- `schemas/llm_profiles.py`: Adicionado `service_url` ao response schema
+
+**Infraestrutura:**
+- `docker-compose.yml`: 2 novos serviços llama.cpp
+  - llm_chat: Phi-3 Mini 4K (2.3GB VRAM, porta 8081)
+  - llm_teacher: Qwen 2.5 3B (2.1GB VRAM, porta 8082)
+- `scripts/download_qwen25_3b_q4km.sh`: Download automático Qwen 3B
+- `scripts/download_llama31_8b_q4km.sh`: Script Llama 8B (não usado, modelo gated)
+
+### Validação
+
+**API Endpoints:**
+```bash
+curl -s http://localhost:8000/api/v1/llm-profiles | jq '.profiles | length'
+# Output: 3
+```
+
+**Service URLs:**
+```json
+{
+  "id": "phi-3-mini-4k-instruct",
+  "service_url": "http://llm_chat:8081"
+}
+```
+
+**GPU Status:**
+```
+nvidia-smi: 7826 MiB / 8188 MiB (95.6%)
+Services: 3/3 healthy (llm, llm_chat, llm_teacher)
+```
+
+### Features
+
+**User Features:**
+- ⚙️ Button no Chat Coach header abre modal de configurações
+- Dropdown "Modelo do Chat": 3 opções (Qwen 7B, Phi-3, Qwen 3B)
+- Dropdown "Modelo do Professor": 3 opções
+- Preferências persistem por usuário (banco de dados)
+- Mudanças aplicadas imediatamente após salvar
+
+**Technical Features:**
+- Multi-service routing: Cada perfil aponta para serviço específico
+- CUDA ativo nos 3 serviços (BLAS=1 detectado nos logs)
+- Graceful degradation: Se modelo faltar, usa default
+- VRAM otimizado: Phi-3 + Qwen 3B cabem em 8GB
+
+### Limitações Conhecidas
+
+1. **VRAM próximo do limite**: 95.6% usage - pode dar OOM com contextos grandes
+2. **Llama 8B não disponível**: Modelo gated no HuggingFace (401 Unauthorized)
+3. **Teste manual pendente**: UI validada via código, mas teste em browser necessário
+4. **Spec4/Lingvist**: Sanity check feito (endpoints respondem), mas smoke test manual completo pendente
+
+### Evidências
+
+**Frontend Bundle:**
+```bash
+docker compose exec frontend grep -r "LLMSettingsPanel" /usr/share/nginx/html/assets/
+# Output: FOUND_IN_BUNDLE (era NOT_FOUND antes)
+```
+
+**Services Status:**
+```
+SERVICE       STATUS
+llm           Up 5 hours (healthy)
+llm_chat      Up 2 minutes (healthy)
+llm_teacher   Up 2 minutes (healthy)
+```
+
+**Profiles Response:**
+```json
+{
+  "profiles": [
+    {"id": "qwen2.5-7b-instruct", "service_url": "http://llm:8080"},
+    {"id": "phi-3-mini-4k-instruct", "service_url": "http://llm_chat:8081"},
+    {"id": "qwen2.5-3b-instruct", "service_url": "http://llm_teacher:8082"}
+  ]
+}
+```
+
+---
+
 # FillTheWord OpenSpec - Histórico de Mudanças
 
 ## ✅ Aplicado: Chat Coach - LLM Profiles & Benchmark Infrastructure (2025-12-26)

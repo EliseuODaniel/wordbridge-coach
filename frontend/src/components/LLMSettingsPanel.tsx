@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { llmProfilesApi, LLMProfile, UserLLMPreferences } from '../services/api';
+import { llmProfilesApi, type LLMProfile } from '../services/api';
 
 interface LLMSettingsPanelProps {
   userId?: string;
@@ -16,7 +16,6 @@ interface LLMSettingsPanelProps {
 
 export const LLMSettingsPanel: React.FC<LLMSettingsPanelProps> = ({ userId, isOpen, onClose }) => {
   const [profiles, setProfiles] = useState<LLMProfile[]>([]);
-  const [preferences, setPreferences] = useState<UserLLMPreferences | null>(null);
   const [chatModel, setChatModel] = useState<string>('');
   const [teacherModel, setTeacherModel] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -37,7 +36,6 @@ export const LLMSettingsPanel: React.FC<LLMSettingsPanelProps> = ({ userId, isOp
 
         // Load user preferences
         const prefsData = await llmProfilesApi.getMyPreferences(userId);
-        setPreferences(prefsData);
         setChatModel(prefsData.chat_model_profile);
         setTeacherModel(prefsData.teacher_model_profile);
 

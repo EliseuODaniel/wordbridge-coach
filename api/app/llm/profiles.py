@@ -15,6 +15,7 @@ class LLMProfile(BaseModel):
     name: str
     provider: str  # 'llamacpp', 'openai_http', 'mock'
     model: str  # Model filename or API model name
+    service_url: str  # llama.cpp service URL (e.g., "http://llm:8080")
     context_window: int
     supports_streaming: bool
     supports_json: bool
@@ -25,13 +26,14 @@ class LLMProfile(BaseModel):
 
 
 # Available LLM profiles
-# TODO: Add more models as needed (phi-3-mini, gemma-2-9b, mistral-7b, etc.)
+# Each profile maps to a specific llama.cpp service (llm, llm_chat, llm_teacher)
 LLM_PROFILES: Dict[str, LLMProfile] = {
     "qwen2.5-7b-instruct": LLMProfile(
         id="qwen2.5-7b-instruct",
         name="Qwen2.5 7B Instruct",
         provider="llamacpp",
         model="qwen2.5-7b-instruct",
+        service_url="http://llm:8080",
         context_window=4096,
         supports_streaming=True,
         supports_json=True,
@@ -40,31 +42,33 @@ LLM_PROFILES: Dict[str, LLMProfile] = {
         speed_tier="medium",
         description="High-quality Chinese/English bilingual model, good for teaching"
     ),
+    "phi-3-mini-4k-instruct": LLMProfile(
+        id="phi-3-mini-4k-instruct",
+        name="Phi-3 Mini 4K Instruct",
+        provider="llamacpp",
+        model="phi-3-mini-4k-instruct",
+        service_url="http://llm_chat:8081",
+        context_window=4096,
+        supports_streaming=True,
+        supports_json=True,
+        estimated_vram="2.3GB",
+        quality_tier="medium",
+        speed_tier="fast",
+        description="Microsoft's compact 3.8B parameter model, fast and efficient"
+    ),
     "qwen2.5-3b-instruct": LLMProfile(
         id="qwen2.5-3b-instruct",
         name="Qwen2.5 3B Instruct",
         provider="llamacpp",
         model="qwen2.5-3b-instruct",
-        context_window=4096,
+        service_url="http://llm_teacher:8082",
+        context_window=2048,
         supports_streaming=True,
         supports_json=True,
         estimated_vram="2.1GB",
         quality_tier="medium",
         speed_tier="fast",
-        description="Faster but less accurate, good for quick chat responses"
-    ),
-    "llama-3.1-8b-instruct": LLMProfile(
-        id="llama-3.1-8b-instruct",
-        name="Llama 3.1 8B Instruct",
-        provider="llamacpp",
-        model="llama-3.1-8b-instruct",
-        context_window=4096,
-        supports_streaming=True,
-        supports_json=True,
-        estimated_vram="5.7GB",
-        quality_tier="high",
-        speed_tier="medium",
-        description="Meta's flagship instruction-tuned model, excellent for English"
+        description="Faster but less accurate, ideal for quick teacher analysis"
     ),
 }
 
