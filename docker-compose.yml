@@ -148,7 +148,7 @@ services:
 
   # LanguageTool Service (Grammar/Spell Checking)
   languagetool:
-    image: erikvl72/languagetool:latest
+    image: erikvl87/languagetool:latest
     container_name: ftw-languagetool
     restart: unless-stopped
     ports:

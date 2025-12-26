@@ -46,10 +46,7 @@ class LanguageToolClient:
 
         # Create HTTP client
         self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout),
-            headers={
-                'Content-Type': 'application/json'
-            }
+            timeout=httpx.Timeout(timeout)
         )
 
     def _lt_category_to_our_category(self, lt_category: str) -> str:
@@ -128,21 +125,18 @@ class LanguageToolClient:
 
         # Prepare request
         url = f"{self.base_url}/v2/check"
-        payload = {
-            'text': text,
-            'language': self.language,
-            'enabledOnly': False
-        }
+        params = {'language': self.language}
+        form_data = {'text': text, 'enabledOnly': 'false'}
 
         try:
             # Call LanguageTool
             logger.debug(f"Checking text ({len(text)} chars) with LanguageTool")
-            response = await self.client.post(url, json=payload)
+            response = await self.client.post(url, params=params, data=form_data)
             response.raise_for_status()
 
             # Parse response
-            data = response.json()
-            matches = data.get('matches', [])
+            result = response.json()
+            matches = result.get('matches', [])
 
             logger.debug(f"LanguageTool returned {len(matches)} matches")
 
