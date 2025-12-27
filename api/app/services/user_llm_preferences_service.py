@@ -23,6 +23,9 @@ def get_user_llm_preferences(db: Session, user_id: uuid.UUID) -> UserLLMPreferen
 
     Returns:
         UserLLMPreferences object (created if not exists)
+
+    Note:
+        Does not commit - transaction managed by get_db() dependency.
     """
     # Try to fetch existing preferences
     stmt = select(UserLLMPreferences).where(UserLLMPreferences.user_id == user_id)
@@ -36,7 +39,7 @@ def get_user_llm_preferences(db: Session, user_id: uuid.UUID) -> UserLLMPreferen
             teacher_model_profile=get_default_teacher_profile()
         )
         db.add(preferences)
-        db.commit()
+        db.flush()  # Flush to send SQL but don't commit (handled by get_db)
         db.refresh(preferences)
         return preferences
 
@@ -63,6 +66,9 @@ def update_user_llm_preferences(
 
     Raises:
         ValueError: If profile_id is invalid
+
+    Note:
+        Does not commit - transaction managed by get_db() dependency.
     """
     # Validate profile IDs if provided
     if chat_model_profile is not None and not validate_profile_id(chat_model_profile):
@@ -81,7 +87,7 @@ def update_user_llm_preferences(
     if teacher_model_profile is not None:
         preferences.teacher_model_profile = teacher_model_profile
 
-    db.commit()
+    db.flush()  # Flush to send SQL but don't commit (handled by get_db)
     db.refresh(preferences)
 
     return preferences
@@ -97,12 +103,15 @@ def reset_user_llm_preferences(db: Session, user_id: uuid.UUID) -> UserLLMPrefer
 
     Returns:
         UserLLMPreferences object with defaults
+
+    Note:
+        Does not commit - transaction managed by get_db() dependency.
     """
     preferences = get_user_llm_preferences(db, user_id)
     preferences.chat_model_profile = get_default_chat_profile()
     preferences.teacher_model_profile = get_default_teacher_profile()
 
-    db.commit()
+    db.flush()  # Flush to send SQL but don't commit (handled by get_db)
     db.refresh(preferences)
 
     return preferences

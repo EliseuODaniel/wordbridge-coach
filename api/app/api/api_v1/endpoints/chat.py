@@ -744,6 +744,13 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
             chat_provider = get_llm_provider_for_profile(chat_profile_id)
             teacher_provider = get_llm_provider_for_profile(teacher_profile_id)
 
+            logger.info(
+                f"[LLM_PROFILES] Using chat_provider: base_url={chat_provider.base_url}, model={chat_provider.model}"
+            )
+            logger.info(
+                f"[LLM_PROFILES] Using teacher_provider: base_url={teacher_provider.base_url}, model={teacher_provider.model}"
+            )
+
         except Exception as e:
             logger.error(f"[LLM_PROFILES] Failed to load preferences: {e}")
             await websocket.send_json(ErrorOut(
