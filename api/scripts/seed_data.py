@@ -1128,6 +1128,52 @@ def create_demo_user(db: Session):
     return demo_user
 
 
+def create_chat_demo_user(db: Session):
+    """
+    Create demo user for Chat Coach LLM settings testing (dev-only).
+
+    This user has a fixed UUID for consistent frontend testing.
+    Idempotent: safe to run multiple times.
+
+    NOTE: This is a DEVELOPMENT-ONLY user for testing Chat Coach LLM settings.
+    In production, users would be created through registration flow.
+    """
+    print("Creating chat_demo user (dev-only)...")
+
+    # Fixed UUID for Chat Coach demo/testing
+    chat_demo_uuid = uuid.UUID("dceadc65-5f92-4e0c-8422-c7013a69ba18")
+
+    # Check if chat_demo user already exists
+    existing_user = db.query(User).filter(User.id == chat_demo_uuid).first()
+    if existing_user:
+        print(f"chat_demo user already exists: {existing_user.username}")
+        return existing_user
+
+    # Get language IDs
+    en_lang = db.query(Language).filter(Language.code == "en").first()
+    pt_lang = db.query(Language).filter(Language.code == "pt").first()
+
+    if not en_lang or not pt_lang:
+        raise ValueError("Languages 'en' and 'pt' must exist before creating chat_demo user")
+
+    chat_demo_user = User(
+        id=chat_demo_uuid,  # Fixed UUID for frontend consistency
+        username="chat_demo",
+        email="chat_demo@example.com",
+        native_language_id=pt_lang.id,  # Portuguese: native language
+        target_language_id=en_lang.id,   # English: learning target
+        language_preference="pt",        # UI in Portuguese
+        daily_new_limit=10,
+        easiness_factor=2.5,
+        mode="chat"  # Default to Chat Coach mode
+    )
+    db.add(chat_demo_user)
+
+    db.commit()
+    print(f"Created chat_demo user: {chat_demo_user.username} (id={chat_demo_user.id})")
+    return chat_demo_user
+
+
 def create_user_card_states(db: Session, user: User, cards: list):
     """Create initial user card states for SM-2 algorithm"""
     print("Creating user card states...")
@@ -1781,8 +1827,9 @@ def main():
             decks = create_decks(db, lang_ids)
             cards = create_cards(db, sentences, decks)
 
-        # Always create demo user and user states
+        # Always create demo users and user states
         demo_user = create_demo_user(db)
+        chat_demo_user = create_chat_demo_user(db)  # Chat Coach demo user (dev-only)
         user_states = create_user_card_states(db, demo_user, cards)
 
         # Ensure WordFrequency and themes (idempotent)
@@ -1798,7 +1845,7 @@ def main():
         print(f"  - Sentences: {len(sentences)}")
         print(f"  - Decks: {len(decks)}")
         print(f"  - Cards: {len(cards)}")
-        print(f"  - Demo User: 1")
+        print(f"  - Demo Users: 2 (demo, chat_demo)")
         print(f"  - User Card States: {len(user_states)}")
         if args.full:
             print(f"  - WordFrequency: 10,000 imported from OpenSubtitles2016")
