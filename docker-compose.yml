@@ -175,6 +175,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    profiles:
+      - fastchat
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
       interval: 30s
@@ -226,10 +228,11 @@ services:
     networks:
       - filltheword-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/v2/check"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8010/v2/languages || exit 1"]
+      start_period: 60s
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   # Frontend Service
   frontend:
