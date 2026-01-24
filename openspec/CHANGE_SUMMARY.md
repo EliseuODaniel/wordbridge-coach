@@ -142,7 +142,7 @@ $ docker compose exec llm nvidia-smi
 **Change Document**: `openspec/changes/2025-12-chat-coach-llm-profiles-hotfix-v1.md`
 **Escopo**: Hotfix (Frontend rebuild, multi-service LLM, profile routing)
 **Branch**: main
-**Commit**: TBD
+**Commit**: 8c00259
 
 ### Problema Resolvido
 
