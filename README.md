@@ -125,6 +125,44 @@ open http://localhost:3007  # Note: mapped from container port 3000
 - **TTS Service**: http://localhost:8001/health
 - **Database**: localhost:5432 (user: ftw_user, password: ftw_password)
 
+### Local LLM Services & Docker Compose Profiles
+
+This project uses local LLM services via llama.cpp with CUDA acceleration. The default configuration is optimized for stability with VRAM headroom, while an optional profile provides faster chat responses.
+
+**Default Mode** (2 LLM services - Recommended):
+```bash
+docker compose up -d
+```
+- Starts: `llm` (qwen2.5-7b-instruct) + `llm_teacher` (qwen2.5-3b-instruct)
+- VRAM Usage: ~3.8GB / 8GB (46.5%)
+- Use case: Standard Chat Coach + Spec4/Lingvist features
+- Provides: ~500MB VRAM headroom for stability
+
+**Fast Chat Mode** (3 LLM services - Optional):
+```bash
+docker compose --profile fastchat up -d
+```
+- Starts: All default LLMs + `llm_chat` (phi-3-mini-4k-instruct)
+- VRAM Usage: ~7.6GB / 8GB (93%)
+- Use case: Faster chat responses (dedicated phi-3 model)
+- Requires: Sufficient VRAM (8GB+ recommended)
+- Note: May risk OOM errors under heavy load
+
+**Switching Between Modes**:
+```bash
+# From default to fastchat
+docker compose --profile fastchat up -d
+
+# From fastchat back to default
+docker compose stop llm_chat  # Stops only the fast chat service
+```
+
+**Checking LLM Service Health**:
+```bash
+docker compose ps | grep llm  # Should show (healthy) for all running LLMs
+docker compose exec llm nvidia-smi  # Check VRAM usage
+```
+
 ## 📚 API Endpoints
 
 ### Core Learning API

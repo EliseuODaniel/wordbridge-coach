@@ -3,6 +3,139 @@
 Este documento rastreia todas as mudanças aplicadas ao projeto via OpenSpec.
 
 
+## 🔧 Infra Stability: LanguageTool Healthcheck + LLM VRAM Optimization (2025-12-26)
+
+**Status**: ✅ Applied & Validated
+**Change Document**: `openspec/changes/archived/2025-12-infra-stability-languagetool-llm-profiles-v1.md`
+**Escopo**: Infrastructure (healthcheck fix, Docker Compose profiles)
+**Branch**: chore/infra-stability-languagetool-llm-profiles
+**Commit**: 4f4bbec
+
+### Problema Resolvido
+
+**Antes**:
+- LanguageTool container showing as `unhealthy` in `docker compose ps`
+- VRAM usage at 95% (7741MB / 8188MB) with 3 LLMs running
+- No headroom for peak usage or OOM prevention
+- All LLMs start by default (no option to disable fast chat)
+
+**Depois**:
+- ✅ LanguageTool shows `healthy` when service is ready
+- ✅ Default mode: 2 LLMs = 46.5% VRAM (3810MB / 8188MB, ~4.4GB headroom)
+- ✅ Fastchat mode: 3 LLMs = 93% VRAM (7611MB / 8188MB, optional via profile)
+- ✅ User choice between stability (default) and performance (fastchat profile)
+
+### Mudanças Principais
+
+**docker-compose.yml**:
+- **LanguageTool healthcheck**: Changed from `/v2/check` to `/v2/languages`
+  - Before: `["CMD", "curl", "-f", "http://localhost:8010/v2/check"]` (returns 400 without payload)
+  - After: `["CMD-SHELL", "curl -fsS http://localhost:8010/v2/languages || exit 1"]` (returns 200)
+  - Added: `start_period: 60s`, improved timing (interval 15s, timeout 5s, retries 10)
+
+- **llm_chat service**: Made optional via Docker Compose profiles
+  - Added: `profiles: ["fastchat"]` to llm_chat service (phi-3-mini-4k)
+  - Default behavior: starts `llm` (qwen2.5-7b) + `llm_teacher` (qwen2.5-3b)
+  - Fastchat profile: also starts `llm_chat` (phi-3-mini-4k)
+
+**README.md**:
+- Added "Local LLM Services & Docker Compose Profiles" section
+- Documents default mode (2 LLMs) vs fastchat mode (3 LLMs)
+- Provides commands for switching between modes
+- Explains VRAM implications and health checking
+
+### Validação
+
+**CA1: LanguageTool Healthy** ✅
+```bash
+$ docker compose ps | grep languagetool
+ftw-languagetool        Up (healthy)
+```
+
+**CA2: LanguageTool Endpoint Responds** ✅
+```bash
+$ curl -i http://localhost:8010/v2/languages
+HTTP/1.1 200 OK
+```
+
+**CA3: Default Stack Uses 2 LLMs** ✅
+```bash
+$ docker compose up -d
+$ docker compose ps | grep llm
+filltheword-llm         Up (healthy)
+filltheword-llm-teacher Up (healthy)
+# llm_chat NOT running
+```
+
+**CA4: Fastchat Profile Adds Third LLM** ✅
+```bash
+$ docker compose --profile fastchat up -d
+$ docker compose ps | grep llm_chat
+filltheword-llm-chat    Up (healthy)
+```
+
+**CA5: VRAM Headroom in Default Mode** ✅
+```bash
+$ docker compose exec llm nvidia-smi
+| GPU  Name        | Memory-Usage | GPU-Util  |
+|   0  RTX 4070    |   3810MiB /  8188MiB |     0%  |
+# VRAM: 46.5% (4.4GB headroom)
+```
+
+**CA6: App Functionality Preserved** ✅
+```bash
+# Chat Coach
+$ curl -f http://localhost:8000/health
+{"status":"ok","database":"connected"}
+
+# Spec4
+$ curl -i "http://localhost:8000/api/v1/cards/next-spec4?user_id=chat_demo"
+HTTP/1.1 200 OK
+
+# Lingvist
+$ curl -i "http://localhost:8000/api/v1/cards/next-lingvist?user_id=chat_demo"
+HTTP/1.1 200 OK
+```
+
+### Evidências
+
+**Before Changes**:
+```
+$ docker compose ps | grep languagetool
+ftw-languagetool        Up (unhealthy)
+
+$ docker compose logs languagetool | tail -5
+ftw-languagetool | Missing 'text' or 'data' parameter', sending HTTP code 400
+ftw-languagetool | Missing 'text' or 'data' parameter', sending HTTP code 400
+```
+
+**After Changes**:
+```
+$ docker compose ps | grep languagetool
+ftw-languagetool        Up (healthy)
+
+$ docker compose exec llm nvidia-smi
+|   0  NVIDIA RTX 4070    Off  |   3810MiB /  8188MiB (46.5%) |
+```
+
+### Features
+
+**Infrastructure Features**:
+- Reliable healthcheck for LanguageTool (uses endpoint that returns 200)
+- Optional fast chat service via Docker Compose profiles
+- VRAM-optimized default configuration (2 LLMs with comfortable headroom)
+- Performance-optional configuration (3 LLMs for faster chat)
+- Clear documentation for switching between modes
+- No product logic changes (pure infra/operational improvement)
+
+**Operational Benefits**:
+- Reduced risk of OOM errors (46.5% VRAM vs 95%)
+- Better stability for production use
+- Flexibility for developers (fastchat when needed)
+- Health status accurately reflects service availability
+
+---
+
 ## 🚨 Hotfix: Chat Coach - LLM Profiles Multi-Service (2025-12-26)
 
 **Status**: ✅ Applied & Validated
