@@ -14,6 +14,12 @@ from app.core.time import utc_now
 from app.services.card_selection_payload_service import (
     build_card_context_payload as _build_card_context_payload_service,
 )
+from app.services.card_selection_policy_service import (
+    calculate_adaptive_new_share as _calculate_adaptive_new_share_service,
+    calculate_session_new_share as _calculate_session_new_share_service,
+    should_try_new_card_lingvist as _should_try_new_card_lingvist_service,
+    should_try_new_card_spec4 as _should_try_new_card_spec4_service,
+)
 from app.services.vocabulary_progression import VocabularyProgressionService
 
 
@@ -104,9 +110,10 @@ class CardSelectionService:
         session_stats = self.progression_service.get_session_stats_for_today(user_id)
 
         # Calculate new share for today
-        new_share = 0
-        if session_stats.cards_shown > 0:
-            new_share = session_stats.new_cards_shown / session_stats.cards_shown
+        new_share = _calculate_session_new_share_service(
+            session_stats.cards_shown,
+            session_stats.new_cards_shown,
+        )
 
         # Get review candidates (only from unlocked prefix)
         review_candidates = self.get_due_review_words(
@@ -114,10 +121,7 @@ class CardSelectionService:
         )
 
         # Check if we can introduce a new word
-        from app.services.vocabulary_progression import TARGET_NEW_SHARE
-        can_introduce_new = (
-            new_share < TARGET_NEW_SHARE
-        )
+        can_introduce_new = _should_try_new_card_spec4_service(new_share)
 
         if can_introduce_new:
             # T1: Try new card (random selection)
@@ -160,21 +164,23 @@ class CardSelectionService:
         reviews_due_count = self._count_reviews_due(user_id)
 
         # T3: Try new card if below adaptive share and below threshold
-        can_introduce_new = (
-            reviews_due_count < 50 and  # Backlog threshold
-            new_share > 0  # Has capacity for new cards
-        )
+        can_introduce_new = reviews_due_count < 50 and new_share > 0
 
         if can_introduce_new:
             progress = self.progression_service.get_or_create_user_progress(user_id)
 
             # Check current new share
             session_stats = self.progression_service.get_session_stats_for_today(user_id)
-            current_new_share = 0
-            if session_stats.cards_shown > 0:
-                current_new_share = session_stats.new_cards_shown / session_stats.cards_shown
+            current_new_share = _calculate_session_new_share_service(
+                session_stats.cards_shown,
+                session_stats.new_cards_shown,
+            )
 
-            if current_new_share < new_share:
+            if _should_try_new_card_lingvist_service(
+                current_new_share=current_new_share,
+                adaptive_new_share=new_share,
+                reviews_due_count=reviews_due_count,
+            ):
                 new_card = self._get_random_new_card(user_id, progress, exclude_card_id)
                 if new_card:
                     return new_card
@@ -666,22 +672,8 @@ class CardSelectionService:
 
     def _calculate_adaptive_new_share(self, user: User) -> float:
         """Calculate adaptive new card share based on user accuracy"""
-
-        # Count reviews due
         reviews_due_count = self._count_reviews_due(user.id)
-
-        # Rule 1: High backlog -> 0% new
-        if reviews_due_count > 50:
-            return 0.0
-
-        # Rule 2: Accuracy-based adjustment
-        if user.accuracy_last_20 is not None:
-            if user.accuracy_last_20 < 0.7:
-                return 0.10  # Struggling -> only 10% new
-            elif user.accuracy_last_20 > 0.9:
-                return 0.25  # Excelling -> 25% new
-            else:
-                return 0.15  # Average -> 15% new
-
-        # Rule 3: No accuracy data yet -> default 15%
-        return 0.15
+        return _calculate_adaptive_new_share_service(
+            user.accuracy_last_20,
+            reviews_due_count,
+        )

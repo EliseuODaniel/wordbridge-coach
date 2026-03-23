@@ -623,6 +623,26 @@ Depois de afinar os endpoints de `cards.py`, o maior bloco utilitário remanesce
 - a próxima fatia pode mirar regras de mistura, backlog e relearn, não mais payload/housekeeping
 - o quality gate agora cobre também `tests/test_card_selection_payload_service.py`
 
+## 2026-03-23 - Tirar as regras de mistura de CardSelectionService antes de revisar queries
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do payload comum, `CardSelectionService` ainda concentrava o cálculo de share de cards novos, backlog e a decisão de tentar novo card em `spec4` e `lingvist`. Essas regras já eram quase puras, mas continuavam misturadas com a mecânica de buscar candidatos.
+
+### Decisão
+
+- extrair essas regras para `api/app/services/card_selection_policy_service.py`
+- manter `CardSelectionService` apenas consultando a política e executando os fluxos de busca
+- validar com suíte unitária própria e regressões de Spec4/themes
+
+### Impacto
+
+- `CardSelectionService` ficou mais focado na orquestração de candidatos
+- a próxima fatia pode entrar nas queries de review/relearn ou nos fallbacks, sem carregar junto regras de política
+- o quality gate agora cobre também `tests/test_card_selection_policy_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
