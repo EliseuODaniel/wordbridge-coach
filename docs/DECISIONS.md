@@ -562,6 +562,26 @@ Mesmo depois das extrações anteriores, `submit_answer` ainda concentrava a cos
 - a próxima fatia pode sair do `submit_answer` e focar em `next-spec4` ou em simplificação de serialização/contexto
 - o quality gate agora cobre também `tests/test_card_submission_service.py`
 
+## 2026-03-23 - Tirar a seleção/serialização de next-spec4 de cards.py antes de mexer no Lingvist
+
+Status: aceito
+
+### Contexto
+
+Depois de afinar `submit_answer`, o maior bloco restante em `cards.py` passou a ser `next-spec4`: resolver usuário, chamar `CardSelectionService`, tratar ausência de contexto e montar manualmente o `CardResponse`. Era um endpoint menor do que antes, mas ainda destoava do padrão fino já aplicado em chat e no próprio fluxo de answer submission.
+
+### Decisão
+
+- extrair a seleção e a serialização de `next-spec4` para `api/app/services/card_spec4_service.py`
+- manter o endpoint apenas delegando ao novo serviço e traduzindo exceções como antes
+- validar com suíte unitária própria, Spec4 e integração de theme stats
+
+### Impacto
+
+- `cards.py` ficou ainda mais coeso como camada de borda
+- a próxima fatia pode focar em `next-lingvist` ou em reduzir wrappers legados restantes
+- o quality gate agora cobre também `tests/test_card_spec4_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito

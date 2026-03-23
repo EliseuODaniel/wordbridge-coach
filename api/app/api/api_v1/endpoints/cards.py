@@ -16,12 +16,12 @@ from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorR
 from app.schemas.lingvist import LingvistCardResponse, MicroProgress
 from app.services.card_selection import CardSelectionService
 from app.services.card_submission_service import submit_card_answer as _submit_card_answer_service
+from app.services.card_spec4_service import get_next_spec4_card_response as _get_next_spec4_card_response_service
 from app.services.lingvist_payload_service import (
     build_grammar_tag_pt as _build_grammar_tag_pt_service,
     build_lingvist_card_response as _build_lingvist_card_response_service,
     build_relative_audio_urls as _build_relative_audio_urls_service,
     extract_word_translation as _extract_word_translation_service,
-    get_card_memory_stage as _get_card_memory_stage_service,
     get_lingvist_entities_from_context as _get_lingvist_entities_from_context_service,
     get_micro_progress as _get_micro_progress_service,
     get_user_target_language_code as _get_user_target_language_code_service,
@@ -329,9 +329,18 @@ def _get_user_target_language_code(db: Session, user_id: str, default: str = "en
     return _get_user_target_language_code_service(db, user_id, default=default)
 
 
-def _get_card_memory_stage(db: Session, user_id: str, card_id: str) -> str:
-    """Resolve the persisted memory stage for a card, defaulting to NEW."""
-    return _get_card_memory_stage_service(db, user_id, card_id)
+def _get_next_spec4_card_response(
+    db: Session,
+    *,
+    user_id: Optional[str] = None,
+    exclude_card_id: Optional[str] = None
+) -> CardResponse:
+    """Run the Spec4 selection flow and build the API response."""
+    return _get_next_spec4_card_response_service(
+        db,
+        user_id=user_id,
+        exclude_card_id=exclude_card_id,
+    )
 
 
 def _get_lingvist_entities_from_context(
@@ -535,43 +544,10 @@ async def get_next_card_spec4(
     Get next card for study using Spec4 intelligent selection algorithm
     """
     try:
-        user_id = _resolve_request_user_id(db, user_id)
-
-        # Initialize Spec4 card selection service
-        card_service = CardSelectionService(db)
-
-        # Get next card using Spec4 algorithm
-        print(f"DEBUG: Getting card for user_id={user_id}, exclude_card_id={exclude_card_id}")
-        card_context = card_service.get_next_card_for_user(user_id, exclude_card_id=exclude_card_id)
-        print(f"DEBUG: Card context returned: {card_context}")
-
-        if not card_context:
-            print(f"DEBUG: CardSelectionService returned None for user {user_id}")
-            print(f"DEBUG: This usually means no words in the unlocked prefix or database issues")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={
-                    "error": "No cards available",
-                    "message": "No cards available for study at this time"
-                }
-            )
-
-        memory_stage = _get_card_memory_stage(db, user_id, card_context["card_id"])
-
-        return CardResponse(
-            card_id=card_context["card_id"],  # CRITICAL: Real Card.id from database
-            word_id=card_context["word_id"],
-            sentence_id=card_context["sentence_id"],  # Spec4: sentence variety tracking
-            word=card_context["word"],
-            sentence=card_context["sentence"],
-            gap=card_context["gap"],
-            sentence_translation=card_context["sentence_translation"],
-            grammar_hint=card_context["grammar_hint"],
-            memory_stage=memory_stage,  # Real SM-2 status from UserCardState or NEW
-            is_new=card_context["is_new"],
-            audio_word_url=card_context["audio_word_url"],
-            audio_sentence_url=card_context["audio_sentence_url"],
-            sentence_source=card_context.get("sentence_source")
+        return _get_next_spec4_card_response(
+            db,
+            user_id=user_id,
+            exclude_card_id=exclude_card_id,
         )
 
     except HTTPException:

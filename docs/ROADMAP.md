@@ -78,6 +78,7 @@ Notas do baseline:
 - trigesima nona microfatia aplicada: extração da criação de `UserCardState`, de `ReviewEvent`, da aplicação do resultado SM-2 e da serialização de `AnswerResponse` para `api/app/services/card_answer_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - quadragesima microfatia aplicada: extração da orquestração agregada de stats e progressão de `submit_answer` para `api/app/services/card_progress_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - quadragesima primeira microfatia aplicada: extração da orquestração principal de `submit_answer` para `api/app/services/card_submission_service.py`, com endpoint reduzido a adaptador fino e cobertura própria no quality gate
+- quadragesima segunda microfatia aplicada: extração da seleção e serialização de `next-spec4` para `api/app/services/card_spec4_service.py`, com endpoint reduzido a adaptador fino e cobertura própria no quality gate
 
 ## Fase 2: Limpeza estrutural
 
