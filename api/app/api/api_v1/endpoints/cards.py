@@ -3,7 +3,7 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, select
 from datetime import timedelta
 import uuid
 import os
@@ -603,8 +603,8 @@ async def get_next_card(
         # Cards seen today but never before today
         new_cards_today = db.query(Card.id).filter(
             and_(
-                Card.id.in_(cards_seen_today),
-                ~Card.id.in_(cards_seen_before_today)
+                Card.id.in_(select(cards_seen_today.c[0])),
+                ~Card.id.in_(select(cards_seen_before_today.c[0]))
             )
         ).count() or 0
 

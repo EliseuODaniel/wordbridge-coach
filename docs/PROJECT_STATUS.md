@@ -27,6 +27,9 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_utilities.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_chat_websocket_flow.py -q`: OK
 - `python3 -m py_compile api/app/api/api_v1/endpoints/chat.py api/tests/test_chat_utilities.py`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest -o addopts='' tests/test_chat_utilities.py -W default -rw`: OK sem warnings visíveis
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest -o addopts='' tests/integration/test_chat_websocket_flow.py -W default -rw`: OK sem warnings visíveis
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest -o addopts='' tests/integration/test_spec4_card_selection.py -W default -rw`: OK sem warnings visíveis
 - `cd api && TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test ./test-runner.sh --spec4`: OK
 
 ### Áreas implementadas
@@ -51,7 +54,13 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - o `handle_user_message` agora já delega também a finalização do turno do assistente e a persistência/envio de `teacher_analysis`, então o restante do debt nesse fluxo ficou mais concentrado em orquestração e warnings do que em blocos repetidos
 - o fixture de banco dos testes backend ficou mais resiliente para execuções seriais repetidas, reduzindo falhas por resíduos de schema e enums PostgreSQL
 - o backend agora centraliza mais do tempo UTC em helper compartilhado e já migrou parte dos schemas/configs quentes para padrões atuais de Pydantic
+- a trilha principal de chat backend ficou sem warnings visíveis nas validações direcionadas; o maior volume residual agora está concentrado fora desse miolo
+- a trilha Spec4 também ficou sem warnings visíveis nas validações direcionadas, então o debt residual de warnings saiu do fluxo principal de cards
 - as suítes que compartilham o mesmo banco de teste devem rodar em série; em paralelo elas brigam pelo ciclo `create_all/drop_all`
+- o `StudySession` já teve uma primeira simplificação estrutural no frontend, com helpers dedicados para audio e limpeza explícita dos timers de avancar e retry
+- o `ChatCoachSession` agora também centraliza melhor cleanup local de autocomplete, foco do composer e desconexão do WebSocket, reduzindo coordenação espalhada no componente
+- o `LingvistSession` agora reaproveita melhor reset de rodada, preload de audio e playback manual, reduzindo duplicação sem alterar o fluxo de treino
+- a troca entre `Spec4` e `Lingvist` agora passa pelo shell React em vez de recarregar a página, o que reduz acoplamento com URL e deixa a navegação entre modos mais consistente
 
 ### Hotspots confirmados para refatoracao
 
@@ -143,3 +152,4 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
 2. Continuar a próxima fatia de backend no Chat Coach, separando ainda mais a coordenação do `handle_user_message` e abrindo caminho para testes de fluxo WebSocket mais completos.
 3. Expandir a mesma confiabilidade de teste para WebSocket/chat e integrações auxiliares alem dos utilitários já cobertos.
+4. Consolidar a rodada atual com commit/push da fase e usar este baseline como novo ponto de partida para qualquer feature futura.

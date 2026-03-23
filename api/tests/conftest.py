@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from typing import Dict, List, Generator
 
 from app.core.database import Base, get_db
+from app.core.time import utc_now, utc_today
 from app.main import app
 from app.models import (
     User, Language, Word, Sentence, Card, Deck,
@@ -456,7 +457,7 @@ def user_card_states(db_session, sample_cards, test_user):
             easiness_factor=2.5,
             interval_days=1,
             repetitions=0,
-            next_review_at=datetime.utcnow()
+            next_review_at=utc_now()
         )
         states.append(state)
 
@@ -473,7 +474,7 @@ def sample_user_daily_stats(db_session, test_user):
     stats = UserDailyStats(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
-        date=datetime.utcnow().date(),
+        date=utc_today(),
         cards_answered=10,
         new_words_learned=3,
         reviews_done=7,
@@ -496,7 +497,7 @@ def sample_user_theme_stats(db_session, test_user, sample_themes):
             attempts=10 + i * 5,
             correct=8 + i * 3,
             avg_response_time_ms=2500 + i * 500,
-            last_practiced_at=datetime.utcnow() - timedelta(days=i)
+            last_practiced_at=utc_now() - timedelta(days=i)
         )
         # Calculate accuracy after setting attempts and correct
         stats.update_accuracy()

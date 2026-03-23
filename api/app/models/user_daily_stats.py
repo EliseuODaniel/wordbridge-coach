@@ -4,8 +4,9 @@ from sqlalchemy import Column, Integer, Float, Date, DateTime, ForeignKey, Boole
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
+from app.core.time import utc_now
 import uuid
-from datetime import datetime, date
+from datetime import date
 
 
 class UserDailyStats(BaseModel):
@@ -21,8 +22,8 @@ class UserDailyStats(BaseModel):
     reviews_done = Column(Integer, default=0, nullable=False, comment="Number of review attempts")
     accuracy = Column(Float, default=0.0, nullable=False, comment="Daily accuracy rate")
     cumulative_mastered_words = Column(Integer, default=0, nullable=False, comment="Total mastered words up to this date")
-    created_at = Column(DateTime, default=datetime.utcnow, comment="Creation timestamp")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Update timestamp")
+    created_at = Column(DateTime, default=utc_now, comment="Creation timestamp")
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, comment="Update timestamp")
 
     # Relationships
     user = relationship("User", back_populates="daily_stats")

@@ -9,7 +9,7 @@
  * - Issue analysis panel
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { chatApi } from '../services/api';
 import ChatWS from '../services/chatWs';
 import { LLMSettingsPanel } from './LLMSettingsPanel';
@@ -95,66 +95,24 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   // Autocomplete idle timer
   const autocompleteTimeoutRef = useRef<number | null>(null);
 
-  /**
-   * Initialize conversation
-   */
-  useEffect(() => {
-    const initConversation = async () => {
-      try {
-        setIsLoading(true);
+  const clearAutocompleteTimeout = useCallback(() => {
+    if (autocompleteTimeoutRef.current) {
+      window.clearTimeout(autocompleteTimeoutRef.current);
+      autocompleteTimeoutRef.current = null;
+    }
+  }, []);
 
-        // Create new conversation
-        const newConversation = await chatApi.createConversation({
-          user_id: userId,
-          title: `Chat ${new Date().toLocaleDateString()}`,
-        });
+  const disconnectChatWs = useCallback(() => {
+    if (chatWsRef.current) {
+      chatWsRef.current.disconnect();
+    }
+  }, []);
 
-        setConversation(newConversation);
-
-        // Load existing messages
-        const loadedMessages = await chatApi.getConversationMessages(newConversation.id);
-        const userMessages: MessageDisplay[] = loadedMessages
-          .filter((msg) => msg.role !== 'system')
-          .map((msg) => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content,
-            timestamp: new Date(msg.created_at),
-          }));
-
-        setMessages(userMessages);
-
-        // Connect WebSocket
-        chatWsRef.current = new ChatWS({
-          conversationId: newConversation.id,
-          onDraftFeedback: handleDraftFeedback,
-          onStreamToken: handleStreamToken,
-          onAssistantDone: handleAssistantDone,
-          onTeacherAnalysis: handleTeacherAnalysis,
-          onError: handleError,
-          onConnectionChange: (connected) => {
-            console.log('WebSocket connection:', connected);
-          },
-        });
-      } catch (error) {
-        console.error('Failed to initialize conversation:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initConversation();
-
-    // Cleanup on unmount
-    return () => {
-      if (chatWsRef.current) {
-        chatWsRef.current.disconnect();
-      }
-      if (autocompleteTimeoutRef.current) {
-        window.clearTimeout(autocompleteTimeoutRef.current);
-      }
-    };
-  }, [userId]);
+  const focusTextarea = useCallback(() => {
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, []);
 
   /**
    * Helper: Check if element is near bottom
@@ -214,7 +172,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
   /**
    * Handle draft feedback from server
    */
-  const handleDraftFeedback = (event: DraftFeedbackEvent) => {
+  const handleDraftFeedback = useCallback((event: DraftFeedbackEvent) => {
     setBarScore(event.bar_score_raw);
     setIssues(event.issues);
     setGhostSuggestion(event.ghost_suggestion);
@@ -223,20 +181,20 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     setTopic(event.topic || null);
     setIntent(event.intent || null);
     setRewrite(event.rewrite || null);
-  };
+  }, []);
 
   /**
    * Handle streaming token from assistant
    */
-  const handleStreamToken = (event: AssistantStreamTokenEvent) => {
+  const handleStreamToken = useCallback((event: AssistantStreamTokenEvent) => {
     setIsStreaming(true);
     setCurrentAssistantResponse((prev) => prev + event.token);
-  };
+  }, []);
 
   /**
    * Handle assistant done streaming
    */
-  const handleAssistantDone = (event: AssistantDoneEvent) => {
+  const handleAssistantDone = useCallback((event: AssistantDoneEvent) => {
     setIsStreaming(false);
 
     // Add assistant message to list
@@ -253,22 +211,20 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     setGhostSuggestion(null);
 
     // Refocus textarea for next message
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-    });
-  };
+    focusTextarea();
+  }, [focusTextarea]);
 
   /**
    * Handle WebSocket error
    */
-  const handleError = (event: ErrorEvent) => {
+  const handleError = useCallback((event: ErrorEvent) => {
     console.error('WebSocket error:', event);
-  };
+  }, []);
 
   /**
    * Handle teacher analysis from server
    */
-  const handleTeacherAnalysis = (event: TeacherAnalysisEvent) => {
+  const handleTeacherAnalysis = useCallback((event: TeacherAnalysisEvent) => {
     console.log('[TEACHER_ANALYSIS_RX] Received event:', {
       type: event.type,
       conversation_id: event.conversation_id,
@@ -276,12 +232,77 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
       analysis: event.analysis
     });
     setTeacherAnalysis(event.analysis);
-  };
+  }, []);
+
+  /**
+   * Initialize conversation
+   */
+  useEffect(() => {
+    const initConversation = async () => {
+      try {
+        setIsLoading(true);
+
+        // Create new conversation
+        const newConversation = await chatApi.createConversation({
+          user_id: userId,
+          title: `Chat ${new Date().toLocaleDateString()}`,
+        });
+
+        setConversation(newConversation);
+
+        // Load existing messages
+        const loadedMessages = await chatApi.getConversationMessages(newConversation.id);
+        const userMessages: MessageDisplay[] = loadedMessages
+          .filter((msg) => msg.role !== 'system')
+          .map((msg) => ({
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+          }));
+
+        setMessages(userMessages);
+
+        // Connect WebSocket
+        chatWsRef.current = new ChatWS({
+          conversationId: newConversation.id,
+          onDraftFeedback: handleDraftFeedback,
+          onStreamToken: handleStreamToken,
+          onAssistantDone: handleAssistantDone,
+          onTeacherAnalysis: handleTeacherAnalysis,
+          onError: handleError,
+          onConnectionChange: (connected) => {
+            console.log('WebSocket connection:', connected);
+          },
+        });
+      } catch (error) {
+        console.error('Failed to initialize conversation:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initConversation();
+
+    return () => {
+      disconnectChatWs();
+      clearAutocompleteTimeout();
+    };
+  }, [
+    clearAutocompleteTimeout,
+    disconnectChatWs,
+    handleAssistantDone,
+    handleDraftFeedback,
+    handleError,
+    handleStreamToken,
+    handleTeacherAnalysis,
+    userId,
+  ]);
 
   /**
    * Handle draft text change with real-time feedback
    */
-  const handleDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleDraftChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newText = e.target.value;
     setDraftText(newText);
 
@@ -297,38 +318,20 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     }
 
     // Schedule autocomplete (if user stops typing for 1.2s)
-    if (autocompleteTimeoutRef.current) {
-      window.clearTimeout(autocompleteTimeoutRef.current);
-    }
+    clearAutocompleteTimeout();
 
     autocompleteTimeoutRef.current = window.setTimeout(() => {
       if (chatWsRef.current && newText.trim().length > 0) {
         chatWsRef.current.sendRequestAutocomplete(newText, 'soft');
       }
+      autocompleteTimeoutRef.current = null;
     }, 1200);
-  };
-
-  /**
-   * Handle key press (Enter to send, Shift+Enter for new line)
-   */
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-
-    // TAB to accept ghost suggestion
-    if (e.key === 'Tab' && ghostSuggestion) {
-      e.preventDefault();
-      setDraftText((prev) => prev + ghostSuggestion);
-      setGhostSuggestion(null);
-    }
-  };
+  }, [clearAutocompleteTimeout, conversation, isShowingLastFeedback]);
 
   /**
    * Send user message
    */
-  const handleSendMessage = () => {
+  const handleSendMessage = useCallback(() => {
     const trimmedText = draftText.trim();
     if (!trimmedText || !chatWsRef.current || isStreaming) {
       return;
@@ -356,23 +359,35 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     setGhostSuggestion(null);
 
     // Clear autocomplete timeout
-    if (autocompleteTimeoutRef.current) {
-      window.clearTimeout(autocompleteTimeoutRef.current);
-    }
+    clearAutocompleteTimeout();
 
     // Keep textarea focused for next message
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-    });
-  };
+    focusTextarea();
+  }, [barScore, clearAutocompleteTimeout, draftText, focusTextarea, isStreaming, issues]);
+
+  /**
+   * Handle key press (Enter to send, Shift+Enter for new line)
+   */
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+
+    // TAB to accept ghost suggestion
+    if (e.key === 'Tab' && ghostSuggestion) {
+      e.preventDefault();
+      setDraftText((prev) => prev + ghostSuggestion);
+      setGhostSuggestion(null);
+    }
+  }, [ghostSuggestion, handleSendMessage]);
 
   /**
    * Handle exit button
    */
   const handleExitClick = () => {
-    if (chatWsRef.current) {
-      chatWsRef.current.disconnect();
-    }
+    disconnectChatWs();
+    clearAutocompleteTimeout();
     onExit();
   };
 

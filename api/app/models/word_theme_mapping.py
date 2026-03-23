@@ -4,8 +4,8 @@ from sqlalchemy import Column, Float, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
+from app.core.time import utc_now
 import uuid
-from datetime import datetime
 
 
 class WordThemeMapping(BaseModel):
@@ -18,8 +18,8 @@ class WordThemeMapping(BaseModel):
     theme_id = Column(UUID(as_uuid=True), ForeignKey('word_themes.id'), nullable=False, comment="Theme ID")
     weight = Column(Float, nullable=True, comment="Weight for multiple themes per word (0..1)")
     is_active = Column(Boolean, default=True, comment="Whether this mapping is active")
-    created_at = Column(DateTime, default=datetime.utcnow, comment="Creation timestamp")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Update timestamp")
+    created_at = Column(DateTime, default=utc_now, comment="Creation timestamp")
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, comment="Update timestamp")
 
     # Relationships
     word = relationship("Word", back_populates="theme_mappings")

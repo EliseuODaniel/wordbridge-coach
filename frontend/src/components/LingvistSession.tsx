@@ -12,9 +12,12 @@ import { audioService } from '../services/audio';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
 
+type TrainingMode = 'spec4' | 'lingvist' | 'chat';
+
 interface LingvistSessionProps {
   userId?: string;
   onExit?: () => void;
+  onModeChange?: (mode: TrainingMode) => void;
 }
 
 // Helper: Normalize text for comparison (case-insensitive, trim, collapse spaces)
@@ -27,7 +30,7 @@ const isTranslationAvailable = (translation: string | null | undefined): boolean
   return translation != null && typeof translation === 'string' && translation.trim().length > 0;
 };
 
-const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => {
+const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onModeChange }) => {
   // State management
   const [currentCard, setCurrentCard] = useState<LingvistCardResponse | null>(null);
   const [feedback, setFeedback] = useState<AnswerResponse | null>(null);
@@ -44,20 +47,61 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
   // Track manual audio playback errors
   const [audioError, setAudioError] = useState<string | null>(null);
 
+  const resetRoundState = useCallback(() => {
+    setCurrentCard(null);
+    setFeedback(null);
+    setErrorMessage(null);
+    setAttempts(0);
+    setHintLevel(0);
+    setIsInputLocked(false);
+    setIsPlayingAudio(false);
+    setAudioError(null);
+    setStartTime(Date.now());
+  }, []);
+
+  const preloadCardAudio = useCallback((card: LingvistCardResponse) => {
+    if (card.audio_word_url) {
+      audioService.preloadFromUrl(card.audio_word_url).catch((error) => {
+        console.warn('Failed to preload word audio:', error);
+      });
+    }
+
+    if (card.audio_sentence_url) {
+      audioService.preloadFromUrl(card.audio_sentence_url).catch((error) => {
+        console.warn('Failed to preload sentence audio:', error);
+      });
+    }
+  }, []);
+
+  const playAudioUrl = useCallback(
+    async (
+      audioUrl: string | undefined,
+      unavailableMessage: string,
+      failedMessage: string
+    ) => {
+      if (!audioUrl) {
+        setAudioError(unavailableMessage);
+        return;
+      }
+
+      setAudioError(null);
+
+      try {
+        await audioService.playFromUrl(audioUrl);
+      } catch (error) {
+        console.error(failedMessage, error);
+        setAudioError(failedMessage);
+      }
+    },
+    []
+  );
+
   // Load next card
   const loadNextCard = useCallback(async (excludeCardId?: string) => {
     try {
       console.log('🔍 Loading Lingvist card...', { userId, excludeCardId });
 
-      // Clear state for new card
-      setCurrentCard(null);
-      setFeedback(null);
-      setErrorMessage(null);
-      setAttempts(0);
-      setHintLevel(0);
-      setIsInputLocked(false);
-      setIsPlayingAudio(false);
-      setStartTime(Date.now());
+      resetRoundState();
 
       const card = await cardsApi.getNextLingvistCard(userId, excludeCardId);
 
@@ -75,18 +119,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
       });
 
       setCurrentCard(card);
-
-      // Preload audio files (non-blocking)
-      if (card.audio_word_url) {
-        audioService.preloadFromUrl(card.audio_word_url).catch(err => {
-          console.warn('Failed to preload word audio:', err);
-        });
-      }
-      if (card.audio_sentence_url) {
-        audioService.preloadFromUrl(card.audio_sentence_url).catch(err => {
-          console.warn('Failed to preload sentence audio:', err);
-        });
-      }
+      preloadCardAudio(card);
 
     } catch (error) {
       console.error('❌ Error loading Lingvist card:', error);
@@ -97,7 +130,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
       setErrorMessage(status ? `Error ${status}: ${message}` : message);
       setCurrentCard(null);
     }
-  }, [userId]);
+  }, [preloadCardAudio, resetRoundState, userId]);
 
   // Handle user editing after incorrect answer
   const handleUserEdit = useCallback(() => {
@@ -107,35 +140,21 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
 
   // Handle manual word audio playback
   const handlePlayWordAudio = useCallback(async () => {
-    if (!currentCard?.audio_word_url) {
-      setAudioError('Word audio not available');
-      return;
-    }
-
-    setAudioError(null);
-    try {
-      await audioService.playFromUrl(currentCard.audio_word_url);
-    } catch (error) {
-      console.error('Failed to play word audio:', error);
-      setAudioError('Failed to play word audio');
-    }
-  }, [currentCard]);
+    await playAudioUrl(
+      currentCard?.audio_word_url,
+      'Word audio not available',
+      'Failed to play word audio'
+    );
+  }, [currentCard?.audio_word_url, playAudioUrl]);
 
   // Handle manual sentence audio playback
   const handlePlaySentenceAudio = useCallback(async () => {
-    if (!currentCard?.audio_sentence_url) {
-      setAudioError('Sentence audio not available');
-      return;
-    }
-
-    setAudioError(null);
-    try {
-      await audioService.playFromUrl(currentCard.audio_sentence_url);
-    } catch (error) {
-      console.error('Failed to play sentence audio:', error);
-      setAudioError('Failed to play sentence audio');
-    }
-  }, [currentCard]);
+    await playAudioUrl(
+      currentCard?.audio_sentence_url,
+      'Sentence audio not available',
+      'Failed to play sentence audio'
+    );
+  }, [currentCard?.audio_sentence_url, playAudioUrl]);
 
   // Handle answer submission
   const handleSubmit = useCallback(async (answer: string) => {
@@ -257,12 +276,13 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
             </p>
           </div>
           <div className="flex gap-2">
-            <a
-              href="/?mode=spec4"
+            <button
+              type="button"
+              onClick={() => onModeChange?.('spec4')}
               className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
             >
               Switch to Spec4 🎯
-            </a>
+            </button>
             <button
               onClick={onExit}
               className="px-4 py-2 bg-gray-800 text-gray-400 rounded hover:bg-gray-700 transition text-sm"

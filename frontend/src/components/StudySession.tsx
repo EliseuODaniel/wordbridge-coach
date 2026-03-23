@@ -11,11 +11,14 @@ import FeedbackMessage from './FeedbackMessage';
 import SessionCounter from './SessionCounter';
 import InsightsSection from './InsightsSection';
 
+type TrainingMode = 'spec4' | 'lingvist' | 'chat';
+
 interface StudySessionProps {
   userId?: string;
+  onModeChange?: (mode: TrainingMode) => void;
 }
 
-const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
+const StudySession: React.FC<StudySessionProps> = ({ userId, onModeChange }) => {
   // State management
   const [currentCard, setCurrentCard] = useState<CardResponse | null>(null);
   const [feedback, setFeedback] = useState<AnswerResponse | null>(null);
@@ -32,9 +35,37 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
 
   // Ref to manage next card timeout and prevent "ghost timers"
   const nextCardTimeoutRef = useRef<number | null>(null);
+  const retryLoadTimeoutRef = useRef<number | null>(null);
 
   // Ref to track previous card_id for autoplay logic
   const previousCardIdRef = useRef<string | null>(null);
+
+  const clearPendingNextCardTimeout = useCallback(() => {
+    if (nextCardTimeoutRef.current) {
+      clearTimeout(nextCardTimeoutRef.current);
+      nextCardTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearPendingRetryTimeout = useCallback(() => {
+    if (retryLoadTimeoutRef.current) {
+      clearTimeout(retryLoadTimeoutRef.current);
+      retryLoadTimeoutRef.current = null;
+    }
+  }, []);
+
+  const playAudioUrl = useCallback(async (audioUrl?: string) => {
+    if (!audioUrl) return;
+
+    try {
+      setLoadingAudio(true);
+      await audioService.playFromUrl(audioUrl);
+    } catch (error) {
+      console.error('Error playing audio:', error);
+    } finally {
+      setLoadingAudio(false);
+    }
+  }, []);
 
   // Load stats from API
   const loadStats = useCallback(async () => {
@@ -105,8 +136,10 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
         const delay = baseDelay * Math.pow(2, retryCount); // 1s, 2s, 4s
         console.log(`🔄 Retrying card fetch in ${delay}ms... (attempt ${retryCount + 2}/${maxRetries + 1})`);
 
-        setTimeout(() => {
+        clearPendingRetryTimeout();
+        retryLoadTimeoutRef.current = window.setTimeout(() => {
           loadNextCard(excludeCardId, retryCount + 1);
+          retryLoadTimeoutRef.current = null;
         }, delay);
         return;
       }
@@ -117,10 +150,18 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [userId]);
+  }, [clearPendingRetryTimeout, userId]);
+
+  const scheduleNextCardLoad = useCallback((cardId?: string) => {
+    clearPendingNextCardTimeout();
+    nextCardTimeoutRef.current = window.setTimeout(() => {
+      loadNextCard(cardId);
+      nextCardTimeoutRef.current = null;
+    }, 1500);
+  }, [clearPendingNextCardTimeout, loadNextCard]);
 
   // Handle answer submission
-  const handleSubmit = async (answer: string) => {
+  const handleSubmit = useCallback(async (answer: string) => {
     if (!currentCard || isSubmitting) {
       console.log('❌ Cannot submit answer:', { hasCurrentCard: !!currentCard, isSubmitting });
       return;
@@ -163,26 +204,15 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Trigger insights refresh
       setRefreshTrigger(prev => prev + 1);
 
-      // Clear any existing timeout before scheduling a new one
-      if (nextCardTimeoutRef.current) {
-        console.log('[timeout] Clearing previous timeout:', nextCardTimeoutRef.current);
-        clearTimeout(nextCardTimeoutRef.current);
-        nextCardTimeoutRef.current = null;
-      }
-
       // Load next card ONLY if answer was correct (STRICT BOOL CHECK)
       // If incorrect, user stays on same card to try again
       if (response.correct === true) {
         console.log('✅ Answer correct! Scheduling next card in 1500ms...');
-        nextCardTimeoutRef.current = window.setTimeout(() => {
-          console.log('[timeout] Executing loadNextCard');
-          loadNextCard(currentCard?.card_id);
-          nextCardTimeoutRef.current = null; // Clear after execution
-        }, 1500); // Slightly longer delay to show feedback
+        scheduleNextCardLoad(currentCard?.card_id);
       } else {
         console.log('❌ Answer incorrect. User can try again with same card.');
         // Explicitly ensure no timeout is scheduled for incorrect answers
-        nextCardTimeoutRef.current = null;
+        clearPendingNextCardTimeout();
       }
 
     } catch (error) {
@@ -205,49 +235,21 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       });
 
       // Clear any timeout on error to prevent "ghost timers"
-      if (nextCardTimeoutRef.current) {
-        console.log('[error] Clearing timeout due to error');
-        clearTimeout(nextCardTimeoutRef.current);
-        nextCardTimeoutRef.current = null;
-      }
+      clearPendingNextCardTimeout();
 
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [attempts, clearPendingNextCardTimeout, currentCard, isSubmitting, loadStats, scheduleNextCardLoad, startTime, userId]);
 
   // Play audio for word
   const handlePlayWordAudio = async () => {
-    if (!currentCard || !currentCard.audio_word_url) return;
-
-    try {
-      setLoadingAudio(true);
-
-      // Play audio directly from backend URL
-      await audioService.playFromUrl(currentCard.audio_word_url);
-
-    } catch (error) {
-      console.error('Error playing word audio:', error);
-    } finally {
-      setLoadingAudio(false);
-    }
+    await playAudioUrl(currentCard?.audio_word_url);
   };
 
   // Play audio for sentence
   const handlePlaySentenceAudio = async () => {
-    if (!currentCard || !currentCard.audio_sentence_url) return;
-
-    try {
-      setLoadingAudio(true);
-
-      // Play audio directly from backend URL
-      await audioService.playFromUrl(currentCard.audio_sentence_url);
-
-    } catch (error) {
-      console.error('Error playing sentence audio:', error);
-    } finally {
-      setLoadingAudio(false);
-    }
+    await playAudioUrl(currentCard?.audio_sentence_url);
   };
 
 
@@ -293,17 +295,14 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       // Cleanup audio on unmount
       audioService.clearCache();
       // Cleanup any pending timeout to prevent "ghost timers"
-      if (nextCardTimeoutRef.current) {
-        console.log('[unmount] Clearing pending timeout');
-        clearTimeout(nextCardTimeoutRef.current);
-        nextCardTimeoutRef.current = null;
-      }
+      clearPendingNextCardTimeout();
+      clearPendingRetryTimeout();
       // Remove event listeners
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
       document.removeEventListener('touchstart', handleUserInteraction);
     };
-  }, [loadNextCard, loadStats, loadSettings]);
+  }, [clearPendingNextCardTimeout, clearPendingRetryTimeout, loadNextCard, loadStats, loadSettings]);
 
   
 return (
@@ -320,12 +319,13 @@ return (
             </p>
           </div>
           <div className="flex gap-2">
-            <a
-              href="/?mode=lingvist"
+            <button
+              type="button"
+              onClick={() => onModeChange?.('lingvist')}
               className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
             >
               Switch to Lingvist ✍️
-            </a>
+            </button>
           </div>
         </div>
 

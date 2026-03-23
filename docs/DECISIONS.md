@@ -377,3 +377,123 @@ Com a trilha de testes mais estável, a próxima fonte de ruído ficou concentra
 - o backend ficou mais consistente no tratamento de tempo UTC
 - parte relevante do ruído de warnings caiu nas suítes de utilitários do chat
 - a próxima fatia pode atacar warnings residuais restantes e debt estrutural fora do miolo de chat/cards
+
+## 2026-03-23 - Limpar os warnings centrais da trilha de chat
+
+Status: aceito
+
+### Contexto
+
+Depois da centralização inicial de UTC e da migração parcial para Pydantic atual, a trilha de chat ainda deixava três warnings bem objetivos: `declarative_base()` legado, `class Config` restante em schemas importados pelo app e defaults `datetime.utcnow()` vindo da base dos modelos.
+
+### Decisão
+
+- migrar `app/core/database.py` para `sqlalchemy.orm.declarative_base`
+- trocar os defaults de `created_at` e `updated_at` da base de modelos para o helper UTC compartilhado
+- migrar `api/app/schemas/lingvist.py` e `api/app/schemas/llm_profiles.py` para `model_config`
+
+### Impacto
+
+- `tests/test_chat_utilities.py` ficou sem warnings visíveis
+- `tests/integration/test_chat_websocket_flow.py` ficou sem warnings visíveis
+- o próximo alvo de warnings pode sair do miolo de chat e mirar o restante do backend com mais foco
+
+## 2026-03-23 - Limpar os warnings visíveis da trilha Spec4
+
+Status: aceito
+
+### Contexto
+
+Depois da limpeza do miolo de chat, a trilha Spec4 ainda mantinha ruído em três pontos: `IN (subquery)` no endpoint de cards, defaults UTC restantes em modelos usados por analytics e fixtures de teste com `datetime.utcnow()`.
+
+### Decisão
+
+- trocar os `IN (subquery)` de `cards.py` para `select(...)` explícito
+- migrar os defaults UTC restantes de `WordTheme`, `WordThemeMapping` e `UserDailyStats` para o helper compartilhado
+- alinhar os fixtures e asserts da suíte Spec4 ao helper UTC compartilhado
+
+### Impacto
+
+- `tests/integration/test_spec4_card_selection.py` ficou sem warnings visíveis
+- a trilha principal de cards ficou mais limpa e menos ruidosa para próximas refatorações
+- os warnings residuais restantes agora tendem a estar fora do fluxo crítico já estabilizado
+
+## 2026-03-23 - Reduzir timers fantasmas no StudySession antes de mexer em comportamento
+
+Status: aceito
+
+### Contexto
+
+Depois da estabilização de lint e build do frontend, o `StudySession` ainda concentrava coordenação local de audio, avanço para o próximo card e retries de carregamento. O comportamento estava correto, mas o retry com `setTimeout` ainda ficava solto e podia sobreviver além do ciclo de vida do componente.
+
+### Decisão
+
+- manter a regra de negócio do modo de estudo inalterada nesta fatia
+- extrair helpers locais para tocar audio e para limpar/agendar timers
+- rastrear explicitamente tanto o timer de avanço do próximo card quanto o timer de retry do carregamento
+
+### Impacto
+
+- o `StudySession` ficou mais previsível ao desmontar ou reinicializar
+- o risco de retry fantasma caiu sem introduzir nova abstração global
+- a próxima fatia de frontend pode focar em coordenação de sessão e não mais em housekeeping de timers
+
+## 2026-03-23 - Limpar coordenação local no ChatCoachSession antes de extrações maiores
+
+Status: aceito
+
+### Contexto
+
+Mesmo com o backend de chat mais estável, o `ChatCoachSession` ainda espalhava housekeeping de UI em vários pontos: cleanup do autocomplete, refocus do composer e desconexão do WebSocket apareciam repetidos no componente.
+
+### Decisão
+
+- extrair helpers locais para limpar timeout de autocomplete, focar o textarea e desconectar o socket
+- manter o fluxo funcional do Chat Coach inalterado nesta fatia
+- ajustar a ordem das declarações para manter os hooks consistentes e o lint limpo
+
+### Impacto
+
+- o componente ficou mais linear e menos propenso a esquecer cleanup em fluxos de saída
+- a próxima fatia do frontend pode mirar responsabilidades maiores em vez de housekeeping repetido
+- `frontend lint` e `frontend build` seguiram verdes após a mudança
+
+## 2026-03-23 - Consolidar operações repetidas no LingvistSession antes de mexer em UX
+
+Status: aceito
+
+### Contexto
+
+Depois das fatias em `StudySession` e `ChatCoachSession`, o maior ruído restante no frontend estava no `LingvistSession`: reset de rodada, preload de audio e playback manual ainda apareciam como blocos repetidos e pouco coesos.
+
+### Decisão
+
+- extrair helper de reset da rodada para reaproveitar a limpeza de estado antes de carregar o próximo card
+- centralizar o preload de audio do card
+- centralizar o playback manual de word/sentence audio em um helper único
+
+### Impacto
+
+- o componente ficou menor e mais previsível sem alterar a mecânica do modo Lingvist
+- a próxima simplificação de frontend pode focar no shell geral ou na separação entre modos, não mais em housekeeping local
+- `frontend lint` e `frontend build` seguiram verdes após a mudança
+
+## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das simplificações locais das sessões, `StudySession` e `LingvistSession` ainda alternavam entre si com links `href` que recarregavam a aplicação inteira. Isso funcionava, mas mantinha a navegação entre modos dependente de reload e espalhava a responsabilidade de troca fora do shell principal.
+
+### Decisão
+
+- fazer a troca entre `spec4` e `lingvist` passar por `App.tsx`
+- preservar a preferência de modo ao sair da sessão, em vez de forçar retorno para `spec4`
+- trocar os links internos por callbacks explícitos de mudança de modo
+
+### Impacto
+
+- o shell do frontend ficou mais coerente com uma SPA React
+- a navegação entre modos perdeu um reload completo desnecessário
+- a fase atual fecha com a separação entre modos mais limpa do que no baseline inicial

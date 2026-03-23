@@ -49,7 +49,6 @@ function App() {
 
   const handleExit = () => {
     setSelectedUserId(null);
-    setTrainingMode('spec4'); // Reset to default
   };
 
   const handleModeSelect = (mode: TrainingMode) => {
@@ -66,11 +65,18 @@ function App() {
           selectedMode={trainingMode}
         />
       ) : trainingMode === 'lingvist' ? (
-        <LingvistSession userId={selectedUserId} onExit={handleExit} />
+        <LingvistSession
+          userId={selectedUserId}
+          onExit={handleExit}
+          onModeChange={handleModeSelect}
+        />
       ) : trainingMode === 'chat' ? (
         <ChatCoachSession userId={selectedUserId} onExit={handleExit} />
       ) : (
-        <StudySession userId={selectedUserId} />
+        <StudySession
+          userId={selectedUserId}
+          onModeChange={handleModeSelect}
+        />
       )}
     </div>
   );

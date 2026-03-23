@@ -1,7 +1,7 @@
 """Pydantic schemas for LLM Profile management"""
 
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 import uuid
 
@@ -12,6 +12,23 @@ import uuid
 
 class LLMProfileResponse(BaseModel):
     """Response schema for a single LLM profile"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "qwen2.5-7b-instruct",
+            "name": "Qwen2.5 7B Instruct",
+            "provider": "llamacpp",
+            "model": "qwen2.5-7b-instruct",
+            "service_url": "http://llm:8080",
+            "context_window": 4096,
+            "supports_streaming": True,
+            "supports_json": True,
+            "estimated_vram": "5.4GB",
+            "quality_tier": "high",
+            "speed_tier": "medium",
+            "description": "High-quality bilingual model"
+        }
+    })
+
     id: str = Field(..., description="Profile ID (e.g., 'qwen2.5-7b-instruct')")
     name: str = Field(..., description="Human-readable name")
     provider: str = Field(..., description="Provider type (llamacpp, openai_http, mock)")
@@ -25,25 +42,6 @@ class LLMProfileResponse(BaseModel):
     speed_tier: str = Field(..., description="Speed tier (slow, medium, fast)")
     description: str = Field(default="", description="Human-readable description")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "qwen2.5-7b-instruct",
-                "name": "Qwen2.5 7B Instruct",
-                "provider": "llamacpp",
-                "model": "qwen2.5-7b-instruct",
-                "service_url": "http://llm:8080",
-                "context_window": 4096,
-                "supports_streaming": True,
-                "supports_json": True,
-                "estimated_vram": "5.4GB",
-                "quality_tier": "high",
-                "speed_tier": "medium",
-                "description": "High-quality bilingual model"
-            }
-        }
-
-
 class LLMProfileListResponse(BaseModel):
     """Response schema for GET /api/v1/llm-profiles"""
     profiles: List[LLMProfileResponse] = Field(..., description="Available LLM profiles")
@@ -55,6 +53,17 @@ class LLMProfileListResponse(BaseModel):
 
 class UserLLMPreferencesResponse(BaseModel):
     """Response schema for user's LLM preferences"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "660e8400-e29b-41d4-a716-446655440000",
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "chat_model_profile": "qwen2.5-7b-instruct",
+            "teacher_model_profile": "qwen2.5-7b-instruct",
+            "created_at": "2025-12-26T15:00:00Z",
+            "updated_at": "2025-12-26T15:00:00Z"
+        }
+    })
+
     id: str = Field(..., description="Preferences ID")
     user_id: str = Field(..., description="User ID")
     chat_model_profile: str = Field(..., description="Selected chat model profile ID")
@@ -62,21 +71,15 @@ class UserLLMPreferencesResponse(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "660e8400-e29b-41d4-a716-446655440000",
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "chat_model_profile": "qwen2.5-7b-instruct",
-                "teacher_model_profile": "qwen2.5-7b-instruct",
-                "created_at": "2025-12-26T15:00:00Z",
-                "updated_at": "2025-12-26T15:00:00Z"
-            }
-        }
-
-
 class UserLLMPreferencesUpdate(BaseModel):
     """Request schema for PUT /api/v1/users/me/llm-preferences"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "chat_model_profile": "qwen2.5-3b-instruct",
+            "teacher_model_profile": "llama-3.1-8b-instruct"
+        }
+    })
+
     chat_model_profile: Optional[str] = Field(
         None,
         description="Chat model profile ID (null = no change)"
@@ -85,11 +88,3 @@ class UserLLMPreferencesUpdate(BaseModel):
         None,
         description="Teacher model profile ID (null = no change)"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "chat_model_profile": "qwen2.5-3b-instruct",
-                "teacher_model_profile": "llama-3.1-8b-instruct"
-            }
-        }

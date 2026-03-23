@@ -2,8 +2,10 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sqlalchemy.orm import Session
+
+from app.core.time import utc_now
 
 
 @pytest.mark.integration
@@ -99,11 +101,11 @@ class TestSpec4CardSelection:
         for i, card_state in enumerate(review_cards):
             if i < 3:  # Make 3 cards due for review
                 card_state.status = MemoryStage.LEARNING
-                card_state.next_review_at = datetime.utcnow() - timedelta(days=1)
+                card_state.next_review_at = utc_now() - timedelta(days=1)
                 card_state.repetitions = 1
             else:  # Keep 1 as new
                 card_state.status = MemoryStage.NEW
-                card_state.next_review_at = datetime.utcnow() + timedelta(days=1)
+                card_state.next_review_at = utc_now() + timedelta(days=1)
 
         db_session.commit()
 
@@ -195,7 +197,7 @@ class TestSpec4CardSelection:
         # Should have increased repetitions for correct answer
         assert updated_state.repetitions > initial_repetitions
         # Should have updated next_review_at to future date
-        assert updated_state.next_review_at > datetime.utcnow()
+        assert updated_state.next_review_at > utc_now()
 
     def test_no_cards_available_handling(
         self, client: TestClient, db_session, sample_languages

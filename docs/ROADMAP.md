@@ -17,13 +17,13 @@ Status: concluida
 
 ## Fase 1: Baseline técnico
 
-Status: em andamento
+Status: concluida
 
 - [x] validar comandos reais de setup, lint, build e testes
 - [x] reduzir a fila inicial de lint do frontend ate voltar para baseline limpo
 - [~] revisar o `docker-compose.yml` com foco em simplicidade
-- [ ] mapear módulos mais acoplados no backend e frontend
-- [ ] registrar riscos confirmados em `docs/DECISIONS.md`
+- [x] mapear módulos mais acoplados no backend e frontend
+- [x] registrar riscos confirmados em `docs/DECISIONS.md`
 
 Notas do baseline:
 
@@ -53,6 +53,12 @@ Notas do baseline:
 - decima quarta microfatia aplicada: extração da finalização do turno do assistente e da persistência/envio de `teacher_analysis`, com expansão da suíte utilitária de chat
 - decima quinta microfatia aplicada: endurecimento do fixture de banco em `conftest.py` para reduzir resíduos de schema em execuções seriais repetidas
 - decima sexta microfatia aplicada: centralização de tempo UTC em helper compartilhado e migração parcial de schemas/configs quentes para padrões atuais do Pydantic
+- decima setima microfatia aplicada: remoção dos warnings visíveis da trilha principal de chat (`declarative_base`, `class Config`, defaults UTC de modelo)
+- decima oitava microfatia aplicada: remoção dos warnings visíveis da trilha Spec4 (`IN (subquery)`, defaults UTC restantes e fixtures de teste)
+- decima nona microfatia aplicada: simplificação do `StudySession` com helpers de audio e limpeza explícita dos timers de avanço e retry
+- vigesima microfatia aplicada: simplificação do `ChatCoachSession` com cleanup centralizado de autocomplete, foco e desconexão do WebSocket
+- vigesima primeira microfatia aplicada: simplificação do `LingvistSession` com reset de rodada, preload de audio e playback manual centralizados
+- vigesima segunda microfatia aplicada: centralização da troca entre `Spec4` e `Lingvist` no shell React, removendo reload completo entre modos
 
 ## Fase 2: Limpeza estrutural
 
@@ -64,7 +70,10 @@ Notas do baseline:
 
 Prioridade alta:
 
-- [ ] simplificar a entrada do frontend e a separação entre modos
+- [x] simplificar a entrada do frontend e a separação entre modos
+- [~] continuar reduzindo timers e coordenação local nas sessões de frontend, começando por `StudySession`
+- [~] continuar reduzindo coordenação espalhada no `ChatCoachSession`
+- [~] continuar reduzindo duplicação operacional no `LingvistSession`
 - [ ] revisar os serviços da API com maior acoplamento
 - [~] continuar quebrando o fluxo WebSocket de `chat.py` em helpers menores e testáveis
 - [ ] isolar melhor integrações de LLM local e LanguageTool
