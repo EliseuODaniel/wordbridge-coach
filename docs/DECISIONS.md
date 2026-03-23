@@ -663,3 +663,26 @@ Mesmo com o runtime do WebSocket já extraído, `chat.py` ainda carregava a sequ
 - `chat.py` perde mais uma responsabilidade de coordenação sem exigir uma migração brusca dos helpers internos
 - a sequência do turno fica testável como unidade própria
 - o próximo corte pode atacar `draft_update` e `request_autocomplete`, ou então isolar melhor integrações externas como LLM e LanguageTool
+
+## 2026-03-23 - Mover a orquestração de draft_update e request_autocomplete para services
+
+Status: aceito
+
+### Contexto
+
+Depois de extrair o runtime WebSocket e o turno `user_message`, os handlers de `draft_update` e `request_autocomplete` ainda mantinham throttle, cache, ghost suggestion e envio de payload no endpoint.
+
+### Decisão
+
+- criar `api/app/services/chat_draft_service.py` para concentrar:
+  - decisão de throttle do micro-eval
+  - reuso de feedback cacheado
+  - orquestração do autocomplete com ghost suggestion
+- manter a lógica de avaliação/mapeamento de feedback em `chat.py` por enquanto, injetada como dependência
+- adicionar testes focais e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` fica mais próximo de um conjunto de handlers finos
+- draft feedback e autocomplete ganham uma fronteira de serviço pequena e testável
+- o próximo corte pode mirar a extração dos helpers de feedback/contexto ou o isolamento das integrações LLM/LanguageTool

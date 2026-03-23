@@ -29,6 +29,12 @@ from app.services.chat_runtime_service import (
     build_ws_error_payload as _build_ws_error_payload,
     route_websocket_event,
 )
+from app.services.chat_draft_service import (
+    ChatDraftFeedbackHelpers,
+    ChatDraftFeedbackState,
+    process_draft_update,
+    process_request_autocomplete,
+)
 from app.services.chat_turn_service import (
     ChatUserMessageTurnHelpers,
     process_user_message_turn,
@@ -1159,39 +1165,25 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
 
     logger.info(f"[DRAFT_UPDATE] text='{draft_text}', len={len(draft_text)}, conv={conversation_id[:8]}")
 
-    # Check if draft text changed
-    last_draft_text = _last_draft_texts.get(conversation_id, "")
-    text_changed = (draft_text != last_draft_text)
-
-    # Check throttle for micro_eval (10-15 Hz max)
-    # CRITICAL FIX: Bypass throttle if text changed to catch new errors
-    last_eval_ts = _micro_eval_timestamps.get(conversation_id, 0)
-    time_passed_enough = (now_ms - last_eval_ts) >= CHAT_MICRO_EVAL_MIN_INTERVAL_MS
-    should_run_micro_eval = time_passed_enough or text_changed
-
-    logger.info(f"[THROTTLE] text_changed={text_changed}, time_passed={time_passed_enough}, should_run={should_run_micro_eval}")
-
-    if should_run_micro_eval:
-        # Update timestamp
-        _micro_eval_timestamps[conversation_id] = now_ms
-
-        feedback = await _evaluate_draft_feedback(
-            conversation=conversation,
-            draft_text=draft_text,
-            now_ms=now_ms,
-            include_grammar_check=True
-        )
-
-        _cache_draft_feedback(conversation_id, draft_text, feedback)
-        await websocket.send_json(feedback)
-    else:
-        # Micro_eval throttled: reuse last feedback to prevent "dead" panel
-        last_feedback = _feedback_cache.get(conversation_id)
-        if last_feedback:
-            await websocket.send_json(
-                _build_throttled_feedback(last_feedback, draft_text, now_ms)
-            )
-        # else: first draft, no cache yet, just skip (rare case)
+    await process_draft_update(
+        websocket=websocket,
+        data=data,
+        conversation=conversation,
+        now_ms=now_ms,
+        db=db,
+        state=ChatDraftFeedbackState(
+            micro_eval_timestamps=_micro_eval_timestamps,
+            feedback_cache=_feedback_cache,
+            last_draft_texts=_last_draft_texts,
+            min_interval_ms=CHAT_MICRO_EVAL_MIN_INTERVAL_MS,
+        ),
+        helpers=ChatDraftFeedbackHelpers(
+            evaluate_draft_feedback=_evaluate_draft_feedback,
+            cache_draft_feedback=_cache_draft_feedback,
+            build_throttled_feedback=_build_throttled_feedback,
+            autocomplete=llm_provider.autocomplete,
+        ),
+    )
 
 
 async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session):
@@ -1201,27 +1193,21 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
     CRITICAL FIX: Now runs micro_eval FIRST to get real issues, then adds ghost suggestion.
     This prevents the panel from clearing issues when autocomplete triggers.
     """
-    draft_text = data.get("draft_text", "")
+    request_data = dict(data)
+    request_data["now_ms"] = int(utc_now().timestamp() * 1000)
 
-    # Step 2: Call autocomplete to get ghost suggestion
-    autocomplete_result = await llm_provider.autocomplete(
-        context=conversation.session_summary,
-        lesson_frame=conversation.lesson_frame_json,
-        draft=draft_text,
-        student_profile=conversation.student_profile_json
-    )
-
-    now_ms = int(utc_now().timestamp() * 1000)
-
-    feedback = await _evaluate_draft_feedback(
+    await process_request_autocomplete(
+        websocket=websocket,
+        data=request_data,
         conversation=conversation,
-        draft_text=draft_text,
-        now_ms=now_ms,
-        ghost_suggestion=autocomplete_result.get("ghost_suggestion", "")
+        db=db,
+        helpers=ChatDraftFeedbackHelpers(
+            evaluate_draft_feedback=_evaluate_draft_feedback,
+            cache_draft_feedback=_cache_draft_feedback,
+            build_throttled_feedback=_build_throttled_feedback,
+            autocomplete=llm_provider.autocomplete,
+        ),
     )
-
-    # Send draft_feedback with real issues + ghost suggestion
-    await websocket.send_json(feedback)
 
 
 async def handle_user_message(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session,

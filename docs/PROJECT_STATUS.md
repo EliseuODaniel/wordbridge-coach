@@ -69,6 +69,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - a sessão WebSocket do Chat Coach agora resolve suas dependências por um runtime dedicado, reduzindo setup espalhado no endpoint
 - o runtime e o roteamento base do WebSocket do Chat Coach agora vivem em `api/app/services/chat_runtime_service.py`, deixando `chat.py` mais próximo de uma fronteira de endpoint
 - a coordenação do turno `user_message` do Chat Coach agora também saiu do endpoint e passou a viver em `api/app/services/chat_turn_service.py`, reduzindo o peso de `chat.py`
+- o fluxo de `draft_update` e `request_autocomplete` do Chat Coach agora também é orquestrado por `api/app/services/chat_draft_service.py`, deixando os handlers do endpoint mais finos
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
 - o `UserSelection` deixou de usar stats aleatórias e agora consome idioma alvo, meta de vocabulário e stats reais disponíveis por perfil
@@ -161,6 +162,6 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 ## Próximos passos imediatos
 
 1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
-2. Continuar a extração do Chat Coach, agora avaliando se o próximo corte deve isolar melhor integrações de LLM/LanguageTool ou começar a separar os handlers de draft/autocomplete em serviços próprios.
+2. Continuar a extração do Chat Coach, agora avaliando se o próximo corte deve isolar melhor integrações de LLM/LanguageTool ou consolidar mais helpers de feedback/contexto fora do endpoint.
 3. Expandir a cobertura do backend para regras de progressão e idioma além da trilha recém-adicionada.
 4. Consolidar o quality gate novo em CI e decidir se a próxima etapa adiciona E2E automatizado no mesmo pipeline.
