@@ -86,6 +86,7 @@ Notas do baseline:
 - quadragesima setima microfatia aplicada: extração do fallback de card elegível e do lookup legado por rank para `api/app/services/card_selection_fallback_service.py`, reduzindo o peso de `CardSelectionService`
 - quadragesima oitava microfatia aplicada: extração da atualização de progressão Spec4 pós-resposta para `api/app/services/card_selection_progress_service.py`, com limpeza do legado residual de `CardSelectionService` e cobertura própria no quality gate
 - quadragesima nona microfatia aplicada: consolidação do fechamento comum de seleção dentro de `CardSelectionService`, reduzindo duplicação entre os fluxos `new`, `review`, `relearn` e `fallback`
+- quinquagesima microfatia aplicada: remoção dos wrappers REST redundantes de `chat.py`, deixando os endpoints HTTP chamarem `chat_rest_service` diretamente
 
 ## Fase 2: Limpeza estrutural
 

@@ -87,6 +87,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - a persistência de mensagens e os payloads/eventos finais do Chat Coach agora também vivem em `api/app/services/chat_delivery_service.py`, deixando `chat.py` com menos efeito colateral direto
 - os helpers puros de prompt, configuração de geração, fallback e sanitização do Chat Coach agora também vivem em `api/app/services/chat_text_service.py`, deixando `chat.py` quase todo como camada adaptadora
 - o lookup e a serialização do bloco REST do Chat Coach agora também vivem em `api/app/services/chat_rest_service.py`, reduzindo o miolo restante de `chat.py`
+- `chat.py` também deixou de manter wrappers REST locais redundantes para lookup e serialização, passando a chamar `chat_rest_service` diretamente nos endpoints HTTP
 - o enriquecimento do payload Lingvist agora também vive em `api/app/services/lingvist_payload_service.py`, reduzindo o peso de `cards.py` sem mexer na regra de seleção
 - a resolução de `user_id` padrão e a serialização comum de `CardResponse` agora também vivem em `api/app/services/card_response_service.py`, deixando `cards.py` com menos regra incidental de borda
 - o fluxo de `submit_answer` agora também delega criação de `UserCardState`, `ReviewEvent`, aplicação do resultado SM-2 e serialização de `AnswerResponse` para `api/app/services/card_answer_service.py`

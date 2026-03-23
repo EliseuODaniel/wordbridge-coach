@@ -108,31 +108,6 @@ async def _send_ws_error(websocket: WebSocket, message: str, code: str) -> None:
     await websocket.send_json(_build_ws_error_payload(message=message, code=code))
 
 
-def _get_user_or_404(db: Session, user_id: str) -> User:
-    """Wrapper kept for compatibility with local callers."""
-    return _get_user_or_404_service(db, user_id)
-
-
-def _get_conversation_or_404(db: Session, conversation_id: str) -> ChatConversation:
-    """Wrapper kept for compatibility with local callers."""
-    return _get_conversation_or_404_service(db, conversation_id)
-
-
-def _serialize_conversation(conversation: ChatConversation) -> ChatConversationResponse:
-    """Wrapper kept for compatibility with local callers."""
-    return _serialize_conversation_service(conversation)
-
-
-def _serialize_message(message: ChatMessage) -> ChatMessageResponse:
-    """Wrapper kept for compatibility with local callers."""
-    return _serialize_message_service(message)
-
-
-def _serialize_conversation_list_item(db: Session, conversation: ChatConversation) -> dict:
-    """Wrapper kept for compatibility with local callers."""
-    return _serialize_conversation_list_item_service(db, conversation)
-
-
 def _initialize_micro_eval_tracking(conversation_id: str) -> None:
     """Ensure throttle state exists for the websocket conversation."""
     if conversation_id not in _micro_eval_timestamps:
@@ -407,7 +382,7 @@ async def create_conversation(
     Creates a conversation with default lesson frame and empty session summary.
     """
     try:
-        _get_user_or_404(db, conversation_data.user_id)
+        _get_user_or_404_service(db, conversation_data.user_id)
 
         # Create conversation
         conversation = ChatConversation(
@@ -431,7 +406,7 @@ async def create_conversation(
         db.add(system_message)
         db.commit()
 
-        return _serialize_conversation(conversation)
+        return _serialize_conversation_service(conversation)
 
     except HTTPException:
         raise
@@ -452,14 +427,14 @@ async def list_conversations(
     List all conversations for a user (ordered by updated_at DESC).
     """
     try:
-        _get_user_or_404(db, user_id)
+        _get_user_or_404_service(db, user_id)
 
         # Get conversations
         conversations = db.query(ChatConversation).filter(
             ChatConversation.user_id == user_id
         ).order_by(ChatConversation.updated_at.desc()).all()
 
-        return [_serialize_conversation_list_item(db, conv) for conv in conversations]
+        return [_serialize_conversation_list_item_service(db, conv) for conv in conversations]
 
     except HTTPException:
         raise
@@ -485,14 +460,14 @@ async def get_conversation_messages(
     - offset: pagination offset (default: 0)
     """
     try:
-        _get_conversation_or_404(db, conversation_id)
+        _get_conversation_or_404_service(db, conversation_id)
 
         # Get messages
         messages = db.query(ChatMessage).filter(
             ChatMessage.conversation_id == conversation_id
         ).order_by(ChatMessage.created_at.asc()).offset(offset).limit(limit).all()
 
-        return [_serialize_message(msg) for msg in messages]
+        return [_serialize_message_service(msg) for msg in messages]
 
     except HTTPException:
         raise
@@ -512,7 +487,7 @@ async def delete_conversation(
     Delete a conversation and all its messages (CASCADE).
     """
     try:
-        conversation = _get_conversation_or_404(db, conversation_id)
+        conversation = _get_conversation_or_404_service(db, conversation_id)
 
         # Delete conversation (messages will be CASCADE deleted)
         db.delete(conversation)

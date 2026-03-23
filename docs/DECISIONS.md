@@ -721,6 +721,25 @@ Mesmo depois das extrações maiores, `CardSelectionService` ainda repetia o mes
 - o serviço ficou menor e mais legível sem criar uma camada nova artificial
 - os caminhos de seleção agora compartilham o mesmo fechamento, o que reduz risco de drift de comportamento entre modos
 
+## 2026-03-23 - Remover wrappers REST redundantes do endpoint de chat
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do bloco REST para `api/app/services/chat_rest_service.py`, `chat.py` ainda mantinha wrappers locais só para repassar lookup e serialização ao mesmo serviço. Eles já não tinham utilidade além de aumentar o ruído do endpoint.
+
+### Decisão
+
+- remover esses wrappers locais de REST em `chat.py`
+- fazer os endpoints HTTP chamarem `chat_rest_service` diretamente
+- manter apenas os wrappers que ainda servem aos testes utilitários e aos helpers do fluxo WebSocket
+
+### Impacto
+
+- `chat.py` ficou mais próximo de um adaptador fino de verdade
+- o endpoint perdeu uma camada de indireção sem alterar o contrato externo
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
