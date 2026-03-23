@@ -499,6 +499,27 @@ Depois de extrair o payload Lingvist, `cards.py` ainda misturava duas responsabi
 - a próxima fatia pode atacar `submit_answer` ou a serialização restante com menos ruído incidental
 - o quality gate agora cobre também `tests/test_card_response_service.py`
 
+## 2026-03-23 - Tirar o ciclo base de answer submission de cards.py antes de rever regras de progressão
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois da extração de `CardResponse`, o `submit_answer` ainda carregava um bloco grande de efeito colateral: carregar ou criar `UserCardState`, montar `ReviewEvent`, aplicar o resultado do SM-2 de volta no estado e serializar o `AnswerResponse`. Isso deixava o endpoint pesado demais para a próxima rodada de simplificação.
+
+### Decisão
+
+- extrair esse ciclo base para `api/app/services/card_answer_service.py`
+- manter no endpoint apenas a validação principal, os updates agregados e a orquestração de progressão
+- preservar wrappers compatíveis para reduzir risco da fatia
+- validar com uma suíte unitária nova e com a integração Spec4 já existente
+
+### Impacto
+
+- `submit_answer` ficou menor e mais legível
+- a próxima fatia pode focar em progressão, stats ou commit/orquestração, sem precisar reler boilerplate de estado/resposta
+- o quality gate agora cobre também `tests/test_card_answer_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito

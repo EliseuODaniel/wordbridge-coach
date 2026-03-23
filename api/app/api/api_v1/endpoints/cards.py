@@ -16,6 +16,12 @@ from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorR
 from app.schemas.lingvist import LingvistCardResponse, MicroProgress
 from app.services.sm2 import SM2Algorithm
 from app.services.card_selection import CardSelectionService
+from app.services.card_answer_service import (
+    apply_sm2_result as _apply_sm2_result_service,
+    build_answer_response as _build_answer_response_service,
+    create_review_event as _create_review_event_service,
+    get_or_create_user_card_state as _get_or_create_user_card_state_service,
+)
 from app.services.lingvist_payload_service import (
     build_grammar_tag_pt as _build_grammar_tag_pt_service,
     build_lingvist_card_response as _build_lingvist_card_response_service,
@@ -392,6 +398,62 @@ def _get_or_create_daily_stats(db: Session, user_id: str):
     return daily_stats
 
 
+def _get_or_create_user_card_state(db: Session, user_id: str, card_id: str) -> UserCardState:
+    """Load or create the persisted per-user card state."""
+    return _get_or_create_user_card_state_service(db, user_id, card_id)
+
+
+def _create_review_event(
+    *,
+    user_id: str,
+    card_id: str,
+    sentence_id: str,
+    quality: int,
+    answer_data: AnswerRequest,
+    correct_answer: str,
+    is_correct: bool,
+    previous_easiness: float,
+    previous_interval: int,
+    sm2_result: dict
+) -> ReviewEvent:
+    """Build the persisted review event for an answer submission."""
+    return _create_review_event_service(
+        user_id=user_id,
+        card_id=card_id,
+        sentence_id=sentence_id,
+        quality=quality,
+        answer_data=answer_data,
+        correct_answer=correct_answer,
+        is_correct=is_correct,
+        previous_easiness=previous_easiness,
+        previous_interval=previous_interval,
+        sm2_result=sm2_result,
+    )
+
+
+def _apply_sm2_result(user_card_state: UserCardState, sm2_result: dict, is_correct: bool) -> None:
+    """Apply the SM-2 result back into the stored card state."""
+    _apply_sm2_result_service(user_card_state, sm2_result, is_correct)
+
+
+def _build_answer_response(
+    *,
+    is_correct: bool,
+    correct_answer: str,
+    sentence_full: str,
+    quality: int,
+    next_review_at
+) -> AnswerResponse:
+    """Serialize the stable answer payload returned by the endpoint."""
+    return _build_answer_response_service(
+        is_correct=is_correct,
+        correct_answer=correct_answer,
+        sentence_full=sentence_full,
+        quality=quality,
+        next_review_at=next_review_at,
+    )
+
+
 def _update_user_accuracy_last_20(db: Session, user_id: str, is_correct: bool) -> Optional[User]:
     """Recompute rolling accuracy for the user based on the latest answer."""
     from sqlalchemy import desc
@@ -698,28 +760,7 @@ async def submit_answer(
         user_id = _resolve_request_user_id(db, user_id)
 
         # Get or create UserCardState (always required for Spec4)
-        user_card_state = db.query(UserCardState).filter(
-            and_(
-                UserCardState.user_id == user_id,
-                UserCardState.card_id == card_id
-            )
-        ).first()
-
-        if not user_card_state:
-            # Create new state if doesn't exist
-            user_card_state = UserCardState(
-                id=str(uuid.uuid4()),
-                user_id=user_id,
-                card_id=card_id,
-                repetitions=0,
-                easiness_factor=2.5,
-                interval_days=1,
-                next_review_at=utc_now(),
-                status=MemoryStage.NEW,
-                total_reviews=0,
-                correct_reviews=0
-            )
-            db.add(user_card_state)
+        user_card_state = _get_or_create_user_card_state(db, user_id, card_id)
 
         # Calculate next review with SM-2
         # Capture previous values BEFORE updating UserCardState
@@ -740,21 +781,17 @@ async def submit_answer(
             raise
 
         # CRITICAL: Create ReviewEvent with sentence_id (Spec4 requirement)
-        review_event = ReviewEvent(
+        review_event = _create_review_event(
             user_id=user_id,
             card_id=card_id,
-            sentence_id=sentence_id,  # CRITICAL: Always populated for Spec4 variety
+            sentence_id=sentence_id,
             quality=quality,
-            response_time_ms=answer_data.response_time_ms,
-            user_answer=answer_data.answer,
+            answer_data=answer_data,
             correct_answer=correct_answer,
-            was_correct=is_correct,
-            hints_used=answer_data.hints_used,
-            attempts=answer_data.attempts,
+            is_correct=is_correct,
             previous_easiness=previous_easiness,
-            new_easiness=sm2_result["easiness_factor"],
             previous_interval=previous_interval,
-            new_interval=sm2_result["interval_days"]
+            sm2_result=sm2_result,
         )
         db.add(review_event)
         print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}, attempts={answer_data.attempts}")
@@ -768,22 +805,7 @@ async def submit_answer(
         if is_correct:
             daily_stats.add_new_word()
 
-        # Update UserCardState with SM-2 results
-        user_card_state.repetitions = sm2_result["repetitions"]
-        user_card_state.easiness_factor = sm2_result["easiness_factor"]
-        user_card_state.interval_days = sm2_result["interval_days"]
-        user_card_state.next_review_at = sm2_result["next_review_at"]
-        user_card_state.total_reviews += 1
-        if is_correct:
-            user_card_state.correct_reviews += 1
-
-        # Update memory stage based on new interval
-        if user_card_state.interval_days >= 21:
-            user_card_state.status = MemoryStage.MATURE
-        elif user_card_state.repetitions > 0:
-            user_card_state.status = MemoryStage.LEARNING
-        else:
-            user_card_state.status = MemoryStage.NEW
+        _apply_sm2_result(user_card_state, sm2_result, is_correct)
 
         user = _update_user_accuracy_last_20(db, user_id, is_correct)
         _update_relearn_state(db, user, user_card_state, card_id, user_id, quality)
@@ -827,15 +849,14 @@ async def submit_answer(
             raise
 
         try:
-            response_data = {
-                "correct": is_correct,
-                "correct_answer": correct_answer,
-                "sentence_full": sentence_full,
-                "quality": quality,
-                "next_review_at": sm2_result["next_review_at"]
-            }
-            print(f"DEBUG: Creating response with data: {response_data}")
-            return AnswerResponse(**response_data)
+            print("DEBUG: Creating answer response payload")
+            return _build_answer_response(
+                is_correct=is_correct,
+                correct_answer=correct_answer,
+                sentence_full=sentence_full,
+                quality=quality,
+                next_review_at=sm2_result["next_review_at"],
+            )
         except Exception as e:
             print(f"DEBUG: Error creating response: {e}")
             raise
