@@ -65,6 +65,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - as skills repo-locais agora cobrem também readiness de Codex, fatias de endpoint backend e fatias de sessão frontend
 - existe um quality gate inicial em `.github/workflows/quality.yml` para frontend e trilhas críticas de backend
 - o `chat.py` perdeu mais um pouco de acoplamento no loop WebSocket, com setup, dispatch e payloads de erro mais padronizados
+- o fluxo `user_message` do Chat Coach agora também está mais encapsulado, e a `teacher_analysis` passou a preferir contexto real das mensagens do aluno em vez de depender apenas de `session_summary`
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
 
@@ -156,6 +157,6 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 ## Próximos passos imediatos
 
 1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
-2. Continuar a próxima fatia de backend no Chat Coach, separando ainda mais a coordenação do `handle_user_message` e avaliando se o loop WebSocket já merece um módulo próprio.
+2. Continuar a próxima fatia de backend no Chat Coach, avaliando se o loop WebSocket já merece um módulo próprio ou um service/coordinator dedicado.
 3. Expandir a cobertura do backend para regras de progressão e idioma além da trilha recém-adicionada.
 4. Consolidar o quality gate novo em CI e decidir se a próxima etapa adiciona E2E automatizado no mesmo pipeline.

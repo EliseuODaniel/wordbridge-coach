@@ -639,6 +639,20 @@ def _build_chat_generation_inputs(conversation: ChatConversation, db: Session) -
     return messages, system_prompt, generation_config
 
 
+def _build_teacher_analysis_context(conversation: ChatConversation, db: Session, limit: int = 10) -> str:
+    """
+    Build teacher-analysis context from student messages when available.
+
+    Falls back to session_summary to preserve previous behavior when there is
+    no persisted user-message history yet.
+    """
+    teacher_messages = _build_teacher_context(str(conversation.id), db, limit=limit)
+    if teacher_messages:
+        return "\n".join(message["content"] for message in teacher_messages if message.get("content"))
+
+    return conversation.session_summary
+
+
 async def _freeze_user_message_feedback(
     websocket: WebSocket,
     conversation: ChatConversation,
@@ -693,6 +707,7 @@ async def _stream_assistant_response(
 async def _generate_teacher_analysis_with_fallback(
     teacher_provider,
     conversation: ChatConversation,
+    teacher_context: str,
     content: str,
 ) -> tuple[dict, bool]:
     """Return teacher analysis and whether it came from the fallback path."""
@@ -706,7 +721,7 @@ async def _generate_teacher_analysis_with_fallback(
 
         teacher_analysis = await teacher_provider.generate_teacher_analysis(
             user_message=content,
-            context=conversation.session_summary,
+            context=teacher_context,
             lesson_frame=conversation.lesson_frame_json
         )
 
@@ -801,6 +816,61 @@ async def _persist_and_emit_teacher_analysis(
             )
     except Exception as error:
         logger.error(f"[TEACHER_ANALYSIS] Failed to send fallback: {error}")
+
+
+async def _process_user_message_turn(
+    websocket: WebSocket,
+    data: dict,
+    conversation: ChatConversation,
+    db: Session,
+    chat_provider,
+    teacher_provider,
+) -> None:
+    """Run the full Chat Coach turn for a submitted user message."""
+    content = data.get("content", "")
+
+    await _freeze_user_message_feedback(
+        websocket=websocket,
+        conversation=conversation,
+        content=content,
+        chat_provider=chat_provider
+    )
+
+    user_message = _persist_user_message(db, conversation, content)
+    messages, system_prompt, generation_config = _build_chat_generation_inputs(conversation, db)
+
+    full_response = await _stream_assistant_response(
+        websocket=websocket,
+        conversation_id=str(conversation.id),
+        chat_provider=chat_provider,
+        messages=messages,
+        system_prompt=system_prompt,
+        generation_config=generation_config
+    )
+
+    await _finalize_assistant_turn(
+        websocket=websocket,
+        db=db,
+        conversation=conversation,
+        full_response=full_response
+    )
+
+    teacher_analysis_context = _build_teacher_analysis_context(conversation, db)
+    teacher_analysis, used_fallback = await _generate_teacher_analysis_with_fallback(
+        teacher_provider=teacher_provider,
+        conversation=conversation,
+        teacher_context=teacher_analysis_context,
+        content=content
+    )
+
+    await _persist_and_emit_teacher_analysis(
+        websocket=websocket,
+        db=db,
+        conversation=conversation,
+        user_message=user_message,
+        teacher_analysis=teacher_analysis,
+        used_fallback=used_fallback
+    )
 
 
 def _sanitize_assistant_response(response: str) -> str:
@@ -1268,51 +1338,11 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
 async def handle_user_message(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session,
                             chat_provider, teacher_provider):
     """Handle user_message event → stream assistant response → assistant_done"""
-    content = data.get("content", "")
-
-    # Run micro_eval to freeze feedback for the message being sent
-    # Note: micro_eval uses chat_provider (not teacher) since it's part of chat flow
-    await _freeze_user_message_feedback(
+    await _process_user_message_turn(
         websocket=websocket,
+        data=data,
         conversation=conversation,
-        content=content,
-        chat_provider=chat_provider
-    )
-
-    # Persist user message
-    user_message = _persist_user_message(db, conversation, content)
-
-    # Build messages for LLM excluding system (we'll inject fresh system_prompt)
-    messages, system_prompt, generation_config = _build_chat_generation_inputs(conversation, db)
-
-    full_response = await _stream_assistant_response(
-        websocket=websocket,
-        conversation_id=str(conversation.id),
+        db=db,
         chat_provider=chat_provider,
-        messages=messages,
-        system_prompt=system_prompt,
-        generation_config=generation_config
-    )
-
-    await _finalize_assistant_turn(
-        websocket=websocket,
-        db=db,
-        conversation=conversation,
-        full_response=full_response
-    )
-
-    # Generate teacher analysis (separate LLM call, JSON output only)
-    teacher_analysis, used_fallback = await _generate_teacher_analysis_with_fallback(
-        teacher_provider=teacher_provider,
-        conversation=conversation,
-        content=content
-    )
-
-    await _persist_and_emit_teacher_analysis(
-        websocket=websocket,
-        db=db,
-        conversation=conversation,
-        user_message=user_message,
-        teacher_analysis=teacher_analysis,
-        used_fallback=used_fallback
+        teacher_provider=teacher_provider
     )

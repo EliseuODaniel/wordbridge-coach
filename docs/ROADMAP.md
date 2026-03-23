@@ -62,6 +62,7 @@ Notas do baseline:
 - vigesima terceira microfatia aplicada: preparação do repositório para Codex com `AGENTS.md` por área, skills adicionais, guia de setup e quality gate inicial em CI
 - vigesima quarta microfatia aplicada: redução do peso do loop WebSocket de `chat.py` com helpers de setup, dispatch e erro
 - vigesima quinta microfatia aplicada: remoção de hardcodes de idioma em `VocabularyProgressionService` com cobertura focal nova
+- vigesima sexta microfatia aplicada: encapsulamento do turno `user_message` do Chat Coach e uso de contexto teacher baseado nas mensagens do aluno
 
 ## Fase 2: Limpeza estrutural
 
@@ -81,6 +82,7 @@ Prioridade alta:
 - [~] continuar quebrando o fluxo WebSocket de `chat.py` em helpers menores e testáveis
 - [~] continuar removendo pressupostos de idioma do domínio de progressão
 - [ ] isolar melhor integrações de LLM local e LanguageTool
+- [~] decidir se o próximo passo de chat é extrair um coordinator/service próprio para o WebSocket
 
 ## Fase 4: Qualidade e confiança
 

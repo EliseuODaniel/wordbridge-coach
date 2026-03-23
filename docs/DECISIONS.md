@@ -559,3 +559,23 @@ O loop WebSocket de `chat.py` já tinha melhorado bastante, mas ainda carregava 
 - o loop WebSocket ficou mais legível e mais fácil de continuar quebrando em slices
 - erros e setup ficaram mais consistentes
 - a próxima fatia de chat pode focar em separar orquestração restante, não em housekeeping do loop
+
+## 2026-03-23 - Fazer teacher analysis usar contexto real do aluno quando disponível
+
+Status: aceito
+
+### Contexto
+
+O Chat Coach já tinha um helper para construir contexto apenas com mensagens do aluno, mas a `teacher_analysis` ainda dependia principalmente de `session_summary`. Isso deixava uma fonte de contexto mais genérica do que o histórico real já persistido no banco.
+
+### Decisão
+
+- encapsular o turno `user_message` em um helper próprio
+- construir o contexto da `teacher_analysis` a partir das mensagens do aluno quando houver histórico
+- manter `session_summary` apenas como fallback para preservar comportamento em conversas sem histórico persistido
+
+### Impacto
+
+- a orquestração de `handle_user_message` ficou menor
+- a análise pedagógica do professor ficou mais coerente com o que o aluno realmente escreveu
+- os testes utilitários e o fluxo integrado de WebSocket passaram a proteger esse comportamento novo

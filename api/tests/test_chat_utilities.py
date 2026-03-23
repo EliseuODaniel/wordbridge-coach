@@ -18,10 +18,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from app.api.api_v1.endpoints.chat import (
     _sanitize_assistant_response,
     _merge_issues,
+    _build_ws_error_payload,
     _build_throttled_feedback,
     _build_chat_system_prompt,
     _build_chat_generation_config,
     _build_teacher_analysis_fallback,
+    _build_teacher_analysis_context,
     _attach_teacher_analysis_metadata,
     _build_teacher_analysis_event_payload,
     _build_assistant_done_payload,
@@ -244,6 +246,15 @@ def test_build_throttled_feedback_preserves_cached_payload():
     assert cached_feedback["server_ts_ms"] == 1000
 
 
+def test_build_ws_error_payload_uses_expected_schema():
+    """WebSocket errors should use the shared payload shape."""
+    payload = _build_ws_error_payload("Conversation not found", "NOT_FOUND")
+
+    assert payload["type"] == "error"
+    assert payload["message"] == "Conversation not found"
+    assert payload["code"] == "NOT_FOUND"
+
+
 def test_build_chat_system_prompt_uses_lesson_frame_defaults():
     """Prompt should reflect the lesson frame while keeping the tutor constraints."""
     prompt = _build_chat_system_prompt({
@@ -257,6 +268,37 @@ def test_build_chat_system_prompt_uses_lesson_frame_defaults():
     assert "asking_for_directions" in prompt
     assert "Always ask a follow-up question" in prompt
     assert "No examples, quotes, or meta-commentary" in prompt
+
+
+def test_build_teacher_analysis_context_prefers_user_messages(monkeypatch):
+    """Teacher analysis should prefer user-only message history over session summary."""
+    conversation = SimpleNamespace(id="conv-1", session_summary="summary fallback")
+
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.chat._build_teacher_context",
+        lambda conversation_id, db, limit=10: [
+            {"role": "user", "content": "First message"},
+            {"role": "user", "content": "Second message"},
+        ],
+    )
+
+    context = _build_teacher_analysis_context(conversation, db=object())
+
+    assert context == "First message\nSecond message"
+
+
+def test_build_teacher_analysis_context_falls_back_to_session_summary(monkeypatch):
+    """Teacher analysis should still work when no persisted user history exists."""
+    conversation = SimpleNamespace(id="conv-1", session_summary="summary fallback")
+
+    monkeypatch.setattr(
+        "app.api.api_v1.endpoints.chat._build_teacher_context",
+        lambda conversation_id, db, limit=10: [],
+    )
+
+    context = _build_teacher_analysis_context(conversation, db=object())
+
+    assert context == "summary fallback"
 
 
 def test_build_chat_generation_config_filters_stop_sequences():
@@ -329,7 +371,7 @@ def test_generate_teacher_analysis_with_fallback_returns_generated_payload():
 
         async def generate_teacher_analysis(self, user_message, context, lesson_frame):
             assert user_message == "I go to school"
-            assert context == "session-summary"
+            assert context == "teacher-only context"
             assert lesson_frame["topic"] == "school"
             return {"teacher_summary": "Nice work", "corrections": []}
 
@@ -343,6 +385,7 @@ def test_generate_teacher_analysis_with_fallback_returns_generated_payload():
         _generate_teacher_analysis_with_fallback(
             teacher_provider=FakeTeacherProvider(),
             conversation=conversation,
+            teacher_context="teacher-only context",
             content="I go to school",
         )
     )
@@ -370,6 +413,7 @@ def test_generate_teacher_analysis_with_fallback_uses_fallback_on_error():
         _generate_teacher_analysis_with_fallback(
             teacher_provider=FailingTeacherProvider(),
             conversation=conversation,
+            teacher_context="teacher-only context",
             content="I go to school",
         )
     )

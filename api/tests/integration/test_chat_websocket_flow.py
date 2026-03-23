@@ -50,7 +50,7 @@ class FakeTeacherProvider:
 
     async def generate_teacher_analysis(self, user_message, context, lesson_frame):
         assert user_message == "I go to school yesterday"
-        assert context == "session-summary"
+        assert context == "I go to school yesterday"
         assert lesson_frame["topic"] == "travel"
         return {
             "teacher_summary": "Good attempt. Watch the past tense.",
