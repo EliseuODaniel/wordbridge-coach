@@ -3,29 +3,19 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, select
-from datetime import timedelta
+from sqlalchemy import and_, func, select
 import uuid
 import os
 import logging
 
 from app.core.database import get_db
 from app.core.time import utc_now, utc_today
-from app.core.config import settings
-from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorResponse
-from app.schemas.lingvist import LingvistCardResponse, MicroProgress
+from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse
+from app.schemas.lingvist import LingvistCardResponse
 from app.services.card_selection import CardSelectionService
 from app.services.card_submission_service import submit_card_answer as _submit_card_answer_service
 from app.services.card_spec4_service import get_next_spec4_card_response as _get_next_spec4_card_response_service
 from app.services.card_lingvist_service import get_next_lingvist_card_response as _get_next_lingvist_card_response_service
-from app.services.lingvist_payload_service import (
-    build_grammar_tag_pt as _build_grammar_tag_pt_service,
-    build_relative_audio_urls as _build_relative_audio_urls_service,
-    extract_word_translation as _extract_word_translation_service,
-    get_lingvist_entities_from_context as _get_lingvist_entities_from_context_service,
-    get_micro_progress as _get_micro_progress_service,
-    get_user_target_language_code as _get_user_target_language_code_service,
-)
 from app.services.card_response_service import (
     format_card_response as _format_card_response_service,
     resolve_request_user_id as _resolve_request_user_id_service,
@@ -324,11 +314,6 @@ def _resolve_request_user_id(db: Session, user_id: Optional[str]) -> str:
     return _resolve_request_user_id_service(db, user_id)
 
 
-def _get_user_target_language_code(db: Session, user_id: str, default: str = "en") -> str:
-    """Return the target language code for a user when available."""
-    return _get_user_target_language_code_service(db, user_id, default=default)
-
-
 def _get_next_spec4_card_response(
     db: Session,
     *,
@@ -341,19 +326,6 @@ def _get_next_spec4_card_response(
         user_id=user_id,
         exclude_card_id=exclude_card_id,
     )
-
-
-def _get_lingvist_entities_from_context(
-    db: Session,
-    card_context: dict
-) -> tuple[Card, Word, Sentence]:
-    """Load the card, word, and sentence referenced by a card context payload."""
-    return _get_lingvist_entities_from_context_service(db, card_context)
-
-
-def _build_relative_audio_urls(card: Card, word: Word, sentence: Sentence, lang_code: str) -> tuple[str, str]:
-    """Build relative API audio URLs for a word and its filled sentence."""
-    return _build_relative_audio_urls_service(card, word, sentence, lang_code)
 
 
 def _get_next_lingvist_card_response(
@@ -369,6 +341,8 @@ def _get_next_lingvist_card_response(
         exclude_card_id=exclude_card_id,
         autofill_translations=_autofill_translations,
     )
+
+
 @router.get("/next", response_model=CardResponse)
 async def get_next_card(
     user_id: Optional[str] = None,  # For MVP, we'll use a mock user
@@ -592,24 +566,6 @@ async def get_next_card_lingvist(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}
         )
-
-
-def _build_grammar_tag_pt(word: 'Word') -> str:
-    """Build PT-BR grammar tag from word.part_of_speech and word.features"""
-    return _build_grammar_tag_pt_service(word)
-
-
-def _extract_word_translation(word: 'Word') -> Optional[str]:
-    """Extract PT-BR translation from Word.features.pt_translation
-
-    Returns None if translation is missing, None, empty string, or whitespace.
-    """
-    return _extract_word_translation_service(word)
-
-
-def _get_micro_progress(db: 'Session', user_id: str, user: 'User') -> 'MicroProgress':
-    """Calculate micro-progress from UserSessionStats and User for TODAY"""
-    return _get_micro_progress_service(db, user_id, user)
 
 
 @router.get("/health")
