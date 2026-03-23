@@ -783,3 +783,26 @@ Depois das extrações de runtime, draft, feedback, contexto e delivery, `chat.p
 - `chat.py` fica muito mais próximo de uma camada adaptadora de borda
 - os helpers puros ganham uma fronteira própria e testável fora do endpoint
 - o próximo corte pode focar no bloco REST/serialização ou em ampliar cobertura integrada do fluxo completo
+
+## 2026-03-23 - Mover lookup e serialização REST do Chat Coach para services
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações de runtime, draft, feedback, contexto, delivery e texto, `chat.py` ainda mantinha lookup de usuário/conversa e serialização do bloco REST. Isso era o restante mais evidente do acoplamento entre roteamento e detalhes de payload no endpoint.
+
+### Decisão
+
+- criar `api/app/services/chat_rest_service.py` para concentrar:
+  - lookup padronizado de usuário e conversa
+  - serialização de conversa e mensagem
+  - montagem do item de listagem com `message_count`
+- manter wrappers finos em `chat.py` para preservar compatibilidade com os testes e com os chamadores locais
+- adicionar cobertura dedicada e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` fica ainda mais próximo de um roteador/adaptador fino
+- o bloco REST do Chat Coach ganha fronteira própria e testável
+- o próximo corte natural já pode sair de `chat.py` e voltar para outros hotspots do backend, como `cards.py` e `card_selection.py`

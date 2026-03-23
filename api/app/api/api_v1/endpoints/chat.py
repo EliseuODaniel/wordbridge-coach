@@ -69,6 +69,13 @@ from app.services.chat_turn_service import (
     ChatUserMessageTurnHelpers,
     process_user_message_turn,
 )
+from app.services.chat_rest_service import (
+    get_conversation_or_404 as _get_conversation_or_404_service,
+    get_user_or_404 as _get_user_or_404_service,
+    serialize_conversation as _serialize_conversation_service,
+    serialize_conversation_list_item as _serialize_conversation_list_item_service,
+    serialize_message as _serialize_message_service,
+)
 
 # Feature flags (environment variables)
 CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "llamacpp")
@@ -102,72 +109,28 @@ async def _send_ws_error(websocket: WebSocket, message: str, code: str) -> None:
 
 
 def _get_user_or_404(db: Session, user_id: str) -> User:
-    """Load a user or raise a standardized 404 error."""
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "User not found", "message": f"User '{user_id}' not found"}
-        )
-    return user
+    """Wrapper kept for compatibility with local callers."""
+    return _get_user_or_404_service(db, user_id)
 
 
 def _get_conversation_or_404(db: Session, conversation_id: str) -> ChatConversation:
-    """Load a conversation or raise a standardized 404 error."""
-    conversation = db.query(ChatConversation).filter(
-        ChatConversation.id == conversation_id
-    ).first()
-    if not conversation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "Conversation not found", "message": f"Conversation '{conversation_id}' not found"}
-        )
-    return conversation
+    """Wrapper kept for compatibility with local callers."""
+    return _get_conversation_or_404_service(db, conversation_id)
 
 
 def _serialize_conversation(conversation: ChatConversation) -> ChatConversationResponse:
-    """Convert a ChatConversation model into the REST response schema."""
-    return ChatConversationResponse(
-        id=str(conversation.id),
-        user_id=str(conversation.user_id),
-        title=conversation.title,
-        student_profile_json=conversation.student_profile_json,
-        lesson_frame_json=conversation.lesson_frame_json,
-        session_summary=conversation.session_summary,
-        created_at=conversation.created_at,
-        updated_at=conversation.updated_at
-    )
+    """Wrapper kept for compatibility with local callers."""
+    return _serialize_conversation_service(conversation)
 
 
 def _serialize_message(message: ChatMessage) -> ChatMessageResponse:
-    """Convert a ChatMessage model into the REST response schema."""
-    return ChatMessageResponse(
-        id=str(message.id),
-        conversation_id=str(message.conversation_id),
-        role=message.role,
-        content=message.content,
-        metadata_json=message.metadata_json,
-        created_at=message.created_at
-    )
+    """Wrapper kept for compatibility with local callers."""
+    return _serialize_message_service(message)
 
 
 def _serialize_conversation_list_item(db: Session, conversation: ChatConversation) -> dict:
-    """Build the list payload for a conversation including message count."""
-    message_count = db.query(ChatMessage).filter(
-        ChatMessage.conversation_id == conversation.id
-    ).count()
-
-    return {
-        "id": str(conversation.id),
-        "user_id": str(conversation.user_id),
-        "title": conversation.title,
-        "student_profile_json": conversation.student_profile_json,
-        "lesson_frame_json": conversation.lesson_frame_json,
-        "session_summary": conversation.session_summary,
-        "created_at": conversation.created_at,
-        "updated_at": conversation.updated_at,
-        "message_count": message_count
-    }
+    """Wrapper kept for compatibility with local callers."""
+    return _serialize_conversation_list_item_service(db, conversation)
 
 
 def _initialize_micro_eval_tracking(conversation_id: str) -> None:
