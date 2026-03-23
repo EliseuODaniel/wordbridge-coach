@@ -734,3 +734,28 @@ Depois de extrair runtime, draft orchestration, feedback e turno `user_message`,
 - `chat.py` perde mais um bloco de queries e montagem de contexto
 - a fronteira de contexto do Chat Coach fica testável fora do endpoint
 - o próximo corte pode focar em persistência/eventos ou em cobertura mais integrada do fluxo completo
+
+## 2026-03-23 - Mover persistência e entrega final do Chat Coach para services
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações anteriores, `chat.py` ainda acumulava persistência de mensagens, construção dos payloads finais de `assistant_done` e `teacher_analysis`, e envio desses eventos ao cliente. Isso mantinha efeitos colaterais importantes ainda centralizados no endpoint.
+
+### Decisão
+
+- criar `api/app/services/chat_delivery_service.py` para concentrar:
+  - persistência das mensagens do usuário e do assistente
+  - atualização de metadados com `teacher_analysis`
+  - construção dos payloads finais
+  - envio do evento de `teacher_analysis`
+  - finalização do turno do assistente com sanitização injetada
+- manter wrappers finos em `chat.py` para preservar compatibilidade com os testes locais
+- adicionar cobertura dedicada e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais uma faixa de efeitos colaterais diretos
+- persistência e entrega final do Chat Coach passam a ter fronteira própria e testável
+- o próximo corte pode focar no restante dos helpers puros do endpoint ou no endurecimento da cobertura integrada do fluxo completo

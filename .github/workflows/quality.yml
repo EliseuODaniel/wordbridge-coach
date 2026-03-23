@@ -63,6 +63,7 @@ jobs:
       - run: python -m pytest tests/test_chat_draft_service.py -q
       - run: python -m pytest tests/test_chat_feedback_service.py -q
       - run: python -m pytest tests/test_chat_context_service.py -q
+      - run: python -m pytest tests/test_chat_delivery_service.py -q
       - run: python -m pytest tests/test_chat_runtime_service.py -q
       - run: python -m pytest tests/test_chat_turn_service.py -q
       - run: python -m pytest tests/test_chat_utilities.py -q

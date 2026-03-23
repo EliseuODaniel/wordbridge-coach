@@ -72,6 +72,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - o fluxo de `draft_update` e `request_autocomplete` do Chat Coach agora também é orquestrado por `api/app/services/chat_draft_service.py`, deixando os handlers do endpoint mais finos
 - a montagem de `draft_feedback` e as integrações com `micro_eval` e LanguageTool do Chat Coach agora vivem em `api/app/services/chat_feedback_service.py`, reduzindo mais uma camada de detalhe em `chat.py`
 - a construção de contexto de geração e de teacher analysis do Chat Coach agora também vive em `api/app/services/chat_context_service.py`, mantendo `chat.py` mais focado em adaptação de borda
+- a persistência de mensagens e os payloads/eventos finais do Chat Coach agora também vivem em `api/app/services/chat_delivery_service.py`, deixando `chat.py` com menos efeito colateral direto
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
 - o `UserSelection` deixou de usar stats aleatórias e agora consome idioma alvo, meta de vocabulário e stats reais disponíveis por perfil
@@ -164,6 +165,6 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 ## Próximos passos imediatos
 
 1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
-2. Continuar a extração do Chat Coach, agora avaliando se o próximo corte deve mover a persistência/eventos restantes para services ou endurecer mais a cobertura de integração do fluxo completo.
+2. Continuar a extração do Chat Coach, agora avaliando se o próximo corte deve atacar o restante dos helpers puros do endpoint ou endurecer mais a cobertura de integração do fluxo completo.
 3. Expandir a cobertura do backend para regras de progressão e idioma além da trilha recém-adicionada.
 4. Consolidar o quality gate novo em CI e decidir se a próxima etapa adiciona E2E automatizado no mesmo pipeline.

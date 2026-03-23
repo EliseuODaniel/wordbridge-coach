@@ -49,6 +49,16 @@ from app.services.chat_context_service import (
     build_teacher_analysis_context as _build_teacher_analysis_context_service,
     build_teacher_context as _build_teacher_context_service,
 )
+from app.services.chat_delivery_service import (
+    attach_teacher_analysis_metadata as _attach_teacher_analysis_metadata,
+    build_assistant_done_payload as _build_assistant_done_payload,
+    build_teacher_analysis_event_payload as _build_teacher_analysis_event_payload,
+    finalize_assistant_turn as _finalize_assistant_turn_service,
+    persist_and_emit_teacher_analysis as _persist_and_emit_teacher_analysis_service,
+    persist_assistant_message as _persist_assistant_message,
+    persist_user_message as _persist_user_message,
+    send_teacher_analysis_event as _send_teacher_analysis_event_service,
+)
 from app.services.chat_turn_service import (
     ChatUserMessageTurnHelpers,
     process_user_message_turn,
@@ -275,64 +285,6 @@ def _build_teacher_analysis_fallback(error: Exception) -> dict:
     }
 
 
-def _create_chat_message(conversation_id, role: str, content: str) -> ChatMessage:
-    """Create a chat message model instance for a conversation turn."""
-    return ChatMessage(
-        conversation_id=conversation_id,
-        role=role,
-        content=content
-    )
-
-
-def _persist_user_message(db: Session, conversation: ChatConversation, content: str) -> ChatMessage:
-    """Persist a user chat turn and return the stored message model."""
-    user_message = _create_chat_message(conversation.id, "user", content)
-    db.add(user_message)
-    db.commit()
-    return user_message
-
-
-def _persist_assistant_message(db: Session, conversation: ChatConversation, content: str) -> ChatMessage:
-    """Persist the assistant reply and refresh conversation update time."""
-    assistant_message = _create_chat_message(conversation.id, "assistant", content)
-    db.add(assistant_message)
-    conversation.updated_at = utc_now()
-    db.commit()
-    return assistant_message
-
-
-def _attach_teacher_analysis_metadata(user_message: ChatMessage, teacher_analysis: dict) -> None:
-    """Store teacher analysis inside the user message metadata payload."""
-    metadata = dict(user_message.metadata_json or {})
-    metadata["teacher_analysis"] = teacher_analysis
-    user_message.metadata_json = metadata
-
-
-def _build_teacher_analysis_event_payload(
-    conversation_id: str,
-    user_message_id: str,
-    analysis: dict
-) -> dict:
-    """Build the websocket payload for teacher analysis responses."""
-    return TeacherAnalysisOut(
-        type="teacher_analysis",
-        conversation_id=conversation_id,
-        user_message_id=user_message_id,
-        analysis=analysis
-    ).model_dump()
-
-
-def _build_assistant_done_payload(conversation_id: str, full_content: str, lesson_frame: dict) -> dict:
-    """Build the final assistant_done websocket payload."""
-    return AssistantDoneOut(
-        type="assistant_done",
-        conversation_id=conversation_id,
-        full_content=full_content,
-        lesson_frame=lesson_frame,
-        summary_update="Student sent a message."
-    ).model_dump()
-
-
 def _build_chat_generation_inputs(conversation: ChatConversation, db: Session) -> tuple[List[dict], str, dict]:
     """Adapt endpoint-local dependencies to the shared context service."""
     return _build_chat_generation_inputs_service(
@@ -433,23 +385,13 @@ async def _send_teacher_analysis_event(
     user_message_id: str,
     analysis: dict,
 ) -> None:
-    """Send the teacher analysis payload to the websocket client."""
-    event_payload = _build_teacher_analysis_event_payload(
+    """Adapt endpoint-local callers to the shared teacher-analysis event service."""
+    await _send_teacher_analysis_event_service(
+        websocket=websocket,
         conversation_id=conversation_id,
         user_message_id=user_message_id,
-        analysis=analysis
+        analysis=analysis,
     )
-
-    has_rewrite = bool(analysis and analysis.get('rewrite'))
-    corrections_count = len(analysis.get('corrections', [])) if analysis else 0
-
-    logger.info(
-        f"[TEACHER_ANALYSIS] Sending WS event: type={event_payload['type']}, "
-        f"conv={conversation_id[:8]}, payload_size={len(str(event_payload))}, "
-        f"has_rewrite={has_rewrite}, corrections_count={corrections_count}"
-    )
-    await websocket.send_json(event_payload)
-    logger.info("[TEACHER_ANALYSIS] WS event sent successfully")
 
 
 async def _finalize_assistant_turn(
@@ -458,24 +400,14 @@ async def _finalize_assistant_turn(
     conversation: ChatConversation,
     full_response: str,
 ) -> str:
-    """Sanitize, persist, and emit the final assistant response payload."""
-    sanitized_response = _sanitize_assistant_response(full_response)
-
-    logger.info(
-        f"[CHAT_SANITIZE] Original length: {len(full_response)}, "
-        f"Sanitized length: {len(sanitized_response)}, "
-        f"Removed: {len(full_response) - len(sanitized_response)} chars"
+    """Adapt endpoint-local callers to the shared assistant-finalization service."""
+    return await _finalize_assistant_turn_service(
+        websocket=websocket,
+        db=db,
+        conversation=conversation,
+        full_response=full_response,
+        sanitize_response=_sanitize_assistant_response,
     )
-
-    _persist_assistant_message(db, conversation, sanitized_response)
-    await websocket.send_json(
-        _build_assistant_done_payload(
-            conversation_id=str(conversation.id),
-            full_content=sanitized_response,
-            lesson_frame=conversation.lesson_frame_json
-        )
-    )
-    return sanitized_response
 
 
 async def _persist_and_emit_teacher_analysis(
@@ -486,26 +418,16 @@ async def _persist_and_emit_teacher_analysis(
     teacher_analysis: dict,
     used_fallback: bool,
 ) -> None:
-    """Persist teacher analysis when valid and emit the websocket event."""
-    try:
-        if not used_fallback:
-            _attach_teacher_analysis_metadata(user_message, teacher_analysis)
-            db.commit()
-
-        await _send_teacher_analysis_event(
-            websocket=websocket,
-            conversation_id=str(conversation.id),
-            user_message_id=str(user_message.id),
-            analysis=teacher_analysis
-        )
-
-        if used_fallback:
-            logger.info(
-                f"[TEACHER_ANALYSIS] Sent fallback with reason: "
-                f"{teacher_analysis['debug_reason']}"
-            )
-    except Exception as error:
-        logger.error(f"[TEACHER_ANALYSIS] Failed to send fallback: {error}")
+    """Adapt endpoint-local callers to the shared teacher-analysis delivery service."""
+    await _persist_and_emit_teacher_analysis_service(
+        websocket=websocket,
+        db=db,
+        conversation=conversation,
+        user_message=user_message,
+        teacher_analysis=teacher_analysis,
+        used_fallback=used_fallback,
+        send_event=_send_teacher_analysis_event,
+    )
 
 
 def _sanitize_assistant_response(response: str) -> str:
