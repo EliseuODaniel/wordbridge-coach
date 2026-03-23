@@ -497,3 +497,24 @@ Mesmo depois das simplificações locais das sessões, `StudySession` e `Lingvis
 - o shell do frontend ficou mais coerente com uma SPA React
 - a navegação entre modos perdeu um reload completo desnecessário
 - a fase atual fecha com a separação entre modos mais limpa do que no baseline inicial
+
+## 2026-03-23 - Preparar o repositório para uso mais forte com Codex
+
+Status: aceito
+
+### Contexto
+
+Depois da limpeza e da refatoração principal, o repositório já tinha uma boa base documental, mas ainda faltavam peças práticas para um uso mais forte com Codex no dia a dia: instruções por área, skills mais específicas, guia oficial de setup e quality gates versionados.
+
+### Decisão
+
+- adicionar `AGENTS.md` específicos para `api/`, `frontend/`, `tts/` e `tests/e2e/`
+- adicionar skills repo-locais para readiness de Codex, fatias de endpoint backend e fatias de sessão frontend
+- documentar setup recomendado de Codex e MCP em `docs/CODEX_SETUP.md`
+- adicionar um workflow inicial de qualidade em `.github/workflows/quality.yml`
+
+### Impacto
+
+- o repositório fica mais preparado para uso repetível com Codex
+- o onboarding técnico do agente fica mais claro por área
+- quality gates deixam de depender apenas de disciplina manual local

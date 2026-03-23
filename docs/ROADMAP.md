@@ -59,6 +59,7 @@ Notas do baseline:
 - vigesima microfatia aplicada: simplificação do `ChatCoachSession` com cleanup centralizado de autocomplete, foco e desconexão do WebSocket
 - vigesima primeira microfatia aplicada: simplificação do `LingvistSession` com reset de rodada, preload de audio e playback manual centralizados
 - vigesima segunda microfatia aplicada: centralização da troca entre `Spec4` e `Lingvist` no shell React, removendo reload completo entre modos
+- vigesima terceira microfatia aplicada: preparação do repositório para Codex com `AGENTS.md` por área, skills adicionais, guia de setup e quality gate inicial em CI
 
 ## Fase 2: Limpeza estrutural
 
@@ -84,6 +85,7 @@ Prioridade alta:
 - [~] manter suítes de backend com banco compartilhado em execução serial
 - [ ] revisar lacunas de cobertura nos fluxos críticos
 - [ ] eliminar falsos positivos de documentação e scripts antigos
+- [~] consolidar quality gates locais e em CI para frontend e backend crítico
 
 ## Critérios de sucesso
 

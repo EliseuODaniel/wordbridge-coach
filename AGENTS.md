@@ -14,6 +14,7 @@ Os arquivos oficiais do projeto são:
 - `docs/DECISIONS.md`: decisões arquiteturais registradas
 - `docs/TESTING.md`: estratégia e comandos de teste
 - `docs/LOCAL_LLM_SETUP.md`: setup local dos modelos
+- `docs/CODEX_SETUP.md`: setup recomendado para Codex, skills e MCPs
 
 Não usamos mais OpenSpec neste projeto. Não crie ou mantenha uma árvore paralela de specs.
 
@@ -28,6 +29,7 @@ Responsabilidades:
 - manter documentação e código alinhados
 - preferir mudanças pequenas, testáveis e reversíveis
 - registrar decisões que alterem arquitetura, workflow ou setup
+- respeitar `AGENTS.md` locais em subpastas quando existirem
 
 ## Workflow padrão
 
@@ -52,6 +54,7 @@ Responsabilidades:
 - Não mantenha comentários apontando para documentação removida.
 - Não reintroduza instruções específicas de Claude, OpenSpec ou fluxos paralelos.
 - Para trabalho repetitivo, use skills repo-locais em `.agents/skills/`.
+- Configurações de MCP devem ser tratadas como setup do ambiente do agente, não como segredo commitado no repositório.
 
 ## Regras de validação
 
@@ -72,3 +75,11 @@ Para refatorações:
 ## Skills repo-locais
 
 As skills em `.agents/skills/` existem para workflows repetitivos. Elas complementam este arquivo; não substituem a documentação oficial.
+
+## Setup Codex
+
+Para preparar o ambiente do agente:
+
+- leia `docs/CODEX_SETUP.md`
+- use `AGENTS.md` da raiz e, quando aplicável, os `AGENTS.md` de `api/`, `frontend/`, `tts/` e `tests/e2e/`
+- mantenha skills, docs e quality gates coerentes entre si

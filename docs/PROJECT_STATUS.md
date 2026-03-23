@@ -61,6 +61,9 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - o `ChatCoachSession` agora também centraliza melhor cleanup local de autocomplete, foco do composer e desconexão do WebSocket, reduzindo coordenação espalhada no componente
 - o `LingvistSession` agora reaproveita melhor reset de rodada, preload de audio e playback manual, reduzindo duplicação sem alterar o fluxo de treino
 - a troca entre `Spec4` e `Lingvist` agora passa pelo shell React em vez de recarregar a página, o que reduz acoplamento com URL e deixa a navegação entre modos mais consistente
+- o repositório agora tem `AGENTS.md` por área em `api/`, `frontend/`, `tts/` e `tests/e2e/`, além de um guia oficial de setup em `docs/CODEX_SETUP.md`
+- as skills repo-locais agora cobrem também readiness de Codex, fatias de endpoint backend e fatias de sessão frontend
+- existe um quality gate inicial em `.github/workflows/quality.yml` para frontend e trilhas críticas de backend
 
 ### Hotspots confirmados para refatoracao
 
@@ -152,4 +155,4 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
 2. Continuar a próxima fatia de backend no Chat Coach, separando ainda mais a coordenação do `handle_user_message` e abrindo caminho para testes de fluxo WebSocket mais completos.
 3. Expandir a mesma confiabilidade de teste para WebSocket/chat e integrações auxiliares alem dos utilitários já cobertos.
-4. Consolidar a rodada atual com commit/push da fase e usar este baseline como novo ponto de partida para qualquer feature futura.
+4. Consolidar o quality gate novo em CI e decidir se a próxima etapa adiciona E2E automatizado no mesmo pipeline.

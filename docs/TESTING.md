@@ -78,6 +78,13 @@ docker compose up -d --build
 docker compose ps
 ```
 
+## CI
+
+Existe um baseline inicial de quality gate em `.github/workflows/quality.yml` cobrindo:
+
+- `frontend`: `npm ci`, `npm run lint`, `npm run build`
+- `api`: trilhas críticas já validadas de chat utilitário, WebSocket e Spec4
+
 ## Regra prática
 
 - mudanças de backend: rode `pytest` no escopo tocado

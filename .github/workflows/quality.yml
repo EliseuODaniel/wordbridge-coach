@@ -1,0 +1,64 @@
+name: Quality
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+      - "chore/**"
+      - "hotfix/**"
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: filltheword_test
+          POSTGRES_USER: ftw_user
+          POSTGRES_PASSWORD: ftw_password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U ftw_user -d filltheword_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PYTHONPATH: .
+      TEST_DATABASE_URL: postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            api/requirements.txt
+            api/requirements-test.txt
+      - run: pip install -r requirements.txt -r requirements-test.txt
+      - run: python -m pytest tests/test_chat_utilities.py -q
+      - run: python -m pytest tests/integration/test_chat_websocket_flow.py -q
+      - run: python -m pytest tests/integration/test_spec4_card_selection.py -q

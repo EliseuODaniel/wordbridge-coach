@@ -20,6 +20,7 @@ Aplicação local para treino de vocabulário com lacunas, repetição espaçada
 - [`docs/DECISIONS.md`](docs/DECISIONS.md)
 - [`docs/TESTING.md`](docs/TESTING.md)
 - [`docs/LOCAL_LLM_SETUP.md`](docs/LOCAL_LLM_SETUP.md)
+- [`docs/CODEX_SETUP.md`](docs/CODEX_SETUP.md)
 
 ## Quick start
 
