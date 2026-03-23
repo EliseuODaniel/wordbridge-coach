@@ -20,6 +20,12 @@ from app.services.card_selection_policy_service import (
     should_try_new_card_lingvist as _should_try_new_card_lingvist_service,
     should_try_new_card_spec4 as _should_try_new_card_spec4_service,
 )
+from app.services.card_selection_query_service import (
+    count_reviews_due as _count_reviews_due_service,
+    get_due_relearn_candidate as _get_due_relearn_candidate_service,
+    get_due_review_candidates as _get_due_review_candidates_service,
+    get_recent_correct_word_ids as _get_recent_correct_word_ids_service,
+)
 from app.services.vocabulary_progression import VocabularyProgressionService
 
 
@@ -282,54 +288,19 @@ class CardSelectionService:
             max_count: Maximum number of candidates to return
             exclude_card_id: Optional specific card to exclude (by Card.id, NOT Word.id)
         """
-        from sqlalchemy import desc
-        from app.models.user_card_state import MemoryStage
-
-        # Get user's progress for gating
         progress = self.progression_service.get_or_create_user_progress(user_id)
         user, target_lang = self._get_user_and_target_language(user_id)
         if not target_lang:
             return []
-        target_lang_code = target_lang.code
-
-        # Build query for due cards
-        # Note: We filter by Card.id in exclude_card_id, NOT by Word.id
-        query = db.query(UserCardState, Word).join(
-            Card, UserCardState.card_id == Card.id
-        ).join(
-            Sentence, Card.sentence_id == Sentence.id
-        ).join(
-            Word, Sentence.word_id == Word.id
-        ).filter(
-            UserCardState.user_id == user_id,
-            Word.language_id == user.target_language_id,
-            UserCardState.next_review_at <= utc_now(),
-            UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE])
+        return _get_due_review_candidates_service(
+            db,
+            user_id=user_id,
+            target_language_id=user.target_language_id,
+            target_language_code=target_lang.code,
+            max_contiguous_mastered_rank=progress.max_contiguous_mastered_rank,
+            max_count=max_count,
+            exclude_card_id=exclude_card_id,
         )
-
-        # Apply max_contiguous_mastered_rank gating (prefix)
-        if progress.max_contiguous_mastered_rank > 0:
-            # Allow words within mastered prefix + reasonable range for sparse data
-            max_allowed_rank = progress.max_contiguous_mastered_rank + 100  # Generous range
-            query = query.join(WordFrequency,
-                and_(
-                    func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                    WordFrequency.language_code == target_lang_code  # Use user's target language
-                )
-            ).filter(WordFrequency.rank <= max_allowed_rank)
-
-        # Exclude specific card if provided (by Card.id, NOT Word.id)
-        if exclude_card_id:
-            query = query.filter(UserCardState.card_id != exclude_card_id)
-
-        # Order by priority (errors first, then interval, then random)
-        # For now, simple ordering by next_review_at
-        query = query.order_by(UserCardState.next_review_at).limit(max_count)
-
-        results = query.all()
-
-        # Convert to tuples of (Word, UserCardState)
-        return [(word, ucs) for ucs, word in results]
 
     def _get_review_card(self, user_id: str, review_candidates, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get a review card from candidates
@@ -606,45 +577,20 @@ class CardSelectionService:
         Returns:
             Set of word IDs recently answered correctly
         """
-        cutoff_date = utc_now() - timedelta(days=days)
-
-        recent_correct = self.db.query(ReviewEvent)\
-            .join(Card, ReviewEvent.card_id == Card.id)\
-            .join(Sentence, Card.sentence_id == Sentence.id)\
-            .filter(
-                and_(
-                    ReviewEvent.user_id == user_id,
-                    ReviewEvent.created_at >= cutoff_date,
-                    ReviewEvent.was_correct == True  # ONLY correct answers
-                )
-            )\
-            .distinct(Sentence.word_id)\
-            .limit(limit)\
-            .all()
-
-        return {review_event.card.sentence.word_id for review_event in recent_correct if review_event.card and review_event.card.sentence}
+        return _get_recent_correct_word_ids_service(
+            self.db,
+            user_id=user_id,
+            days=days,
+            limit=limit,
+        )
 
     def _get_due_relearn_card(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get next due relearn card (highest priority in Lingvist mode)"""
-        from sqlalchemy import desc
-
-        query = self.db.query(UserCardState, Word).join(
-            Card, UserCardState.card_id == Card.id
-        ).join(
-            Sentence, Card.sentence_id == Sentence.id
-        ).join(
-            Word, Sentence.word_id == Word.id
-        ).filter(
-            UserCardState.user_id == user_id,
-            UserCardState.is_relearn == True,
-            UserCardState.relearn_due <= utc_now()
+        result = _get_due_relearn_candidate_service(
+            self.db,
+            user_id=user_id,
+            exclude_card_id=exclude_card_id,
         )
-
-        if exclude_card_id:
-            query = query.filter(UserCardState.card_id != exclude_card_id)
-
-        # Prioritize by relearn_due (oldest first)
-        result = query.order_by(UserCardState.relearn_due).first()
 
         if not result:
             return None
@@ -660,15 +606,7 @@ class CardSelectionService:
 
     def _count_reviews_due(self, user_id: str) -> int:
         """Count cards due for review (excluding new cards)"""
-        from app.models.user_card_state import MemoryStage
-
-        count = self.db.query(UserCardState).filter(
-            UserCardState.user_id == user_id,
-            UserCardState.next_review_at <= utc_now(),
-            UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE])
-        ).count()
-
-        return count
+        return _count_reviews_due_service(self.db, user_id)
 
     def _calculate_adaptive_new_share(self, user: User) -> float:
         """Calculate adaptive new card share based on user accuracy"""

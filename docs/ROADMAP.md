@@ -82,6 +82,7 @@ Notas do baseline:
 - quadragesima terceira microfatia aplicada: extração da orquestração de `next-lingvist` para `api/app/services/card_lingvist_service.py`, com endpoint reduzido a adaptador fino e cobertura própria no quality gate
 - quadragesima quarta microfatia aplicada: extração da criação/garantia de `Card` e da montagem do payload comum de seleção para `api/app/services/card_selection_payload_service.py`, reduzindo o peso de `CardSelectionService`
 - quadragesima quinta microfatia aplicada: extração das regras de mistura e decisão de tentativa de card novo para `api/app/services/card_selection_policy_service.py`, reduzindo o peso de `CardSelectionService`
+- quadragesima sexta microfatia aplicada: extração das queries de review, relearn, backlog e anti-repetição correta para `api/app/services/card_selection_query_service.py`, reduzindo o peso de `CardSelectionService`
 
 ## Fase 2: Limpeza estrutural
 

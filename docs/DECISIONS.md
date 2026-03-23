@@ -643,6 +643,26 @@ Depois da extração do payload comum, `CardSelectionService` ainda concentrava 
 - a próxima fatia pode entrar nas queries de review/relearn ou nos fallbacks, sem carregar junto regras de política
 - o quality gate agora cobre também `tests/test_card_selection_policy_service.py`
 
+## 2026-03-23 - Tirar as queries de review/relearn de CardSelectionService antes de revisar fallbacks
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do payload e da política de mistura, `CardSelectionService` ainda concentrava boa parte das queries SQL de review, relearn, backlog e anti-repetição. Esse miolo já estava estável, mas ainda misturava acesso a banco com a orquestração da seleção.
+
+### Decisão
+
+- extrair essas queries para `api/app/services/card_selection_query_service.py`
+- manter `CardSelectionService` apenas coordenando os fluxos e consumindo os resultados
+- validar com suíte unitária própria e regressões de Spec4/themes
+
+### Impacto
+
+- `CardSelectionService` ficou mais próximo de um orquestrador de domínio
+- a próxima fatia pode focar nos fallbacks finais e em métodos legados como `_get_word_by_rank`
+- o quality gate agora cobre também `tests/test_card_selection_query_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
