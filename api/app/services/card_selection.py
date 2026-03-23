@@ -11,6 +11,9 @@ from app.models import (
     UserCardState, WordFrequency, Language
 )
 from app.core.time import utc_now
+from app.services.card_selection_payload_service import (
+    build_card_context_payload as _build_card_context_payload_service,
+)
 from app.services.vocabulary_progression import VocabularyProgressionService
 
 
@@ -508,94 +511,13 @@ class CardSelectionService:
         Returns:
             Dictionary with card data for API response
         """
-        from app.models import Card
-
-        # Find or create card for this sentence
-        card = self.db.query(Card).filter(
-            Card.sentence_id == sentence.id,
-            Card.is_active == True
-        ).first()
-
-        if not card:
-            # Auto-create Card on-the-fly (Spec4 requirement - never return None)
-            print(f"INFO: Auto-creating card for sentence {sentence.id}, word {word.text}")
-
-            from app.models import Deck
-
-            # Find or create default deck for this language
-            deck = self.db.query(Deck).filter(
-                Deck.language_id == word.language_id,
-                Deck.is_active == True
-            ).first()
-
-            if not deck:
-                # Create default deck if none exists
-                deck = Deck(
-                    name=f"Default {word.language_id}",
-                    language_id=word.language_id,
-                    difficulty_level=1,
-                    description="Auto-created default deck",
-                    is_active=True
-                )
-                self.db.add(deck)
-                self.db.flush()
-
-            # Calculate gap positions from sentence text
-            text = sentence.text or ""
-            gap_start = text.find("___")
-            gap_end = gap_start + 3 if gap_start >= 0 else len(text)
-
-            # Create card
-            card = Card(
-                sentence_id=sentence.id,
-                deck_id=deck.id,
-                grammar_hint="",  # Can be enhanced later with word.part_of_speech
-                gap_start=gap_start,
-                gap_end=gap_end,
-                is_active=True
-            )
-            self.db.add(card)
-            self.db.flush()
-
-            print(f"INFO: Created card {card.id} for sentence {sentence.id}")
-
-        # Get user's target language code for audio URLs
-        lang_code = 'en'  # Default fallback
-        _, target_lang = self._get_user_and_target_language(user_id)
-        if target_lang:
-            lang_code = target_lang.code
-
-        # Build audio URLs using TTS service endpoints (via nginx proxy)
-        from urllib.parse import quote
-
-        # Word audio URL
-        word_text_encoded = quote(word.text or "")
-        audio_word_url = f"/api/tts/word/{card.id}?text={word_text_encoded}&lang={lang_code}"
-
-        # Sentence audio URL - replace ___ with actual word
-        sentence_with_gap = sentence.text or ""
-        sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
-        sentence_text_encoded = quote(sentence_with_word)
-        audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
-
-        return {
-            "card_id": str(card.id),
-            "word_id": str(word.id),
-            "sentence_id": str(sentence.id),
-            "word": word.text,
-            "sentence": sentence.text or "",
-            "gap": {
-                "start": card.gap_start or 0,
-                "end": card.gap_end or 0
-            },
-            "sentence_translation": sentence.translation or "",
-            "grammar_hint": card.grammar_hint or "",
-            "memory_stage": "NEW" if is_new else "REVIEW",
-            "is_new": is_new,
-            "audio_word_url": audio_word_url,
-            "audio_sentence_url": audio_sentence_url,
-            "sentence_source": sentence.source_title if sentence.source_title else None
-        }
+        return _build_card_context_payload_service(
+            self.db,
+            user_id=user_id,
+            word=word,
+            sentence=sentence,
+            is_new=is_new,
+        )
 
     def record_answer(self, user_id: str, word_id: str, sentence_id: str,
                      was_correct: bool, response_time_ms: int, quality: int) -> Dict[str, Any]:

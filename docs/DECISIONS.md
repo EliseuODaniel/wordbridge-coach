@@ -603,6 +603,26 @@ Depois da extração de `next-spec4`, o maior bloco remanescente em `cards.py` e
 - a próxima fatia pode focar em wrappers/resíduos restantes ou sair de `cards.py`
 - o quality gate agora cobre também `tests/test_card_lingvist_service.py`
 
+## 2026-03-23 - Tirar a montagem de contexto comum de CardSelectionService antes de revisar heurísticas
+
+Status: aceito
+
+### Contexto
+
+Depois de afinar os endpoints de `cards.py`, o maior bloco utilitário remanescente passou a ser `_build_card_context` em `CardSelectionService`. Ele misturava criação automática de `Card`, escolha/criação de deck padrão, idioma alvo do usuário e montagem do payload retornado para Spec4 e Lingvist.
+
+### Decisão
+
+- extrair esse bloco para `api/app/services/card_selection_payload_service.py`
+- manter `CardSelectionService` apenas delegando a criação/garantia do card e a serialização comum
+- validar com suíte unitária própria e regressões de Spec4/themes
+
+### Impacto
+
+- `CardSelectionService` ficou mais focado nas heurísticas de seleção
+- a próxima fatia pode mirar regras de mistura, backlog e relearn, não mais payload/housekeeping
+- o quality gate agora cobre também `tests/test_card_selection_payload_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
