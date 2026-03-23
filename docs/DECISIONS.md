@@ -643,3 +643,23 @@ Mesmo após várias extrações locais, `api/app/api/api_v1/endpoints/chat.py` a
 - o endpoint de chat fica mais fino e mais próximo de uma camada de borda
 - a orquestração WebSocket ganha uma fronteira interna testável fora do endpoint
 - o próximo corte pode focar em mover mais coordenação de turno ou isolar melhor integrações externas sem reabrir o mesmo acoplamento estrutural
+
+## 2026-03-23 - Mover a coordenação do turno user_message para services
+
+Status: aceito
+
+### Contexto
+
+Mesmo com o runtime do WebSocket já extraído, `chat.py` ainda carregava a sequência completa do turno `user_message`: congelamento de feedback, persistência da mensagem do aluno, geração da resposta, finalização do turno e emissão de `teacher_analysis`.
+
+### Decisão
+
+- criar `api/app/services/chat_turn_service.py` para concentrar a orquestração do turno `user_message`
+- manter os helpers já validados em `chat.py` por enquanto, injetando-os como dependências explícitas
+- adicionar um teste focal de ordem/orquestração e incluir essa suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais uma responsabilidade de coordenação sem exigir uma migração brusca dos helpers internos
+- a sequência do turno fica testável como unidade própria
+- o próximo corte pode atacar `draft_update` e `request_autocomplete`, ou então isolar melhor integrações externas como LLM e LanguageTool

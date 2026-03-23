@@ -29,6 +29,10 @@ from app.services.chat_runtime_service import (
     build_ws_error_payload as _build_ws_error_payload,
     route_websocket_event,
 )
+from app.services.chat_turn_service import (
+    ChatUserMessageTurnHelpers,
+    process_user_message_turn,
+)
 
 # Feature flags (environment variables)
 CHAT_LLM_PROVIDER = os.getenv("CHAT_LLM_PROVIDER", "llamacpp")
@@ -757,61 +761,6 @@ async def _persist_and_emit_teacher_analysis(
         logger.error(f"[TEACHER_ANALYSIS] Failed to send fallback: {error}")
 
 
-async def _process_user_message_turn(
-    websocket: WebSocket,
-    data: dict,
-    conversation: ChatConversation,
-    db: Session,
-    chat_provider,
-    teacher_provider,
-) -> None:
-    """Run the full Chat Coach turn for a submitted user message."""
-    content = data.get("content", "")
-
-    await _freeze_user_message_feedback(
-        websocket=websocket,
-        conversation=conversation,
-        content=content,
-        chat_provider=chat_provider
-    )
-
-    user_message = _persist_user_message(db, conversation, content)
-    messages, system_prompt, generation_config = _build_chat_generation_inputs(conversation, db)
-
-    full_response = await _stream_assistant_response(
-        websocket=websocket,
-        conversation_id=str(conversation.id),
-        chat_provider=chat_provider,
-        messages=messages,
-        system_prompt=system_prompt,
-        generation_config=generation_config
-    )
-
-    await _finalize_assistant_turn(
-        websocket=websocket,
-        db=db,
-        conversation=conversation,
-        full_response=full_response
-    )
-
-    teacher_analysis_context = _build_teacher_analysis_context(conversation, db)
-    teacher_analysis, used_fallback = await _generate_teacher_analysis_with_fallback(
-        teacher_provider=teacher_provider,
-        conversation=conversation,
-        teacher_context=teacher_analysis_context,
-        content=content
-    )
-
-    await _persist_and_emit_teacher_analysis(
-        websocket=websocket,
-        db=db,
-        conversation=conversation,
-        user_message=user_message,
-        teacher_analysis=teacher_analysis,
-        used_fallback=used_fallback
-    )
-
-
 def _sanitize_assistant_response(response: str) -> str:
     """
     Remove meta-commentary and extra user simulation from LLM response.
@@ -1278,11 +1227,21 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
 async def handle_user_message(websocket: WebSocket, data: dict, conversation: ChatConversation, db: Session,
                             chat_provider, teacher_provider):
     """Handle user_message event → stream assistant response → assistant_done"""
-    await _process_user_message_turn(
+    await process_user_message_turn(
         websocket=websocket,
         data=data,
         conversation=conversation,
         db=db,
         chat_provider=chat_provider,
-        teacher_provider=teacher_provider
+        teacher_provider=teacher_provider,
+        helpers=ChatUserMessageTurnHelpers(
+            freeze_feedback=_freeze_user_message_feedback,
+            persist_user_message=_persist_user_message,
+            build_generation_inputs=_build_chat_generation_inputs,
+            stream_assistant_response=_stream_assistant_response,
+            finalize_assistant_turn=_finalize_assistant_turn,
+            build_teacher_analysis_context=_build_teacher_analysis_context,
+            generate_teacher_analysis_with_fallback=_generate_teacher_analysis_with_fallback,
+            persist_and_emit_teacher_analysis=_persist_and_emit_teacher_analysis,
+        ),
     )

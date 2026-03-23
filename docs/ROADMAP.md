@@ -66,6 +66,7 @@ Notas do baseline:
 - vigesima setima microfatia aplicada: criação de runtime dedicado para a sessão WebSocket do Chat Coach
 - vigesima oitava microfatia aplicada: limpeza do `UserSelection` para usar idioma/meta reais e stats reais por perfil
 - vigesima nona microfatia aplicada: extração do runtime e do roteamento base do WebSocket de chat para `api/app/services/chat_runtime_service.py`, com cobertura unitária própria e inclusão no quality gate
+- trigesima microfatia aplicada: extração da coordenação do turno `user_message` para `api/app/services/chat_turn_service.py`, com teste focal de orquestração e inclusão no quality gate
 
 ## Fase 2: Limpeza estrutural
 
