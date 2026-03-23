@@ -76,6 +76,7 @@ Notas do baseline:
 - trigesima setima microfatia aplicada: extração do enriquecimento do payload Lingvist para `api/app/services/lingvist_payload_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - trigesima oitava microfatia aplicada: extração da resolução do usuário padrão e da serialização comum de `CardResponse` para `api/app/services/card_response_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - trigesima nona microfatia aplicada: extração da criação de `UserCardState`, de `ReviewEvent`, da aplicação do resultado SM-2 e da serialização de `AnswerResponse` para `api/app/services/card_answer_service.py`, com wrappers compatíveis e cobertura própria no quality gate
+- quadragesima microfatia aplicada: extração da orquestração agregada de stats e progressão de `submit_answer` para `api/app/services/card_progress_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 
 ## Fase 2: Limpeza estrutural
 

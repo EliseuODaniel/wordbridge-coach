@@ -22,6 +22,14 @@ from app.services.card_answer_service import (
     create_review_event as _create_review_event_service,
     get_or_create_user_card_state as _get_or_create_user_card_state_service,
 )
+from app.services.card_progress_service import (
+    apply_post_answer_updates as _apply_post_answer_updates_service,
+    get_or_create_daily_stats as _get_or_create_daily_stats_service,
+    record_spec4_progress as _record_spec4_progress_service,
+    update_relearn_state as _update_relearn_state_service,
+    update_theme_stats as _update_theme_stats_service,
+    update_user_accuracy_last_20 as _update_user_accuracy_last_20_service,
+)
 from app.services.lingvist_payload_service import (
     build_grammar_tag_pt as _build_grammar_tag_pt_service,
     build_lingvist_card_response as _build_lingvist_card_response_service,
@@ -374,28 +382,7 @@ def _build_lingvist_card_response(
 
 def _get_or_create_daily_stats(db: Session, user_id: str):
     """Load today's daily stats row, creating it when needed."""
-    from app.models.user_daily_stats import UserDailyStats
-
-    today = utc_today()
-    daily_stats = db.query(UserDailyStats).filter(
-        UserDailyStats.user_id == user_id,
-        UserDailyStats.date == today
-    ).first()
-
-    if daily_stats:
-        return daily_stats
-
-    daily_stats = UserDailyStats(
-        user_id=user_id,
-        date=today,
-        cards_answered=0,
-        new_words_learned=0,
-        reviews_done=0,
-        accuracy=0.0
-    )
-    db.add(daily_stats)
-    db.flush()
-    return daily_stats
+    return _get_or_create_daily_stats_service(db, user_id)
 
 
 def _get_or_create_user_card_state(db: Session, user_id: str, card_id: str) -> UserCardState:
@@ -456,26 +443,7 @@ def _build_answer_response(
 
 def _update_user_accuracy_last_20(db: Session, user_id: str, is_correct: bool) -> Optional[User]:
     """Recompute rolling accuracy for the user based on the latest answer."""
-    from sqlalchemy import desc
-
-    recent_20 = db.query(ReviewEvent)\
-        .filter(ReviewEvent.user_id == user_id)\
-        .order_by(desc(ReviewEvent.created_at))\
-        .limit(19)\
-        .all()
-
-    correct_count = sum(1 for review in recent_20 if review.was_correct)
-    if is_correct:
-        correct_count += 1
-
-    total_count = len(recent_20) + 1
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return None
-
-    user.accuracy_last_20 = correct_count / total_count if total_count > 0 else None
-    print(f"DEBUG: Updated user accuracy_last_20={user.accuracy_last_20}")
-    return user
+    return _update_user_accuracy_last_20_service(db, user_id, is_correct)
 
 
 def _update_relearn_state(
@@ -487,31 +455,7 @@ def _update_relearn_state(
     quality: int
 ) -> None:
     """Apply Lingvist relearn queue updates for the reviewed card."""
-    if not user or user.mode != 'lingvist':
-        return
-
-    should_relearn = SM2Algorithm.should_enter_relearn(quality)
-
-    if should_relearn:
-        user_card_state.is_relearn = True
-
-        relearn_count = db.query(ReviewEvent)\
-            .filter(
-                ReviewEvent.user_id == user_id,
-                ReviewEvent.card_id == card_id,
-                ReviewEvent.quality < 3
-            )\
-            .count()
-
-        relearn_interval = SM2Algorithm.calculate_relearn_interval(relearn_count)
-        user_card_state.relearn_due = utc_now() + relearn_interval
-        print(f"DEBUG: Card entered relearn queue, due in {relearn_interval}, count={relearn_count}")
-        return
-
-    if user_card_state.is_relearn:
-        user_card_state.is_relearn = False
-        user_card_state.relearn_due = None
-        print("DEBUG: Card exited relearn queue, returning to normal SM-2")
+    _update_relearn_state_service(db, user, user_card_state, card_id, user_id, quality)
 
 
 def _update_theme_stats(
@@ -522,43 +466,55 @@ def _update_theme_stats(
     response_time_ms: int
 ) -> None:
     """Update theme-level stats for every active theme linked to the word."""
-    theme_mappings = db.query(WordThemeMapping.theme_id).filter(
-        and_(
-            WordThemeMapping.word_id == word_id,
-            WordThemeMapping.is_active == True
-        )
-    ).all()
+    _update_theme_stats_service(db, user_id, word_id, was_correct, response_time_ms)
 
-    for theme_mapping in theme_mappings:
-        theme_id = theme_mapping[0]
 
-        theme_stats = db.query(UserThemeStats).filter(
-            and_(
-                UserThemeStats.user_id == user_id,
-                UserThemeStats.theme_id == theme_id
-            )
-        ).first()
+def _record_spec4_progress(
+    db: Session,
+    *,
+    user_id: str,
+    word_id: str,
+    sentence_id: str,
+    was_correct: bool,
+    response_time_ms: int,
+    quality: int
+) -> bool:
+    """Update Spec4 progression without breaking answer submission on failure."""
+    return _record_spec4_progress_service(
+        db,
+        user_id=user_id,
+        word_id=word_id,
+        sentence_id=sentence_id,
+        was_correct=was_correct,
+        response_time_ms=response_time_ms,
+        quality=quality,
+    )
 
-        if not theme_stats:
-            theme_stats = UserThemeStats(
-                user_id=user_id,
-                theme_id=theme_id,
-                attempts=0,
-                correct=0,
-                accuracy=0.0,
-                avg_response_time_ms=0.0
-            )
-            db.add(theme_stats)
-            db.flush()
 
-        theme_stats.add_attempt(
-            was_correct=was_correct,
-            response_time_ms=response_time_ms
-        )
-        print(
-            f"DEBUG: Updated UserThemeStats for theme_id={theme_id}, "
-            f"attempts={theme_stats.attempts}, accuracy={theme_stats.accuracy:.3f}"
-        )
+def _apply_post_answer_updates(
+    db: Session,
+    *,
+    user_id: str,
+    card_id: str,
+    word_id: str,
+    sentence_id: str,
+    user_card_state: UserCardState,
+    is_correct: bool,
+    quality: int,
+    response_time_ms: int
+) -> None:
+    """Apply the aggregate stats and progression updates after an answer."""
+    _apply_post_answer_updates_service(
+        db,
+        user_id=user_id,
+        card_id=card_id,
+        word_id=word_id,
+        sentence_id=sentence_id,
+        user_card_state=user_card_state,
+        is_correct=is_correct,
+        quality=quality,
+        response_time_ms=response_time_ms,
+    )
 
 
 @router.get("/next", response_model=CardResponse)
@@ -796,47 +752,18 @@ async def submit_answer(
         db.add(review_event)
         print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}, attempts={answer_data.attempts}")
 
-        daily_stats = _get_or_create_daily_stats(db, user_id)
-
-        # Update daily stats using the model's method
-        daily_stats.update_accuracy(was_correct=is_correct)
-
-        # Track new words learned separately (only for correct answers)
-        if is_correct:
-            daily_stats.add_new_word()
-
         _apply_sm2_result(user_card_state, sm2_result, is_correct)
-
-        user = _update_user_accuracy_last_20(db, user_id, is_correct)
-        _update_relearn_state(db, user, user_card_state, card_id, user_id, quality)
-
-        print(f"DEBUG: UserCardState updated successfully")
-
-        word_id = card.sentence.word_id
-        _update_theme_stats(
-            db=db,
+        _apply_post_answer_updates(
+            db,
             user_id=user_id,
-            word_id=word_id,
-            was_correct=is_correct,
-            response_time_ms=answer_data.response_time_ms
+            card_id=card_id,
+            word_id=str(card.sentence.word_id),
+            sentence_id=sentence_id,
+            user_card_state=user_card_state,
+            is_correct=is_correct,
+            quality=quality,
+            response_time_ms=answer_data.response_time_ms,
         )
-
-        # CRITICAL: Update Spec4 progression after correct answer
-        if is_correct:
-            try:
-                card_service = CardSelectionService(db)
-                card_service.record_answer(
-                    user_id=user_id,
-                    word_id=str(card.sentence.word_id),
-                    sentence_id=sentence_id,  # CRITICAL: Always populated
-                    was_correct=is_correct,
-                    response_time_ms=answer_data.response_time_ms,
-                    quality=quality
-                )
-                print(f"DEBUG: Called CardSelectionService.record_answer for word_id={card.sentence.word_id}")
-            except Exception as e:
-                print(f"DEBUG: Error updating Spec4 progression: {e}")
-                # Continue even if progression update fails
 
         print(f"DEBUG: Attempting to commit database changes...")
         try:

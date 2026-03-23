@@ -520,6 +520,27 @@ Mesmo depois da extração de `CardResponse`, o `submit_answer` ainda carregava 
 - a próxima fatia pode focar em progressão, stats ou commit/orquestração, sem precisar reler boilerplate de estado/resposta
 - o quality gate agora cobre também `tests/test_card_answer_service.py`
 
+## 2026-03-23 - Tirar a orquestração agregada de progresso de cards.py antes de revisar seleção
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do ciclo base de `submit_answer`, o endpoint ainda conhecia detalhes demais de atualização agregada: stats diárias, rolling accuracy, relearn do modo Lingvist, stats por tema e avanço da progressão Spec4. Esse bloco já não era mais validação central nem contrato HTTP, só coordenação de domínio espalhada.
+
+### Decisão
+
+- extrair esse bloco para `api/app/services/card_progress_service.py`
+- manter wrappers compatíveis em `cards.py` para reduzir risco da fatia
+- concentrar no endpoint apenas a validação principal, a atualização do estado SM-2 e o commit/resposta
+- validar com suíte unitária focal e com a integração Spec4 já existente
+
+### Impacto
+
+- `submit_answer` ficou mais próximo de uma borda fina
+- a próxima fatia pode focar em commit/orquestração restante ou em simplificar `next-spec4`
+- o quality gate agora cobre também `tests/test_card_progress_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
