@@ -71,6 +71,7 @@ Notas do baseline:
 - trigesima segunda microfatia aplicada: extração da montagem de `draft_feedback` e das integrações de micro-eval/LanguageTool para `api/app/services/chat_feedback_service.py`, com cobertura própria e inclusão no quality gate
 - trigesima terceira microfatia aplicada: extração da construção de contexto de chat/teacher para `api/app/services/chat_context_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - trigesima quarta microfatia aplicada: extração da persistência de mensagens e dos payloads/eventos finais para `api/app/services/chat_delivery_service.py`, com wrappers compatíveis e cobertura própria no quality gate
+- trigesima quinta microfatia aplicada: extração dos helpers puros de prompt, geração, fallback e sanitização para `api/app/services/chat_text_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 
 ## Fase 2: Limpeza estrutural
 

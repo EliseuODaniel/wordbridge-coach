@@ -49,6 +49,12 @@ from app.services.chat_context_service import (
     build_teacher_analysis_context as _build_teacher_analysis_context_service,
     build_teacher_context as _build_teacher_context_service,
 )
+from app.services.chat_text_service import (
+    build_chat_generation_config as _build_chat_generation_config_service,
+    build_chat_system_prompt as _build_chat_system_prompt_service,
+    build_teacher_analysis_fallback as _build_teacher_analysis_fallback_service,
+    sanitize_assistant_response as _sanitize_assistant_response_service,
+)
 from app.services.chat_delivery_service import (
     attach_teacher_analysis_metadata as _attach_teacher_analysis_metadata,
     build_assistant_done_payload as _build_assistant_done_payload,
@@ -234,55 +240,23 @@ def _build_throttled_feedback(last_feedback: dict, draft_text: str, now_ms: int)
 
 
 def _build_chat_system_prompt(lesson_frame: dict) -> str:
-    """Build the chat tutor system prompt from the current lesson frame."""
-    return f"""You are an English tutor helping a {lesson_frame.get('cefr_target', 'A2')} student.
-Topic: {lesson_frame.get('topic', 'conversation')}
-Goal: {lesson_frame.get('learning_goal', 'practice conversation')}
-
-Keep it natural:
-- Reply briefly (1-3 sentences) as if chatting with a friend
-- Always ask a follow-up question
-- Never correct grammar or explain rules
-- If they write in Portuguese/Spanish, encourage them to use English
-- No examples, quotes, or meta-commentary
-"""
+    """Wrapper kept for compatibility with local tests and callers."""
+    return _build_chat_system_prompt_service(lesson_frame)
 
 
 def _get_chat_stop_sequences() -> List[str]:
     """Return sanitized stop sequences for chat generation."""
-    stop_sequences = [
-        '\n\n"',
-        '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:',
-        '">', '<|',
-        '\n\nCRITICAL INSTRUCTIONS',
-        '\nNote:', '\n(Note:', '\nTeacher:', '\nAnalysis:',
-        '\nExplanation:', '\nCorrection:', '\nMeta:', '\nSystem:',
-    ]
-    return [s for s in stop_sequences if isinstance(s, str) and s.strip()]
+    return _build_chat_generation_config_service()["stop"]
 
 
 def _build_chat_generation_config() -> dict:
-    """Return the default generation config for chat replies."""
-    return {
-        "temperature": 0.5,
-        "max_tokens": 300,
-        "top_p": 0.9,
-        "stop": _get_chat_stop_sequences(),
-        "frequency_penalty": 0.0,
-        "presence_penalty": 0.0
-    }
+    """Wrapper kept for compatibility with local tests and callers."""
+    return _build_chat_generation_config_service()
 
 
 def _build_teacher_analysis_fallback(error: Exception) -> dict:
-    """Build the fallback payload used when teacher analysis generation fails."""
-    error_reason = str(error)[:100]
-    return {
-        "teacher_summary": f"Teacher analysis failed: {error_reason}",
-        "rewrite": None,
-        "corrections": [],
-        "next_practice": [],
-        "debug_reason": error_reason
-    }
+    """Wrapper kept for compatibility with local tests and callers."""
+    return _build_teacher_analysis_fallback_service(error)
 
 
 def _build_chat_generation_inputs(conversation: ChatConversation, db: Session) -> tuple[List[dict], str, dict]:
@@ -431,69 +405,8 @@ async def _persist_and_emit_teacher_analysis(
 
 
 def _sanitize_assistant_response(response: str) -> str:
-    """
-    Remove meta-commentary and extra user simulation from LLM response.
-
-    PASSO 2: Sanitizer melhorado (bloqueio em 3 camadas)
-    1. Remove parenthetical meta-commentary: "(Note:", "(Teacher:", etc.
-    2. Remove lines starting with meta labels
-    3. Truncate at "CRITICAL INSTRUCTIONS" (remove do match até o fim)
-    4. Remove quoted paragraph at the end (user simulation)
-    5. Truncate at role labels (User:, Student:, etc.)
-
-    Args:
-        response: Raw LLM response
-
-    Returns:
-        Sanitized response with meta-commentary and user simulation removed
-    """
-    import re
-
-    # PASSO 2: Bloqueio em 3 camadas
-
-    # Camada 1: Remove parenthetical meta-commentary at any position
-    response = re.sub(r'\(Note:[^)]*\)', '', response, flags=re.IGNORECASE)
-    response = re.sub(r'\(Teacher:[^)]*\)', '', response, flags=re.IGNORECASE)
-    response = re.sub(r'\(Analysis:[^)]*\)', '', response, flags=re.IGNORECASE)
-    response = re.sub(r'\(Correction:[^)]*\)', '', response, flags=re.IGNORECASE)
-
-    # Camada 2: Remove non-parenthetical meta-commentary lines
-    lines = response.split('\n')
-    filtered_lines = []
-    for line in lines:
-        stripped = line.strip()
-        # Skip lines that are pure meta-commentary
-        if re.match(r'^(Note|Teacher|Analysis|Explanation|Correction|Meta|System):', stripped, re.IGNORECASE):
-            continue
-        filtered_lines.append(line)
-
-    response = '\n'.join(filtered_lines)
-
-    # Camada 3: PASSO 2 - Truncate se "CRITICAL INSTRUCTIONS" aparecer
-    # Remove tudo a partir da linha contendo "CRITICAL INSTRUCTIONS"
-    lines = response.split('\n')
-    truncated_lines = []
-    for line in lines:
-        if 'CRITICAL INSTRUCTIONS' in line:
-            break  # Truncate aqui
-        truncated_lines.append(line)
-
-    response = '\n'.join(truncated_lines)
-
-    # Remove trailing quoted block(s) after a blank line.
-    # This catches single-line and multiline user simulations at the end.
-    response = re.sub(r'\n\s*\n"[\s\S]*"\s*$', '', response).strip()
-
-    lines = response.split('\n')
-
-    # Truncate at role labels (LLM started a second turn)
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(('User:', 'USER:', 'Student:', 'STUDENT:')):
-            lines = lines[:i]
-            break
-
-    return '\n'.join(lines).strip()
+    """Wrapper kept for compatibility with local tests and callers."""
+    return _sanitize_assistant_response_service(response)
 
 
 def _build_context_messages(conversation_id: str, db: Session, limit: int = 10,

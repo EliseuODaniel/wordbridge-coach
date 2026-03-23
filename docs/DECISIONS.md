@@ -759,3 +759,27 @@ Depois das extrações anteriores, `chat.py` ainda acumulava persistência de me
 - `chat.py` perde mais uma faixa de efeitos colaterais diretos
 - persistência e entrega final do Chat Coach passam a ter fronteira própria e testável
 - o próximo corte pode focar no restante dos helpers puros do endpoint ou no endurecimento da cobertura integrada do fluxo completo
+
+## 2026-03-23 - Mover os helpers puros do Chat Coach para services
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações de runtime, draft, feedback, contexto e delivery, `chat.py` ainda mantinha alguns helpers puros importantes: prompt do tutor, stop sequences, config de geração, fallback de `teacher_analysis` e sanitização da resposta do assistente.
+
+### Decisão
+
+- criar `api/app/services/chat_text_service.py` para concentrar:
+  - prompt do tutor
+  - stop sequences e config de geração
+  - fallback de `teacher_analysis`
+  - sanitização da resposta do assistente
+- manter wrappers finos em `chat.py` para preservar compatibilidade com os testes locais
+- adicionar cobertura dedicada e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` fica muito mais próximo de uma camada adaptadora de borda
+- os helpers puros ganham uma fronteira própria e testável fora do endpoint
+- o próximo corte pode focar no bloco REST/serialização ou em ampliar cobertura integrada do fluxo completo
