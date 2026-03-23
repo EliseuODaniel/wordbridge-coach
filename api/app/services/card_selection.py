@@ -57,6 +57,24 @@ class CardSelectionService:
 
         return excluded_card.sentence.word_id
 
+    def _build_selected_card(
+        self,
+        user_id: str,
+        word: Word,
+        *,
+        is_new: bool,
+        exclude_card_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Resolve sentence, build payload, and record the card in session stats."""
+        sentence = self.progression_service.get_sentence_for_word(
+            user_id,
+            word.id,
+            exclude_card_id,
+        )
+        card_context = self._build_card_context(user_id, word, sentence, is_new=is_new)
+        self.progression_service.record_card_shown(user_id, is_new_card=is_new)
+        return card_context
+
     def get_next_card_for_user(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get next card for user implementing Spec4's getNextCardForUser algorithm
@@ -238,14 +256,12 @@ class CardSelectionService:
                     return None
                 word = random.choice(words)
 
-        # Get sentence (variety K=10 handled by get_sentence_for_word)
-        sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
-        card_context = self._build_card_context(user_id, word, sentence, is_new=True)
-
-        # Record the new card in session stats
-        self.progression_service.record_card_shown(user_id, is_new_card=True)
-
-        return card_context
+        return self._build_selected_card(
+            user_id,
+            word,
+            is_new=True,
+            exclude_card_id=exclude_card_id,
+        )
 
     def get_due_review_words(self, db: Session, user_id: str, max_count: int = 50,
                             exclude_card_id: Optional[str] = None) -> List[Tuple[Word, UserCardState]]:
@@ -286,13 +302,7 @@ class CardSelectionService:
         review_words = [candidate[0] for candidate in review_candidates]
 
         word = self.progression_service.pick_best_review_word(user_id, review_words)
-        sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
-        card_context = self._build_card_context(user_id, word, sentence, is_new=False)
-
-        # Record the review card in session stats
-        self.progression_service.record_card_shown(user_id, is_new_card=False)
-
-        return card_context
+        return self._build_selected_card(user_id, word, is_new=False)
 
     def _get_any_eligible_card(self, user_id: str, progress: UserFrequencyProgress,
                                exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -322,9 +332,7 @@ class CardSelectionService:
         if not card:
             return None
 
-        # Get word and build context
         word = card.sentence.word
-        sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
 
         # Determine if this is new or review based on UserCardState
         ucs = _get_card_review_state_service(
@@ -334,13 +342,12 @@ class CardSelectionService:
         )
 
         is_new = (ucs is None or ucs.status.value == 'NEW')
-
-        card_context = self._build_card_context(user_id, word, sentence, is_new=is_new)
-
-        # Record in session stats
-        self.progression_service.record_card_shown(user_id, is_new_card=is_new)
-
-        return card_context
+        return self._build_selected_card(
+            user_id,
+            word,
+            is_new=is_new,
+            exclude_card_id=exclude_card_id,
+        )
 
     def _build_card_context(
         self,
@@ -405,14 +412,8 @@ class CardSelectionService:
         if not result:
             return None
 
-        ucs, word = result
-        sentence = self.progression_service.get_sentence_for_word(user_id, word.id)
-        card_context = self._build_card_context(user_id, word, sentence, is_new=False)
-
-        # Record as review card
-        self.progression_service.record_card_shown(user_id, is_new_card=False)
-
-        return card_context
+        _, word = result
+        return self._build_selected_card(user_id, word, is_new=False)
 
     def _count_reviews_due(self, user_id: str) -> int:
         """Count cards due for review (excluding new cards)"""

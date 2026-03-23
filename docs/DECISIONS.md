@@ -703,6 +703,24 @@ Depois das extrações de payload, política, queries e fallback, o que ainda re
 - a atualização de progressão Spec4 ganhou cobertura própria em `tests/test_card_selection_progress_service.py`
 - o quality gate agora cobre também `tests/test_card_selection_progress_service.py`
 
+## 2026-03-23 - Consolidar o fechamento comum da seleção em helper interno
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das extrações maiores, `CardSelectionService` ainda repetia o mesmo fechamento de seleção em vários caminhos: resolver sentença, montar o payload do card e registrar o card mostrado na sessão. Isso aparecia em `new`, `review`, `relearn` e `fallback`.
+
+### Decisão
+
+- consolidar esse fechamento em um helper interno de `CardSelectionService`
+- manter a mudança local ao próprio serviço, sem abrir mais um módulo só para mover duplicação pequena
+
+### Impacto
+
+- o serviço ficou menor e mais legível sem criar uma camada nova artificial
+- os caminhos de seleção agora compartilham o mesmo fechamento, o que reduz risco de drift de comportamento entre modos
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito

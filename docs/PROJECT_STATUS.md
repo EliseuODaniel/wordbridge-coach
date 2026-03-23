@@ -99,6 +99,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `CardSelectionService` agora também delega queries de review, relearn, backlog e anti-repetição correta para `api/app/services/card_selection_query_service.py`
 - `CardSelectionService` agora também delega o fallback de card elegível e o lookup legado por rank para `api/app/services/card_selection_fallback_service.py`
 - a atualização de progressão Spec4 após resposta correta agora também vive em `api/app/services/card_selection_progress_service.py`, permitindo limpar o legado residual de `CardSelectionService`
+- `CardSelectionService` agora também centraliza o fechamento comum de seleção em um helper interno, reduzindo duplicação entre os caminhos `new`, `review`, `relearn` e `fallback`
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
 - o `UserSelection` deixou de usar stats aleatórias e agora consome idioma alvo, meta de vocabulário e stats reais disponíveis por perfil
