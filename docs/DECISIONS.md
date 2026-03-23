@@ -478,6 +478,27 @@ Depois das fatias em `StudySession` e `ChatCoachSession`, o maior ruído restant
 - a próxima simplificação de frontend pode focar no shell geral ou na separação entre modos, não mais em housekeeping local
 - `frontend lint` e `frontend build` seguiram verdes após a mudança
 
+## 2026-03-23 - Tirar regra incidental de borda do endpoint de cards antes de mexer no submit_answer
+
+Status: aceito
+
+### Contexto
+
+Depois de extrair o payload Lingvist, `cards.py` ainda misturava duas responsabilidades que não são regra de negócio principal: resolver o `demo` user quando `user_id` vinha omitido e serializar o payload comum de `CardResponse`. Esse miolo aumentava o peso do endpoint mesmo sem tocar na seleção de cards nem no `submit_answer`.
+
+### Decisão
+
+- extrair a resolução de `user_id` padrão para `api/app/services/card_response_service.py`
+- extrair a serialização comum de `CardResponse` para o mesmo serviço
+- manter wrappers compatíveis em `cards.py` para preservar contrato e reduzir risco da fatia
+- validar com uma suíte unitária nova e com a integração Spec4 já existente
+
+### Impacto
+
+- `cards.py` ficou menor e mais focado em orquestração de endpoint
+- a próxima fatia pode atacar `submit_answer` ou a serialização restante com menos ruído incidental
+- o quality gate agora cobre também `tests/test_card_response_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito

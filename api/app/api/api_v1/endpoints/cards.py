@@ -26,6 +26,10 @@ from app.services.lingvist_payload_service import (
     get_micro_progress as _get_micro_progress_service,
     get_user_target_language_code as _get_user_target_language_code_service,
 )
+from app.services.card_response_service import (
+    format_card_response as _format_card_response_service,
+    resolve_request_user_id as _resolve_request_user_id_service,
+)
 from app.models import Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
 from app.models.user_session_stats import UserSessionStats
 from app.models.user_card_state import MemoryStage
@@ -320,17 +324,7 @@ def create_sample_data_if_needed(db: Session):
 
 def _resolve_request_user_id(db: Session, user_id: Optional[str]) -> str:
     """Resolve omitted user_id to the local demo user."""
-    if user_id:
-        return user_id
-
-    demo_user = db.query(User).filter(User.username == "demo").first()
-    if not demo_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "Demo user not found", "message": "User setup required"}
-        )
-
-    return demo_user.id
+    return _resolve_request_user_id_service(db, user_id)
 
 
 def _get_user_target_language_code(db: Session, user_id: str, default: str = "en") -> str:
@@ -627,51 +621,7 @@ async def get_next_card(
 
 def format_card_response(card: Card, memory_stage) -> CardResponse:
     """Format card data for API response"""
-
-    # Normalize memory_stage to string (handle both MemoryStage enum and string)
-    from app.models.user_card_state import MemoryStage
-    if isinstance(memory_stage, MemoryStage):
-        memory_stage_str = memory_stage.value
-    else:
-        memory_stage_str = memory_stage
-
-    # Try to get sentence data, fall back to default if relationships don't work
-    try:
-        sentence_text = card.sentence.text
-        sentence_translation = card.sentence.translation
-    except:
-        # Fallback when relationships are disabled
-        sentence_text = "The ___ is on the table."
-        sentence_translation = "O livro está na mesa."
-
-    # Get the actual word text for TTS URLs
-    try:
-        word_text = card.sentence.word.text if card.sentence and card.sentence.word else "word"
-        sentence_text_for_audio = sentence_text.replace("___", word_text, 1)
-    except:
-        word_text = "word"
-        sentence_text_for_audio = sentence_text.replace("___", "word", 1)
-
-    # Build TTS URLs for frontend consumption (localhost)
-    # For production, this could be configurable
-    tts_base_url = "http://localhost:8001"
-    audio_word_url = f"{tts_base_url}/api/tts/word/{card.id}?text={word_text}&lang=en"
-    audio_sentence_url = f"{tts_base_url}/api/tts/sentence/{card.id}?text={sentence_text_for_audio}&lang=en"
-
-    return CardResponse(
-        card_id=str(card.id),  # Convert UUID to string for API response
-        word_id=str(card.sentence.word.id) if card.sentence and card.sentence.word else "",
-        sentence_id=str(card.sentence_id) if card.sentence_id else "",  # Spec4: sentence variety tracking
-        word=word_text,
-        sentence=sentence_text,
-        gap={"start": card.gap_start, "end": card.gap_end},
-        sentence_translation=sentence_translation,
-        grammar_hint=card.grammar_hint,
-        memory_stage=memory_stage_str,  # Use normalized string value
-        is_new=memory_stage_str == "NEW",  # Correct comparison with string
-        audio_word_url=audio_word_url,
-        audio_sentence_url=audio_sentence_url
-    )
+    return _format_card_response_service(card, memory_stage)
 
 
 @router.post("/{card_id}/answer", response_model=AnswerResponse)
