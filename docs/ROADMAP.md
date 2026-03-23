@@ -60,6 +60,8 @@ Notas do baseline:
 - vigesima primeira microfatia aplicada: simplificação do `LingvistSession` com reset de rodada, preload de audio e playback manual centralizados
 - vigesima segunda microfatia aplicada: centralização da troca entre `Spec4` e `Lingvist` no shell React, removendo reload completo entre modos
 - vigesima terceira microfatia aplicada: preparação do repositório para Codex com `AGENTS.md` por área, skills adicionais, guia de setup e quality gate inicial em CI
+- vigesima quarta microfatia aplicada: redução do peso do loop WebSocket de `chat.py` com helpers de setup, dispatch e erro
+- vigesima quinta microfatia aplicada: remoção de hardcodes de idioma em `VocabularyProgressionService` com cobertura focal nova
 
 ## Fase 2: Limpeza estrutural
 
@@ -77,6 +79,7 @@ Prioridade alta:
 - [~] continuar reduzindo duplicação operacional no `LingvistSession`
 - [ ] revisar os serviços da API com maior acoplamento
 - [~] continuar quebrando o fluxo WebSocket de `chat.py` em helpers menores e testáveis
+- [~] continuar removendo pressupostos de idioma do domínio de progressão
 - [ ] isolar melhor integrações de LLM local e LanguageTool
 
 ## Fase 4: Qualidade e confiança
@@ -86,6 +89,7 @@ Prioridade alta:
 - [ ] revisar lacunas de cobertura nos fluxos críticos
 - [ ] eliminar falsos positivos de documentação e scripts antigos
 - [~] consolidar quality gates locais e em CI para frontend e backend crítico
+- [~] ampliar cobertura focal de regras de domínio no backend, além de chat e Spec4
 
 ## Critérios de sucesso
 

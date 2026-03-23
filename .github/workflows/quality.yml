@@ -59,6 +59,7 @@ jobs:
             api/requirements.txt
             api/requirements-test.txt
       - run: pip install -r requirements.txt -r requirements-test.txt
+      - run: python -m pytest tests/test_vocabulary_progression.py -q
       - run: python -m pytest tests/test_chat_utilities.py -q
       - run: python -m pytest tests/integration/test_chat_websocket_flow.py -q
       - run: python -m pytest tests/integration/test_spec4_card_selection.py -q

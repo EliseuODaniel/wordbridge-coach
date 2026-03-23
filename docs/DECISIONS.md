@@ -518,3 +518,44 @@ Depois da limpeza e da refatoração principal, o repositório já tinha uma boa
 - o repositório fica mais preparado para uso repetível com Codex
 - o onboarding técnico do agente fica mais claro por área
 - quality gates deixam de depender apenas de disciplina manual local
+
+## 2026-03-23 - Remover hardcodes de idioma da progressão antes de ampliar features multilíngues
+
+Status: aceito
+
+### Contexto
+
+Mesmo após a estabilização geral do baseline, partes do `VocabularyProgressionService` ainda assumiam inglês de forma fixa. Isso era especialmente perigoso porque o produto já expõe seleção de idioma e perfis com língua alvo diferente.
+
+### Decisão
+
+- resolver o idioma alvo do usuário dentro do serviço de progressão
+- usar esse idioma nas consultas de próximo rank, revisão e avanço do prefixo contíguo
+- adicionar testes focados para proteger esse comportamento
+
+### Impacto
+
+- o domínio de progressão ficou mais coerente com a proposta multilíngue
+- uma classe de bug silencioso entre usuários de idiomas diferentes deixou de depender de comportamento implícito
+- a próxima rodada pode ampliar regras multilíngues sobre uma base menos frágil
+
+## 2026-03-23 - Reduzir detalhes operacionais no loop WebSocket do Chat Coach
+
+Status: aceito
+
+### Contexto
+
+O loop WebSocket de `chat.py` já tinha melhorado bastante, mas ainda carregava detalhes de lookup, setup de providers, inicialização de throttle, dispatch de evento e payloads de erro no mesmo bloco.
+
+### Decisão
+
+- extrair helpers de setup da conversa WebSocket
+- extrair helper de carregamento de providers por conversa
+- padronizar payload de erro WebSocket
+- extrair o dispatch principal de eventos para um helper dedicado
+
+### Impacto
+
+- o loop WebSocket ficou mais legível e mais fácil de continuar quebrando em slices
+- erros e setup ficaram mais consistentes
+- a próxima fatia de chat pode focar em separar orquestração restante, não em housekeeping do loop

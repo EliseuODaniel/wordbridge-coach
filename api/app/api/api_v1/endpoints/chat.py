@@ -53,6 +53,20 @@ _feedback_cache = {}
 _last_draft_texts = {}
 
 
+def _build_ws_error_payload(message: str, code: str) -> dict:
+    """Build a standardized websocket error payload."""
+    return ErrorOut(
+        type="error",
+        message=message,
+        code=code
+    ).model_dump()
+
+
+async def _send_ws_error(websocket: WebSocket, message: str, code: str) -> None:
+    """Send a standardized websocket error payload."""
+    await websocket.send_json(_build_ws_error_payload(message=message, code=code))
+
+
 def _get_user_or_404(db: Session, user_id: str) -> User:
     """Load a user or raise a standardized 404 error."""
     user = db.query(User).filter(User.id == user_id).first()
@@ -120,6 +134,67 @@ def _serialize_conversation_list_item(db: Session, conversation: ChatConversatio
         "updated_at": conversation.updated_at,
         "message_count": message_count
     }
+
+
+def _get_websocket_conversation(db: Session, conversation_id: str) -> Optional[ChatConversation]:
+    """Load the chat conversation for a websocket connection."""
+    with db.begin():
+        return db.query(ChatConversation).filter(
+            ChatConversation.id == conversation_id
+        ).first()
+
+
+def _load_chat_providers_for_conversation(db: Session, conversation: ChatConversation):
+    """Load the chat and teacher LLM providers for a conversation."""
+    profiles = get_user_model_profiles(db, conversation.user_id)
+    chat_profile_id = profiles["chat_model_profile"]
+    teacher_profile_id = profiles["teacher_model_profile"]
+
+    logger.info(
+        f"[LLM_PROFILES] conv={str(conversation.id)[:8]}, user={conversation.user_id} "
+        f"chat={chat_profile_id}, teacher={teacher_profile_id}"
+    )
+
+    chat_provider = get_llm_provider_for_profile(chat_profile_id)
+    teacher_provider = get_llm_provider_for_profile(teacher_profile_id)
+    return chat_provider, teacher_provider
+
+
+def _initialize_micro_eval_tracking(conversation_id: str) -> None:
+    """Ensure throttle state exists for the websocket conversation."""
+    if conversation_id not in _micro_eval_timestamps:
+        _micro_eval_timestamps[conversation_id] = 0
+
+
+async def _route_websocket_event(
+    websocket: WebSocket,
+    data: dict,
+    conversation: ChatConversation,
+    now_ms: int,
+    db: Session,
+    chat_provider,
+    teacher_provider,
+) -> None:
+    """Dispatch websocket events to the correct chat handler."""
+    event_type = data.get("type")
+
+    if event_type == "draft_update":
+        await handle_draft_update(websocket, data, conversation, now_ms, db)
+    elif event_type == "request_autocomplete":
+        await handle_request_autocomplete(websocket, data, conversation, db)
+    elif event_type == "user_message":
+        await handle_user_message(websocket, data, conversation, db, chat_provider, teacher_provider)
+    elif event_type == "ping":
+        await websocket.send_json(Pong(
+            type="pong",
+            ts=data.get("ts", now_ms)
+        ).model_dump())
+    else:
+        await _send_ws_error(
+            websocket,
+            message=f"Unknown event type: {event_type}",
+            code="UNKNOWN_EVENT"
+        )
 
 
 async def _get_grammar_issues(draft_text: str) -> List[dict]:
@@ -1051,49 +1126,32 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
     db = SessionLocal()
 
     try:
-        # Use explicit transaction to avoid PostgreSQL set_session issues
-        with db.begin():
-            conversation = db.query(ChatConversation).filter(
-                ChatConversation.id == conversation_id
-            ).first()
-
+        conversation = _get_websocket_conversation(db, conversation_id)
         if not conversation:
-            await websocket.send_json(ErrorOut(
-                type="error",
+            await _send_ws_error(
+                websocket,
                 message="Conversation not found",
                 code="NOT_FOUND"
-            ).model_dump())
+            )
             await websocket.close()
             return
 
         # Get user's LLM model preferences (chat vs teacher)
         try:
-            profiles = get_user_model_profiles(db, conversation.user_id)
-            chat_profile_id = profiles["chat_model_profile"]
-            teacher_profile_id = profiles["teacher_model_profile"]
-
-            logger.info(
-                f"[LLM_PROFILES] conv={conversation_id[:8]}, user={conversation.user_id} "
-                f"chat={chat_profile_id}, teacher={teacher_profile_id}"
+            chat_provider, teacher_provider = _load_chat_providers_for_conversation(
+                db, conversation
             )
-
-            # Create LLM providers for each profile
-            chat_provider = get_llm_provider_for_profile(chat_profile_id)
-            teacher_provider = get_llm_provider_for_profile(teacher_profile_id)
-
         except Exception as e:
             logger.error(f"[LLM_PROFILES] Failed to load preferences: {e}")
-            await websocket.send_json(ErrorOut(
-                type="error",
+            await _send_ws_error(
+                websocket,
                 message=f"Failed to load LLM preferences: {str(e)}",
                 code="PREFERENCES_ERROR"
-            ).model_dump())
+            )
             await websocket.close()
             return
 
-        # Initialize micro_eval timestamp for this conversation if not exists
-        if conversation_id not in _micro_eval_timestamps:
-            _micro_eval_timestamps[conversation_id] = 0
+        _initialize_micro_eval_tracking(conversation_id)
 
         # Main WebSocket loop
         while True:
@@ -1105,28 +1163,15 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
 
             now_ms = int(utc_now().timestamp() * 1000)
 
-            # Route events by type
-            if event_type == "draft_update":
-                await handle_draft_update(websocket, data, conversation, now_ms, db)
-
-            elif event_type == "request_autocomplete":
-                await handle_request_autocomplete(websocket, data, conversation, db)
-
-            elif event_type == "user_message":
-                await handle_user_message(websocket, data, conversation, db, chat_provider, teacher_provider)
-
-            elif event_type == "ping":
-                await websocket.send_json(Pong(
-                    type="pong",
-                    ts=data.get("ts", now_ms)
-                ).model_dump())
-
-            else:
-                await websocket.send_json(ErrorOut(
-                    type="error",
-                    message=f"Unknown event type: {event_type}",
-                    code="UNKNOWN_EVENT"
-                ).model_dump())
+            await _route_websocket_event(
+                websocket=websocket,
+                data=data,
+                conversation=conversation,
+                now_ms=now_ms,
+                db=db,
+                chat_provider=chat_provider,
+                teacher_provider=teacher_provider
+            )
 
     except WebSocketDisconnect:
         print(f"WebSocket disconnected: conversation_id={conversation_id}")
@@ -1135,11 +1180,11 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
         import traceback
         traceback.print_exc()
         try:
-            await websocket.send_json(ErrorOut(
-                type="error",
+            await _send_ws_error(
+                websocket,
                 message=str(e),
                 code="INTERNAL_ERROR"
-            ).model_dump())
+            )
         except:
             pass
     finally:

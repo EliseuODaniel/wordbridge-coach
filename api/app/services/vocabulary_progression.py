@@ -22,6 +22,25 @@ class VocabularyProgressionService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _get_user_target_language_code(self, user_id: str) -> str:
+        """
+        Resolve the user's target language code.
+
+        Falls back to English to preserve previous behavior when the user or
+        target language cannot be loaded.
+        """
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or not user.target_language_id:
+            return "en"
+
+        target_language = self.db.query(Language).filter(
+            Language.id == user.target_language_id
+        ).first()
+        if not target_language or not target_language.code:
+            return "en"
+
+        return target_language.code
+
     def get_or_create_user_progress(self, user_id: str) -> UserFrequencyProgress:
         """Get or create user frequency progress record"""
         progress = self.db.query(UserFrequencyProgress).filter(
@@ -181,6 +200,8 @@ class VocabularyProgressionService:
         Get the rank of the next new word to introduce
         Implements getNextNewWordRank(userId, progress) from Spec4
         """
+        target_language_code = self._get_user_target_language_code(user_id)
+
         if progress.max_contiguous_mastered_rank == 0:
             # For new users, find the first rank that has an available word
             start_rank = 1
@@ -195,7 +216,7 @@ class VocabularyProgressionService:
             word = self.db.query(Word).join(WordFrequency,
                 and_(
                     func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                    WordFrequency.language_code == "en"  # TODO: Get from user's target language
+                    WordFrequency.language_code == target_language_code
                 )
             ).filter(
                 WordFrequency.rank == candidate_rank
@@ -212,6 +233,7 @@ class VocabularyProgressionService:
         Update maxContiguousMasteredRank when user gets word correct for first time
         Implements the prefix advancement logic from Spec4
         """
+        target_language_code = self._get_user_target_language_code(user_id)
         progress = self.get_or_create_user_progress(user_id)
 
         # Special handling for sparse data: if this is the first correct answer,
@@ -233,12 +255,21 @@ class VocabularyProgressionService:
                     break
 
                 # Check if user has at least one correct for this rank
-                has_correct = self.db.query(ReviewEvent).join(Word).join(WordFrequency).filter(
+                has_correct = self.db.query(ReviewEvent).join(
+                    Sentence, ReviewEvent.sentence_id == Sentence.id
+                ).join(
+                    Word, Sentence.word_id == Word.id
+                ).join(
+                    WordFrequency,
+                    and_(
+                        func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                        WordFrequency.language_code == target_language_code,
+                    )
+                ).filter(
                     and_(
                         ReviewEvent.user_id == user_id,
                         ReviewEvent.was_correct == True,
-                        WordFrequency.rank == next_rank_candidate,
-                        WordFrequency.language_code == "en"  # TODO: Get from user's target language
+                        WordFrequency.rank == next_rank_candidate
                     )
                 ).first()
 
@@ -261,12 +292,18 @@ class VocabularyProgressionService:
 
     def get_due_review_words(self, user_id: str, max_rank: int) -> List[Word]:
         """Get words that are due for review within the current window"""
+        target_language_code = self._get_user_target_language_code(user_id)
         # This would integrate with the existing SRS system
         # For now, return a simplified list
-        return self.db.query(Word).join(WordFrequency).filter(
+        return self.db.query(Word).join(
+            WordFrequency,
             and_(
-                WordFrequency.rank <= max_rank,
-                WordFrequency.language_code == "en"  # TODO: Get from user's target language
+                func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                WordFrequency.language_code == target_language_code,
+            )
+        ).filter(
+            and_(
+                WordFrequency.rank <= max_rank
             )
         ).limit(50).all()
 
