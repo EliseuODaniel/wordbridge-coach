@@ -10,7 +10,7 @@ from app.models import ReviewEvent, User, UserCardState
 from app.models.user_daily_stats import UserDailyStats
 from app.models.user_theme_stats import UserThemeStats
 from app.models.word_theme_mapping import WordThemeMapping
-from app.services.card_selection import CardSelectionService
+from app.services.card_selection_progress_service import record_selection_answer_progress
 from app.services.sm2 import SM2Algorithm
 
 
@@ -157,14 +157,11 @@ def record_spec4_progress(
         return False
 
     try:
-        card_service = CardSelectionService(db)
-        card_service.record_answer(
+        record_selection_answer_progress(
+            db,
             user_id=user_id,
             word_id=word_id,
-            sentence_id=sentence_id,
             was_correct=was_correct,
-            response_time_ms=response_time_ms,
-            quality=quality,
         )
         return True
     except Exception:

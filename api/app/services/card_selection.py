@@ -2,15 +2,12 @@
 
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, or_
-from datetime import timedelta
+from sqlalchemy import and_, func
 import random
 
 from app.models import (
-    User, Word, Sentence, Card, UserFrequencyProgress, UserSessionStats, ReviewEvent,
-    UserCardState, WordFrequency, Language
+    User, Word, Sentence, Card, UserFrequencyProgress, UserCardState, WordFrequency, Language
 )
-from app.core.time import utc_now
 from app.services.card_selection_payload_service import (
     build_card_context_payload as _build_card_context_payload_service,
 )
@@ -29,7 +26,6 @@ from app.services.card_selection_query_service import (
 from app.services.card_selection_fallback_service import (
     find_any_eligible_card as _find_any_eligible_card_service,
     get_card_review_state as _get_card_review_state_service,
-    get_word_by_rank as _get_word_by_rank_service,
 )
 from app.services.vocabulary_progression import VocabularyProgressionService
 
@@ -60,38 +56,6 @@ class CardSelectionService:
             return None
 
         return excluded_card.sentence.word_id
-
-    def _get_recent_word_ids(self, user_id: str, days: int = 7, limit: int = 50) -> set:
-        """
-        Get distinct word IDs seen by user in recent days.
-
-        Args:
-            user_id: User ID
-            days: Look back period in days (default 7)
-            limit: Maximum number of word IDs to return (default 50)
-
-        Returns:
-            Set of word IDs recently seen
-        """
-        cutoff_date = utc_now() - timedelta(days=days)
-
-        # Get distinct word IDs from recent review events
-        # Explicitly specify FROM ReviewEvent and JOIN with Card and Sentence
-        recent_words = self.db.query(ReviewEvent)\
-            .join(Card, ReviewEvent.card_id == Card.id)\
-            .join(Sentence, Card.sentence_id == Sentence.id)\
-            .filter(
-                and_(
-                    ReviewEvent.user_id == user_id,
-                    ReviewEvent.created_at >= cutoff_date
-                )
-            )\
-            .distinct(Sentence.word_id)\
-            .limit(limit)\
-            .all()
-
-        # Extract word IDs from ReviewEvent->Sentence->word_id
-        return {review_event.card.sentence.word_id for review_event in recent_words if review_event.card and review_event.card.sentence}
 
     def get_next_card_for_user(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -378,48 +342,6 @@ class CardSelectionService:
 
         return card_context
 
-    def _get_word_by_rank(self, rank: int, user_id: str = None, exclude_card_id: Optional[str] = None) -> Optional[Word]:
-        """Get word by frequency rank (DEPRECATED - kept for compatibility)
-
-        NOTE: This method is kept for backwards compatibility but is no longer used
-        in the main flow. Use _get_random_new_card instead.
-        """
-        from app.models.user_frequency_progress import UserFrequencyProgress
-
-        # Get user's target language for proper filtering
-        target_language_code = "en"  # Default fallback
-        max_allowed_rank = None
-
-        if user_id:
-            # Get user's language and gating constraints
-            _, target_lang = self._get_user_and_target_language(user_id)
-            if target_lang:
-                target_language_code = target_lang.code
-
-            progress = self.db.query(UserFrequencyProgress).filter(UserFrequencyProgress.user_id == user_id).first()
-            if progress:
-                max_allowed_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
-                max_unlocked_rank = progress.max_contiguous_mastered_rank
-
-                # Critical gating: only allow access to words within unlocked prefix
-                # For new users (max_contiguous_mastered_rank = 0), allow access to first available word
-                # For users with progress, allow access to words within reasonable range of mastered prefix
-                if max_unlocked_rank > 0:
-                    # Allow access to words within the mastered prefix AND a reasonable range for sparse data
-                    # This handles cases where we have sparse data (e.g., words at ranks 38, 49, 50, etc.)
-                    if rank > max_unlocked_rank + 50:  # Allow up to 50 ranks ahead for sparse data
-                        print(f"DEBUG: Gating blocked rank {rank} (max_unlocked_rank={max_unlocked_rank}, range limit=50)")
-                        return None
-
-        return _get_word_by_rank_service(
-            self.db,
-            rank=rank,
-            target_language_code=target_language_code,
-            max_allowed_rank=max_allowed_rank,
-            max_unlocked_rank=max_unlocked_rank if user_id else None,
-            excluded_word_id=self._get_excluded_word_id(exclude_card_id),
-        )
-
     def _build_card_context(
         self,
         user_id: str,
@@ -445,68 +367,6 @@ class CardSelectionService:
             sentence=sentence,
             is_new=is_new,
         )
-
-    def record_answer(self, user_id: str, word_id: str, sentence_id: str,
-                     was_correct: bool, response_time_ms: int, quality: int) -> Dict[str, Any]:
-        """Record answer and update Spec4 vocabulary progression
-
-        Args:
-            user_id: User identifier
-            word_id: Word identifier (from card.sentence.word_id)
-            sentence_id: Sentence identifier
-            was_correct: Whether answer was correct
-            response_time_ms: Response time in milliseconds
-            quality: SM-2 quality score (0-5)
-
-        Returns:
-            Dictionary with result
-        """
-        # Update vocabulary progression only for correct answers (Spec4)
-        if was_correct:
-            try:
-                # Get user's target language
-                from app.models.user import User
-                user = self.db.query(User).filter(User.id == user_id).first()
-                if not user or not user.target_language_obj:
-                    print(f"DEBUG: No user or target_language found for user_id={user_id}")
-                    return {"success": False, "error": "User not found"}
-
-                # Get language code from target_language_obj
-                target_lang_code = user.target_language_obj.code
-
-                # Get word rank from WordFrequency
-                from app.models.word import Word
-                from app.models.word_frequency import WordFrequency
-                from sqlalchemy import func
-
-                word = self.db.query(Word).filter(Word.id == word_id).first()
-                if not word:
-                    print(f"DEBUG: Word not found for word_id={word_id}")
-                    return {"success": False, "error": "Word not found"}
-
-                # Match WordFrequency by word (case-insensitive)
-                wf = self.db.query(WordFrequency).filter(
-                    func.lower(WordFrequency.word) == func.lower(word.lemma),
-                    WordFrequency.language_code == target_lang_code
-                ).first()
-
-                if not wf:
-                    print(f"DEBUG: WordFrequency not found for word={word.lemma}, lang={target_lang_code}")
-                    return {"success": False, "error": "WordFrequency not found"}
-
-                # Update contiguous mastered rank
-                print(f"DEBUG: Updating progression for user={user_id}, rank={wf.rank}")
-                self.progression_service.update_contiguous_mastered_rank(user_id, wf.rank)
-                print(f"DEBUG: Updated max_contiguous_mastered_rank for user={user_id} to rank {wf.rank}")
-                return {"success": True, "rank": wf.rank}
-
-            except Exception as e:
-                print(f"DEBUG: Error updating progression: {e}")
-                import traceback
-                traceback.print_exc()
-                return {"success": False, "error": str(e)}
-
-        return {"success": True, "message": "Incorrect answer, progression not updated"}
 
     def _get_user_mode(self, user_id: str) -> str:
         """Get user's learning mode ('spec4' or 'lingvist')"""

@@ -84,6 +84,7 @@ Notas do baseline:
 - quadragesima quinta microfatia aplicada: extração das regras de mistura e decisão de tentativa de card novo para `api/app/services/card_selection_policy_service.py`, reduzindo o peso de `CardSelectionService`
 - quadragesima sexta microfatia aplicada: extração das queries de review, relearn, backlog e anti-repetição correta para `api/app/services/card_selection_query_service.py`, reduzindo o peso de `CardSelectionService`
 - quadragesima setima microfatia aplicada: extração do fallback de card elegível e do lookup legado por rank para `api/app/services/card_selection_fallback_service.py`, reduzindo o peso de `CardSelectionService`
+- quadragesima oitava microfatia aplicada: extração da atualização de progressão Spec4 pós-resposta para `api/app/services/card_selection_progress_service.py`, com limpeza do legado residual de `CardSelectionService` e cobertura própria no quality gate
 
 ## Fase 2: Limpeza estrutural
 

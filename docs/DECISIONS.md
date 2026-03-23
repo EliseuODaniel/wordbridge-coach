@@ -683,6 +683,26 @@ Depois da extração de payload, política e queries, o que sobrava de mais hist
 - a próxima fatia pode ser de limpeza final, remoção de legado morto ou revisão de `record_answer`
 - o quality gate agora cobre também `tests/test_card_selection_fallback_service.py`
 
+## 2026-03-23 - Extrair a atualização de progressão Spec4 do CardSelectionService
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações de payload, política, queries e fallback, o que ainda restava de mais incidental em `CardSelectionService` era `record_answer`. Esse método já não participava da seleção em si; ele só resolvia idioma alvo, buscava rank em `WordFrequency` e atualizava a progressão contígua para respostas corretas.
+
+### Decisão
+
+- extrair esse fluxo para `api/app/services/card_selection_progress_service.py`
+- fazer `card_progress_service` chamar o novo serviço diretamente, em vez de depender de `CardSelectionService`
+- remover de `CardSelectionService` os wrappers legados realmente mortos, incluindo `_get_recent_word_ids`, `_get_word_by_rank` e `record_answer`
+
+### Impacto
+
+- `CardSelectionService` ficou mais coerente com o próprio nome e mais próximo de um orquestrador puro de seleção
+- a atualização de progressão Spec4 ganhou cobertura própria em `tests/test_card_selection_progress_service.py`
+- o quality gate agora cobre também `tests/test_card_selection_progress_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
