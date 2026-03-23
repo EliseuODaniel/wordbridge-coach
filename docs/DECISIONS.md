@@ -541,6 +541,27 @@ Depois da extração do ciclo base de `submit_answer`, o endpoint ainda conhecia
 - a próxima fatia pode focar em commit/orquestração restante ou em simplificar `next-spec4`
 - o quality gate agora cobre também `tests/test_card_progress_service.py`
 
+## 2026-03-23 - Consolidar a submissão de resposta em um serviço único antes de simplificar next-spec4
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das extrações anteriores, `submit_answer` ainda concentrava a costura entre validação do card, avaliação da resposta, cálculo do SM-2, aplicação das atualizações e commit. O endpoint já tinha pouca regra própria, mas ainda exigia leitura longa para entender o fluxo completo.
+
+### Decisão
+
+- criar `api/app/services/card_submission_service.py` como orquestrador principal da submissão
+- deixar `cards.py` apenas delegar para esse serviço e traduzir exceções HTTP/ValueError como antes
+- manter as extrações anteriores (`card_answer_service.py` e `card_progress_service.py`) como blocos reutilizáveis abaixo desse orquestrador
+- validar com suíte unitária própria, Spec4 e integração de theme stats
+
+### Impacto
+
+- `cards.py` ficou mais próximo do padrão de endpoint fino já aplicado em `chat.py`
+- a próxima fatia pode sair do `submit_answer` e focar em `next-spec4` ou em simplificação de serialização/contexto
+- o quality gate agora cobre também `tests/test_card_submission_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito

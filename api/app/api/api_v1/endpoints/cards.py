@@ -14,22 +14,8 @@ from app.core.time import utc_now, utc_today
 from app.core.config import settings
 from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorResponse
 from app.schemas.lingvist import LingvistCardResponse, MicroProgress
-from app.services.sm2 import SM2Algorithm
 from app.services.card_selection import CardSelectionService
-from app.services.card_answer_service import (
-    apply_sm2_result as _apply_sm2_result_service,
-    build_answer_response as _build_answer_response_service,
-    create_review_event as _create_review_event_service,
-    get_or_create_user_card_state as _get_or_create_user_card_state_service,
-)
-from app.services.card_progress_service import (
-    apply_post_answer_updates as _apply_post_answer_updates_service,
-    get_or_create_daily_stats as _get_or_create_daily_stats_service,
-    record_spec4_progress as _record_spec4_progress_service,
-    update_relearn_state as _update_relearn_state_service,
-    update_theme_stats as _update_theme_stats_service,
-    update_user_accuracy_last_20 as _update_user_accuracy_last_20_service,
-)
+from app.services.card_submission_service import submit_card_answer as _submit_card_answer_service
 from app.services.lingvist_payload_service import (
     build_grammar_tag_pt as _build_grammar_tag_pt_service,
     build_lingvist_card_response as _build_lingvist_card_response_service,
@@ -45,10 +31,7 @@ from app.services.card_response_service import (
     resolve_request_user_id as _resolve_request_user_id_service,
 )
 from app.models import Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
-from app.models.user_session_stats import UserSessionStats
 from app.models.user_card_state import MemoryStage
-from app.models.user_theme_stats import UserThemeStats
-from app.models.word_theme_mapping import WordThemeMapping
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -378,145 +361,6 @@ def _build_lingvist_card_response(
         card_context=card_context,
         autofill_translations=_autofill_translations,
     )
-
-
-def _get_or_create_daily_stats(db: Session, user_id: str):
-    """Load today's daily stats row, creating it when needed."""
-    return _get_or_create_daily_stats_service(db, user_id)
-
-
-def _get_or_create_user_card_state(db: Session, user_id: str, card_id: str) -> UserCardState:
-    """Load or create the persisted per-user card state."""
-    return _get_or_create_user_card_state_service(db, user_id, card_id)
-
-
-def _create_review_event(
-    *,
-    user_id: str,
-    card_id: str,
-    sentence_id: str,
-    quality: int,
-    answer_data: AnswerRequest,
-    correct_answer: str,
-    is_correct: bool,
-    previous_easiness: float,
-    previous_interval: int,
-    sm2_result: dict
-) -> ReviewEvent:
-    """Build the persisted review event for an answer submission."""
-    return _create_review_event_service(
-        user_id=user_id,
-        card_id=card_id,
-        sentence_id=sentence_id,
-        quality=quality,
-        answer_data=answer_data,
-        correct_answer=correct_answer,
-        is_correct=is_correct,
-        previous_easiness=previous_easiness,
-        previous_interval=previous_interval,
-        sm2_result=sm2_result,
-    )
-
-
-def _apply_sm2_result(user_card_state: UserCardState, sm2_result: dict, is_correct: bool) -> None:
-    """Apply the SM-2 result back into the stored card state."""
-    _apply_sm2_result_service(user_card_state, sm2_result, is_correct)
-
-
-def _build_answer_response(
-    *,
-    is_correct: bool,
-    correct_answer: str,
-    sentence_full: str,
-    quality: int,
-    next_review_at
-) -> AnswerResponse:
-    """Serialize the stable answer payload returned by the endpoint."""
-    return _build_answer_response_service(
-        is_correct=is_correct,
-        correct_answer=correct_answer,
-        sentence_full=sentence_full,
-        quality=quality,
-        next_review_at=next_review_at,
-    )
-
-
-def _update_user_accuracy_last_20(db: Session, user_id: str, is_correct: bool) -> Optional[User]:
-    """Recompute rolling accuracy for the user based on the latest answer."""
-    return _update_user_accuracy_last_20_service(db, user_id, is_correct)
-
-
-def _update_relearn_state(
-    db: Session,
-    user: Optional[User],
-    user_card_state: UserCardState,
-    card_id: str,
-    user_id: str,
-    quality: int
-) -> None:
-    """Apply Lingvist relearn queue updates for the reviewed card."""
-    _update_relearn_state_service(db, user, user_card_state, card_id, user_id, quality)
-
-
-def _update_theme_stats(
-    db: Session,
-    user_id: str,
-    word_id: str,
-    was_correct: bool,
-    response_time_ms: int
-) -> None:
-    """Update theme-level stats for every active theme linked to the word."""
-    _update_theme_stats_service(db, user_id, word_id, was_correct, response_time_ms)
-
-
-def _record_spec4_progress(
-    db: Session,
-    *,
-    user_id: str,
-    word_id: str,
-    sentence_id: str,
-    was_correct: bool,
-    response_time_ms: int,
-    quality: int
-) -> bool:
-    """Update Spec4 progression without breaking answer submission on failure."""
-    return _record_spec4_progress_service(
-        db,
-        user_id=user_id,
-        word_id=word_id,
-        sentence_id=sentence_id,
-        was_correct=was_correct,
-        response_time_ms=response_time_ms,
-        quality=quality,
-    )
-
-
-def _apply_post_answer_updates(
-    db: Session,
-    *,
-    user_id: str,
-    card_id: str,
-    word_id: str,
-    sentence_id: str,
-    user_card_state: UserCardState,
-    is_correct: bool,
-    quality: int,
-    response_time_ms: int
-) -> None:
-    """Apply the aggregate stats and progression updates after an answer."""
-    _apply_post_answer_updates_service(
-        db,
-        user_id=user_id,
-        card_id=card_id,
-        word_id=word_id,
-        sentence_id=sentence_id,
-        user_card_state=user_card_state,
-        is_correct=is_correct,
-        quality=quality,
-        response_time_ms=response_time_ms,
-    )
-
-
 @router.get("/next", response_model=CardResponse)
 async def get_next_card(
     user_id: Optional[str] = None,  # For MVP, we'll use a mock user
@@ -662,131 +506,12 @@ async def submit_answer(
     - Plural control based on context
     """
     try:
-        # CRITICAL: Card MUST exist (Spec4 requirement - no fallback)
-        card = db.query(Card).filter(Card.id == card_id).first()
-
-        if not card:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "Card not found", "message": f"No Card found with ID {card_id}"}
-            )
-
-        # Validate Card has required relationships
-        if not card.sentence:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "Card data incomplete", "message": f"Card {card_id} has no sentence"}
-            )
-
-        if not card.sentence.word:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "Card data incomplete", "message": f"Card {card_id} sentence has no word"}
-            )
-
-        # Get correct answer from Card->Sentence->Word
-        correct_answer = card.sentence.word.text
-        sentence_full = card.sentence.text.replace("___", correct_answer, 1)
-        sentence_id = str(card.sentence.id)  # CRITICAL for Spec4 variety
-        
-        # Validate answer using SM-2 tolerance rules
-        print(f"DEBUG: Validating answer '{answer_data.answer}' against '{correct_answer}'")
-        is_correct, normalized_correct = SM2Algorithm.validate_answer(
-            user_answer=answer_data.answer,
-            correct_answer=correct_answer,
-            synonyms=["tome"]  # Example synonyms
-        )
-
-        print(f"DEBUG: SM2 validation result: is_correct={is_correct}, normalized_correct={normalized_correct}")
-
-        # Calculate SM-2 quality
-        print(f"DEBUG: Calculating quality for response_time_ms={answer_data.response_time_ms}, attempts={answer_data.attempts}, hints={answer_data.hints_used}")
-        try:
-            quality = SM2Algorithm.calculate_quality_from_response(
-                was_correct=is_correct,
-                response_time_ms=answer_data.response_time_ms,
-                hints_used=answer_data.hints_used,
-                attempts=answer_data.attempts
-            )
-            print(f"DEBUG: SM2 quality calculated: {quality}")
-        except Exception as e:
-            print(f"DEBUG: Error calculating SM2 quality: {e}")
-            raise
-
-        user_id = _resolve_request_user_id(db, user_id)
-
-        # Get or create UserCardState (always required for Spec4)
-        user_card_state = _get_or_create_user_card_state(db, user_id, card_id)
-
-        # Calculate next review with SM-2
-        # Capture previous values BEFORE updating UserCardState
-        previous_easiness = user_card_state.easiness_factor
-        previous_interval = user_card_state.interval_days
-
-        try:
-            print(f"DEBUG: Calculating SM2 next review with quality={quality}, repetitions={user_card_state.repetitions}")
-            sm2_result = SM2Algorithm.calculate_next_review(
-                quality=quality,
-                current_repetitions=user_card_state.repetitions,
-                current_easiness_factor=user_card_state.easiness_factor,
-                current_interval_days=user_card_state.interval_days
-            )
-            print(f"DEBUG: SM2 result: {sm2_result}")
-        except Exception as e:
-            print(f"DEBUG: Error calculating SM2 next review: {e}")
-            raise
-
-        # CRITICAL: Create ReviewEvent with sentence_id (Spec4 requirement)
-        review_event = _create_review_event(
-            user_id=user_id,
-            card_id=card_id,
-            sentence_id=sentence_id,
-            quality=quality,
-            answer_data=answer_data,
-            correct_answer=correct_answer,
-            is_correct=is_correct,
-            previous_easiness=previous_easiness,
-            previous_interval=previous_interval,
-            sm2_result=sm2_result,
-        )
-        db.add(review_event)
-        print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}, attempts={answer_data.attempts}")
-
-        _apply_sm2_result(user_card_state, sm2_result, is_correct)
-        _apply_post_answer_updates(
+        return _submit_card_answer_service(
             db,
-            user_id=user_id,
             card_id=card_id,
-            word_id=str(card.sentence.word_id),
-            sentence_id=sentence_id,
-            user_card_state=user_card_state,
-            is_correct=is_correct,
-            quality=quality,
-            response_time_ms=answer_data.response_time_ms,
+            answer_data=answer_data,
+            user_id=user_id,
         )
-
-        print(f"DEBUG: Attempting to commit database changes...")
-        try:
-            # Commit all changes
-            db.commit()
-            print(f"DEBUG: Database commit successful")
-        except Exception as e:
-            print(f"DEBUG: Error during database commit: {e}")
-            db.rollback()
-            raise
-
-        try:
-            print("DEBUG: Creating answer response payload")
-            return _build_answer_response(
-                is_correct=is_correct,
-                correct_answer=correct_answer,
-                sentence_full=sentence_full,
-                quality=quality,
-                next_review_at=sm2_result["next_review_at"],
-            )
-        except Exception as e:
-            print(f"DEBUG: Error creating response: {e}")
-            raise
         
     except ValueError as e:
         raise HTTPException(
