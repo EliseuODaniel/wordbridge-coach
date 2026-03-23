@@ -582,6 +582,27 @@ Depois de afinar `submit_answer`, o maior bloco restante em `cards.py` passou a 
 - a próxima fatia pode focar em `next-lingvist` ou em reduzir wrappers legados restantes
 - o quality gate agora cobre também `tests/test_card_spec4_service.py`
 
+## 2026-03-23 - Tirar a orquestração de next-lingvist de cards.py antes de fechar o endpoint
+
+Status: aceito
+
+### Contexto
+
+Depois da extração de `next-spec4`, o maior bloco remanescente em `cards.py` era `next-lingvist`: resolver usuário, aplicar override temporário de mix, chamar a seleção, montar o payload enriquecido e fazer commit de efeitos colaterais de autofill.
+
+### Decisão
+
+- extrair esse fluxo para `api/app/services/card_lingvist_service.py`
+- manter o endpoint apenas delegando e traduzindo exceções como antes
+- preservar o payload enriquecido em `lingvist_payload_service.py` como camada separada abaixo do novo orquestrador
+- validar com suíte unitária própria, `test_lingvist_payload_service.py` e regressão de Spec4
+
+### Impacto
+
+- `cards.py` ficou muito mais próximo de uma camada de borda fina em todos os endpoints principais
+- a próxima fatia pode focar em wrappers/resíduos restantes ou sair de `cards.py`
+- o quality gate agora cobre também `tests/test_card_lingvist_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito

@@ -17,9 +17,9 @@ from app.schemas.lingvist import LingvistCardResponse, MicroProgress
 from app.services.card_selection import CardSelectionService
 from app.services.card_submission_service import submit_card_answer as _submit_card_answer_service
 from app.services.card_spec4_service import get_next_spec4_card_response as _get_next_spec4_card_response_service
+from app.services.card_lingvist_service import get_next_lingvist_card_response as _get_next_lingvist_card_response_service
 from app.services.lingvist_payload_service import (
     build_grammar_tag_pt as _build_grammar_tag_pt_service,
-    build_lingvist_card_response as _build_lingvist_card_response_service,
     build_relative_audio_urls as _build_relative_audio_urls_service,
     extract_word_translation as _extract_word_translation_service,
     get_lingvist_entities_from_context as _get_lingvist_entities_from_context_service,
@@ -356,18 +356,17 @@ def _build_relative_audio_urls(card: Card, word: Word, sentence: Sentence, lang_
     return _build_relative_audio_urls_service(card, word, sentence, lang_code)
 
 
-def _build_lingvist_card_response(
+def _get_next_lingvist_card_response(
     db: Session,
-    user_id: str,
-    user: User,
-    card_context: dict
+    *,
+    user_id: Optional[str] = None,
+    exclude_card_id: Optional[str] = None
 ) -> LingvistCardResponse:
-    """Build the enriched Lingvist payload from a base card context."""
-    return _build_lingvist_card_response_service(
-        db=db,
+    """Run Lingvist selection, build the enriched payload, and commit side effects."""
+    return _get_next_lingvist_card_response_service(
+        db,
         user_id=user_id,
-        user=user,
-        card_context=card_context,
+        exclude_card_id=exclude_card_id,
         autofill_translations=_autofill_translations,
     )
 @router.get("/next", response_model=CardResponse)
@@ -579,43 +578,11 @@ async def get_next_card_lingvist(
     translations are missing, generates them on-demand using Argos Translate.
     """
     try:
-        user_id = _resolve_request_user_id(db, user_id)
-
-        # Initialize Spec4 card selection service
-        card_service = CardSelectionService(db)
-
-        # Get next card using Spec4 algorithm with Lingvist mix (20% new / 80% review)
-        # Override target_new_share to 0.2 (20% new words)
-        original_target_new = None
-        user = db.query(User).filter(User.id == user_id).first()
-
-        if user and hasattr(user, 'target_new_words'):
-            original_target_new = user.target_new_words
-
-        # Temporarily set target_new_words to enforce 20% new / 80% review mix
-        # Lingvist mode is more conservative than Spec4
-        if user:
-            user.target_new_words = 20  # 20% new words
-
-        try:
-            card_context = card_service.get_next_card_for_user(user_id, exclude_card_id=exclude_card_id)
-        finally:
-            # Restore original target_new_words
-            if user and original_target_new is not None:
-                user.target_new_words = original_target_new
-
-        if not card_context:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "No cards available", "message": "No cards available for study at this time"}
-            )
-
-        response = _build_lingvist_card_response(db, user_id, user, card_context)
-
-        # Commit database changes (including autofilled translations)
-        db.commit()
-
-        return response
+        return _get_next_lingvist_card_response(
+            db,
+            user_id=user_id,
+            exclude_card_id=exclude_card_id,
+        )
 
     except HTTPException:
         raise

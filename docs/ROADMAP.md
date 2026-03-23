@@ -79,6 +79,7 @@ Notas do baseline:
 - quadragesima microfatia aplicada: extração da orquestração agregada de stats e progressão de `submit_answer` para `api/app/services/card_progress_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - quadragesima primeira microfatia aplicada: extração da orquestração principal de `submit_answer` para `api/app/services/card_submission_service.py`, com endpoint reduzido a adaptador fino e cobertura própria no quality gate
 - quadragesima segunda microfatia aplicada: extração da seleção e serialização de `next-spec4` para `api/app/services/card_spec4_service.py`, com endpoint reduzido a adaptador fino e cobertura própria no quality gate
+- quadragesima terceira microfatia aplicada: extração da orquestração de `next-lingvist` para `api/app/services/card_lingvist_service.py`, com endpoint reduzido a adaptador fino e cobertura própria no quality gate
 
 ## Fase 2: Limpeza estrutural
 
