@@ -26,6 +26,11 @@ from app.services.card_selection_query_service import (
     get_due_review_candidates as _get_due_review_candidates_service,
     get_recent_correct_word_ids as _get_recent_correct_word_ids_service,
 )
+from app.services.card_selection_fallback_service import (
+    find_any_eligible_card as _find_any_eligible_card_service,
+    get_card_review_state as _get_card_review_state_service,
+    get_word_by_rank as _get_word_by_rank_service,
+)
 from app.services.vocabulary_progression import VocabularyProgressionService
 
 
@@ -341,25 +346,14 @@ class CardSelectionService:
             return None
 
         max_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
-
-        # Query ANY active card within constraints
-        query = self.db.query(Card).join(Sentence).join(Word).filter(
-            Card.is_active == True,
-            Word.language_id == user.target_language_id
-        ).join(WordFrequency,
-            and_(
-                func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                WordFrequency.language_code == target_lang.code,
-                WordFrequency.rank <= max_rank
-            )
+        card = _find_any_eligible_card_service(
+            self.db,
+            target_language_id=user.target_language_id,
+            target_language_code=target_lang.code,
+            max_rank=max_rank,
+            user_id=user_id,
+            exclude_card_id=exclude_card_id,
         )
-
-        # Exclude specific card if provided
-        if exclude_card_id:
-            query = query.filter(Card.id != exclude_card_id)
-
-        # Random selection to avoid repetition
-        card = query.order_by(func.random()).first()
 
         if not card:
             return None
@@ -369,10 +363,11 @@ class CardSelectionService:
         sentence = self.progression_service.get_sentence_for_word(user_id, word.id, exclude_card_id)
 
         # Determine if this is new or review based on UserCardState
-        ucs = self.db.query(UserCardState).filter(
-            UserCardState.user_id == user_id,
-            UserCardState.card_id == card.id
-        ).first()
+        ucs = _get_card_review_state_service(
+            self.db,
+            user_id=user_id,
+            card_id=card.id,
+        )
 
         is_new = (ucs is None or ucs.status.value == 'NEW')
 
@@ -389,7 +384,6 @@ class CardSelectionService:
         NOTE: This method is kept for backwards compatibility but is no longer used
         in the main flow. Use _get_random_new_card instead.
         """
-        from app.models import WordFrequency
         from app.models.user_frequency_progress import UserFrequencyProgress
 
         # Get user's target language for proper filtering
@@ -417,58 +411,14 @@ class CardSelectionService:
                         print(f"DEBUG: Gating blocked rank {rank} (max_unlocked_rank={max_unlocked_rank}, range limit=50)")
                         return None
 
-        # Try exact rank match first (using lemma like Insights API for consistency)
-        query = self.db.query(Word).join(WordFrequency,
-            and_(
-                func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                WordFrequency.language_code == target_language_code
-            )
-        ).filter(
-            WordFrequency.rank == rank
+        return _get_word_by_rank_service(
+            self.db,
+            rank=rank,
+            target_language_code=target_language_code,
+            max_allowed_rank=max_allowed_rank,
+            max_unlocked_rank=max_unlocked_rank if user_id else None,
+            excluded_word_id=self._get_excluded_word_id(exclude_card_id),
         )
-
-        word = query.first()
-
-        if word:
-            # Verificação adicional: garantir que o rank corresponde ao esperado
-            # Isso previne problemas de dados inconsistentes no banco
-            if user_id and max_allowed_rank and rank > max_allowed_rank:
-                print(f"DEBUG: Rank {rank} > max_allowed_rank {max_allowed_rank}, violação de gating!")
-                return None
-
-            # Check if this is the excluded word (convert exclude_card_id to word_id)
-            excluded_word_id = self._get_excluded_word_id(exclude_card_id)
-            if excluded_word_id and str(word.id) == str(excluded_word_id):
-                print(f"DEBUG: Excluded word {word.id} found (from card {exclude_card_id}), returning None")
-                return None
-
-            return word
-
-        # If exact rank not found, try deterministic fallback within allowed window
-        if user_id and max_allowed_rank:
-            # Find the next available rank within the window
-            next_available = self.db.query(WordFrequency).filter(
-                and_(
-                    WordFrequency.rank >= rank,
-                    WordFrequency.rank <= max_allowed_rank,
-                    WordFrequency.language_code == target_language_code
-                )
-            ).order_by(WordFrequency.rank).first()
-
-            if next_available:
-                # Find corresponding word (using lemma for consistency)
-                word = self.db.query(Word).join(WordFrequency,
-                    and_(
-                        func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                        WordFrequency.language_code == target_language_code
-                    )
-                ).filter(
-                    WordFrequency.rank == next_available.rank
-                ).first()
-                return word
-
-        # No suitable word found within constraints
-        return None
 
     def _build_card_context(
         self,

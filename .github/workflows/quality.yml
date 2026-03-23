@@ -76,6 +76,7 @@ jobs:
       - run: python -m pytest tests/test_card_selection_payload_service.py -q
       - run: python -m pytest tests/test_card_selection_policy_service.py -q
       - run: python -m pytest tests/test_card_selection_query_service.py -q
+      - run: python -m pytest tests/test_card_selection_fallback_service.py -q
       - run: python -m pytest tests/test_chat_runtime_service.py -q
       - run: python -m pytest tests/test_chat_turn_service.py -q
       - run: python -m pytest tests/test_chat_utilities.py -q

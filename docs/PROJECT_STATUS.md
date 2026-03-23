@@ -33,6 +33,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_payload_service.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_policy_service.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_query_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_fallback_service.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_utilities.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_chat_websocket_flow.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_themes_stats.py -q`: OK
@@ -95,6 +96,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `CardSelectionService` agora também delega a criação/garantia de `Card` e a montagem do payload comum para `api/app/services/card_selection_payload_service.py`
 - `CardSelectionService` agora também delega as regras de mistura e decisão de tentativa de card novo para `api/app/services/card_selection_policy_service.py`
 - `CardSelectionService` agora também delega queries de review, relearn, backlog e anti-repetição correta para `api/app/services/card_selection_query_service.py`
+- `CardSelectionService` agora também delega o fallback de card elegível e o lookup legado por rank para `api/app/services/card_selection_fallback_service.py`
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
 - o `UserSelection` deixou de usar stats aleatórias e agora consome idioma alvo, meta de vocabulário e stats reais disponíveis por perfil

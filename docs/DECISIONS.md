@@ -663,6 +663,26 @@ Depois da extração do payload e da política de mistura, `CardSelectionService
 - a próxima fatia pode focar nos fallbacks finais e em métodos legados como `_get_word_by_rank`
 - o quality gate agora cobre também `tests/test_card_selection_query_service.py`
 
+## 2026-03-23 - Tirar fallbacks e legado de rank de CardSelectionService antes de encerrar o hotspot
+
+Status: aceito
+
+### Contexto
+
+Depois da extração de payload, política e queries, o que sobrava de mais histórico em `CardSelectionService` era o fallback `_get_any_eligible_card` e o método legado `_get_word_by_rank`. Ambos misturavam query, gating e compatibilidade num mesmo ponto.
+
+### Decisão
+
+- extrair esses comportamentos para `api/app/services/card_selection_fallback_service.py`
+- manter `CardSelectionService` só coordenando o fluxo e delegando a parte de fallback/legado
+- validar com suíte unitária própria e regressões de Spec4/themes
+
+### Impacto
+
+- `CardSelectionService` ficou bem mais próximo do fechamento como hotspot
+- a próxima fatia pode ser de limpeza final, remoção de legado morto ou revisão de `record_answer`
+- o quality gate agora cobre também `tests/test_card_selection_fallback_service.py`
+
 ## 2026-03-23 - Centralizar a troca entre modos no App em vez de recarregar a página
 
 Status: aceito
