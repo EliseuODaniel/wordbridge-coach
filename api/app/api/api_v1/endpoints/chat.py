@@ -43,6 +43,12 @@ from app.services.chat_feedback_service import (
     get_grammar_issues as _get_grammar_issues,
     merge_issues as _merge_issues,
 )
+from app.services.chat_context_service import (
+    build_chat_generation_inputs as _build_chat_generation_inputs_service,
+    build_context_messages as _build_context_messages_service,
+    build_teacher_analysis_context as _build_teacher_analysis_context_service,
+    build_teacher_context as _build_teacher_context_service,
+)
 from app.services.chat_turn_service import (
     ChatUserMessageTurnHelpers,
     process_user_message_turn,
@@ -328,25 +334,24 @@ def _build_assistant_done_payload(conversation_id: str, full_content: str, lesso
 
 
 def _build_chat_generation_inputs(conversation: ChatConversation, db: Session) -> tuple[List[dict], str, dict]:
-    """Build the context, prompt, and generation config used for chat streaming."""
-    messages = _build_context_messages(str(conversation.id), db, limit=10, exclude_system=True)
-    system_prompt = _build_chat_system_prompt(conversation.lesson_frame_json)
-    generation_config = _build_chat_generation_config()
-    return messages, system_prompt, generation_config
+    """Adapt endpoint-local dependencies to the shared context service."""
+    return _build_chat_generation_inputs_service(
+        conversation=conversation,
+        db=db,
+        build_context=_build_context_messages,
+        build_system_prompt=_build_chat_system_prompt,
+        build_generation_config=_build_chat_generation_config,
+    )
 
 
 def _build_teacher_analysis_context(conversation: ChatConversation, db: Session, limit: int = 10) -> str:
-    """
-    Build teacher-analysis context from student messages when available.
-
-    Falls back to session_summary to preserve previous behavior when there is
-    no persisted user-message history yet.
-    """
-    teacher_messages = _build_teacher_context(str(conversation.id), db, limit=limit)
-    if teacher_messages:
-        return "\n".join(message["content"] for message in teacher_messages if message.get("content"))
-
-    return conversation.session_summary
+    """Adapt endpoint-local dependencies to the shared teacher-context service."""
+    return _build_teacher_analysis_context_service(
+        conversation=conversation,
+        db=db,
+        build_teacher_context_fn=_build_teacher_context,
+        limit=limit,
+    )
 
 
 async def _freeze_user_message_feedback(
@@ -571,99 +576,22 @@ def _sanitize_assistant_response(response: str) -> str:
 
 def _build_context_messages(conversation_id: str, db: Session, limit: int = 10,
                           exclude_system: bool = False) -> List[dict]:
-    """
-    Build context messages for LLM, ensuring the most recent user message is included.
-
-    PASSO 3: Contextos independentes
-    - Chat context: usa user/assistant messages (exclui system)
-    - Teacher context: SOMENTE user messages (role='user')
-
-    Strategy:
-    1. Optionally exclude system message (when exclude_system=True)
-    2. Fetch the last N non-system messages in descending order
-    3. Reverse in memory to get chronological order
-    4. Combine: [system] + reversed(last_non_system) or just reversed(last_non_system)
-
-    Args:
-        conversation_id: UUID of the conversation
-        db: Database session
-        limit: Maximum number of non-system messages to include (default: 10)
-        exclude_system: If True, exclude system message from context (default: False)
-
-    Returns:
-        List of message dicts with 'role' and 'content' keys
-    """
-    # 1. Get system message (if exists and not excluded)
-    system_msg = None
-    if not exclude_system:
-        system_msg = db.query(ChatMessage).filter(
-            ChatMessage.conversation_id == conversation_id,
-            ChatMessage.role == "system"
-        ).first()
-
-    # 2. Get last N non-system messages in descending order
-    last_non_system = db.query(ChatMessage).filter(
-        ChatMessage.conversation_id == conversation_id,
-        ChatMessage.role != "system"
-    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
-
-    # 3. Reverse to get chronological order
-    last_non_system.reverse()
-
-    # PASSO 3: Log context size for debugging
-    logger.info(f"[CONTEXT_BUILDER] chat_context: {len(last_non_system)} messages (user+assistant)")
-
-    # 4. Build messages list
-    messages = []
-    if system_msg:
-        messages.append({"role": system_msg.role, "content": system_msg.content})
-
-    messages.extend([
-        {"role": m.role, "content": m.content}
-        for m in last_non_system
-    ])
-
-    return messages
+    """Wrapper kept for compatibility with existing tests and local callers."""
+    return _build_context_messages_service(
+        conversation_id=conversation_id,
+        db=db,
+        limit=limit,
+        exclude_system=exclude_system,
+    )
 
 
 def _build_teacher_context(conversation_id: str, db: Session, limit: int = 10) -> List[dict]:
-    """
-    Build teacher-only context with USER messages ONLY.
-
-    PASSO 3: Contextos independentes
-    - Teacher context: SOMENTE user messages (role='user')
-    - NÃO inclui assistant replies
-    - NÃO inclui system prompt
-
-    This ensures teacher analysis is based purely on student input.
-
-    Args:
-        conversation_id: UUID of the conversation
-        db: Database session
-        limit: Maximum number of user messages to include (default: 10)
-
-    Returns:
-        List of message dicts with 'role' and 'content' keys (user only)
-    """
-    # Get last N user messages in descending order
-    last_user_messages = db.query(ChatMessage).filter(
-        ChatMessage.conversation_id == conversation_id,
-        ChatMessage.role == "user"
-    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
-
-    # Reverse to get chronological order
-    last_user_messages.reverse()
-
-    # PASSO 3: Log teacher context size
-    logger.info(f"[CONTEXT_BUILDER] teacher_context: {len(last_user_messages)} user messages (assistant excluded)")
-
-    # Build messages list (user only)
-    messages = [
-        {"role": m.role, "content": m.content}
-        for m in last_user_messages
-    ]
-
-    return messages
+    """Wrapper kept for compatibility with existing tests and local callers."""
+    return _build_teacher_context_service(
+        conversation_id=conversation_id,
+        db=db,
+        limit=limit,
+    )
 
 
 # ============================================================================

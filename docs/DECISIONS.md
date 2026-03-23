@@ -710,3 +710,27 @@ Mesmo depois das extrações de runtime, draft orchestration e turno `user_messa
 - o endpoint de chat perde mais uma camada de detalhe técnico e de integração externa
 - LanguageTool e `micro_eval` passam a ter uma fronteira mais clara para futuras trocas ou mocks
 - o próximo corte pode focar no restante dos helpers de contexto/persistência ou em expandir testes de integração do fluxo completo
+
+## 2026-03-23 - Mover a construção de contexto do Chat Coach para services
+
+Status: aceito
+
+### Contexto
+
+Depois de extrair runtime, draft orchestration, feedback e turno `user_message`, `chat.py` ainda carregava diretamente a construção de contexto para geração do assistente e para `teacher_analysis`. Isso mantinha queries e detalhes de montagem ainda concentrados no endpoint.
+
+### Decisão
+
+- criar `api/app/services/chat_context_service.py` para concentrar:
+  - contexto cronológico de chat
+  - contexto apenas do aluno para `teacher_analysis`
+  - montagem dos insumos de geração
+  - fallback do contexto do professor para `session_summary`
+- manter wrappers finos em `chat.py` para preservar compatibilidade com os testes locais existentes
+- adicionar cobertura dedicada e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais um bloco de queries e montagem de contexto
+- a fronteira de contexto do Chat Coach fica testável fora do endpoint
+- o próximo corte pode focar em persistência/eventos ou em cobertura mais integrada do fluxo completo

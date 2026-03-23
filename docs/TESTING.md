@@ -29,6 +29,7 @@ cd api
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_vocabulary_progression.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_draft_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_feedback_service.py -q
+PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_context_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_runtime_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_turn_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_spec4_card_selection.py -q
@@ -88,7 +89,7 @@ docker compose ps
 Existe um baseline inicial de quality gate em `.github/workflows/quality.yml` cobrindo:
 
 - `frontend`: `npm ci`, `npm run lint`, `npm run build`
-- `api`: trilhas críticas já validadas de draft/feedback/runtime/orquestração/utilitários de chat, WebSocket, progressão e Spec4
+- `api`: trilhas críticas já validadas de draft/feedback/contexto/runtime/orquestração/utilitários de chat, WebSocket, progressão e Spec4
 
 ## Regra prática
 
