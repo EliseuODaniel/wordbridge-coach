@@ -68,6 +68,7 @@ Notas do baseline:
 - vigesima nona microfatia aplicada: extração do runtime e do roteamento base do WebSocket de chat para `api/app/services/chat_runtime_service.py`, com cobertura unitária própria e inclusão no quality gate
 - trigesima microfatia aplicada: extração da coordenação do turno `user_message` para `api/app/services/chat_turn_service.py`, com teste focal de orquestração e inclusão no quality gate
 - trigesima primeira microfatia aplicada: extração da orquestração de `draft_update` e `request_autocomplete` para `api/app/services/chat_draft_service.py`, com testes focais e inclusão no quality gate
+- trigesima segunda microfatia aplicada: extração da montagem de `draft_feedback` e das integrações de micro-eval/LanguageTool para `api/app/services/chat_feedback_service.py`, com cobertura própria e inclusão no quality gate
 
 ## Fase 2: Limpeza estrutural
 

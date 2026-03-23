@@ -686,3 +686,27 @@ Depois de extrair o runtime WebSocket e o turno `user_message`, os handlers de `
 - `chat.py` fica mais próximo de um conjunto de handlers finos
 - draft feedback e autocomplete ganham uma fronteira de serviço pequena e testável
 - o próximo corte pode mirar a extração dos helpers de feedback/contexto ou o isolamento das integrações LLM/LanguageTool
+
+## 2026-03-23 - Mover o feedback draft e as integrações externas do Chat Coach para services
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das extrações de runtime, draft orchestration e turno `user_message`, `chat.py` ainda concentrava montagem de `draft_feedback`, chamada de `micro_eval`, merge com LanguageTool e congelamento do feedback enviado no submit.
+
+### Decisão
+
+- criar `api/app/services/chat_feedback_service.py` para concentrar:
+  - montagem de `draft_feedback`
+  - merge de issues heurísticas com LanguageTool
+  - avaliação de draft via `micro_eval`
+  - congelamento do feedback enviado no submit
+- manter em `chat.py` apenas wrappers finos para adaptar config/env e preservar compatibilidade local
+- adicionar cobertura dedicada e incluir a nova suíte no quality gate
+
+### Impacto
+
+- o endpoint de chat perde mais uma camada de detalhe técnico e de integração externa
+- LanguageTool e `micro_eval` passam a ter uma fronteira mais clara para futuras trocas ou mocks
+- o próximo corte pode focar no restante dos helpers de contexto/persistência ou em expandir testes de integração do fluxo completo

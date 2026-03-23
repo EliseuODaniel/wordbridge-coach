@@ -35,6 +35,14 @@ from app.services.chat_draft_service import (
     process_draft_update,
     process_request_autocomplete,
 )
+from app.services.chat_feedback_service import (
+    build_draft_feedback as _build_draft_feedback,
+    evaluate_draft_feedback,
+    freeze_user_message_feedback,
+    generate_micro_tip as _generate_micro_tip,
+    get_grammar_issues as _get_grammar_issues,
+    merge_issues as _merge_issues,
+)
 from app.services.chat_turn_service import (
     ChatUserMessageTurnHelpers,
     process_user_message_turn,
@@ -146,83 +154,6 @@ def _initialize_micro_eval_tracking(conversation_id: str) -> None:
         _micro_eval_timestamps[conversation_id] = 0
 
 
-async def _get_grammar_issues(draft_text: str) -> List[dict]:
-    """
-    Get grammar issues from LanguageTool if enabled.
-
-    Args:
-        draft_text: Text to check
-
-    Returns:
-        List of issue dicts from LanguageTool or empty list on error/fallback
-    """
-    # Only check if LanguageTool is enabled AND text has minimum length
-    if CHAT_DRAFT_GRAMMAR_PROVIDER != "languagetool":
-        return []
-
-    if len(draft_text) < 3:
-        return []
-
-    try:
-        from app.services.languagetool_client import LanguageToolClient
-
-        lt_client = LanguageToolClient(base_url=CHAT_LANGUAGETOOL_URL)
-        lt_issues = await lt_client.check_text(draft_text)
-        await lt_client.close()
-
-        logger.info(f"LanguageTool returned {len(lt_issues)} issues for draft length {len(draft_text)}")
-        return lt_issues
-
-    except Exception as e:
-        logger.warning(f"LanguageTool check failed, using heuristic only: {e}")
-        return []  # Fallback to heuristic issues from micro_eval
-
-
-def _merge_issues(lt_issues: List[dict], heuristic_issues: List[dict]) -> List[dict]:
-    """
-    Merge LanguageTool issues with heuristic issues, avoiding duplicates.
-
-    Args:
-        lt_issues: Issues from LanguageTool (with highlight_spans)
-        heuristic_issues: Issues from micro_eval (may have highlight_spans)
-
-    Returns:
-        Merged list of unique issues
-    """
-    # Create set of seen issue signatures (category + start + end)
-    seen = set()
-    merged = []
-
-    # Add LanguageTool issues first (they have real highlight_spans)
-    for issue in lt_issues:
-        signature = (
-            issue.get("category"),
-            issue.get("highlight_spans", [{}])[0].get("start", 0),
-            issue.get("highlight_spans", [{}])[0].get("end", 0)
-        )
-        if signature not in seen:
-            seen.add(signature)
-            merged.append(issue)
-
-    # Add heuristic issues that don't overlap
-    for issue in heuristic_issues:
-        # Skip if no highlight_spans (can't detect duplicates)
-        if not issue.get("highlight_spans"):
-            merged.append(issue)
-            continue
-
-        signature = (
-            issue.get("category"),
-            issue.get("highlight_spans", [{}])[0].get("start", 0),
-            issue.get("highlight_spans", [{}])[0].get("end", 0)
-        )
-        if signature not in seen:
-            seen.add(signature)
-            merged.append(issue)
-
-    return merged
-
-
 def get_default_lesson_frame() -> dict:
     """Get default lesson frame for new conversations"""
     return {
@@ -252,169 +183,6 @@ def get_default_student_profile() -> dict:
     }
 
 
-def _generate_micro_tip(draft: str, lesson_frame: dict) -> str:
-    """
-    Generate a helpful tip when no issues are detected.
-
-    Provides contextual encouragement and suggests next steps.
-
-    Args:
-        draft: User's draft text
-        lesson_frame: Current lesson frame
-
-    Returns:
-        Helpful tip message
-    """
-    import random
-
-    # Create stable random based on draft content
-    seed = sum(ord(c) for c in draft) % 100
-    rng = random.Random(seed)
-
-    # Detect draft characteristics
-    draft_lower = draft.lower().strip()
-    word_count = len(draft_lower.split())
-
-    # Very short drafts (< 5 words)
-    if word_count < 5:
-        tips = [
-            "Good start! Try expanding with more details.",
-            "Nice beginning! Can you add more information?",
-            "Great! Tell me more about this.",
-        ]
-        return tips[seed % len(tips)]
-
-    # Questions (encourage elaboration)
-    if draft_lower.endswith("?"):
-        tips = [
-            "Good question! Try asking for more specific details.",
-            "Nice! You can also ask about feelings or opinions.",
-            "Great question! What made you think about this?",
-        ]
-        return tips[seed % len(tips)]
-
-    # Past tense (encourage follow-up)
-    if any(w in draft_lower for w in ["yesterday", "last", "ago", "went", "did"]):
-        tips = [
-            "Well done! Can you tell me more about it?",
-            "Good job! How did you feel about it?",
-            "Nice! What happened next?",
-        ]
-        return tips[seed % len(tips)]
-
-    # Future tense (encourage planning)
-    if any(w in draft_lower for w in ["tomorrow", "will", "going to", "plan"]):
-        tips = [
-            "Sounds exciting! Any specific preparations?",
-            "Great! When will you do this?",
-            "Nice! Who will you go with?",
-        ]
-        return tips[seed % len(tips)]
-
-    # Hobbies/likes (encourage elaboration)
-    if any(w in draft_lower for w in ["like", "love", "enjoy", "favorite"]):
-        tips = [
-            "That's interesting! How often do you do this?",
-            "Nice! What do you like most about it?",
-            "Great! Since when have you enjoyed this?",
-        ]
-        return tips[seed % len(tips)]
-
-    # Default encouragement
-    tips = [
-        "Great job! Try asking a follow-up question.",
-        "Well done! Can you add more details?",
-        "Nice! Tell me more about it.",
-        "Good! What else would you like to share?",
-    ]
-    return tips[seed % len(tips)]
-
-
-def _build_draft_feedback(
-    conversation_id: str,
-    eval_result: dict,
-    now_ms: int,
-    ghost_suggestion: str = None,
-    draft: str = None,
-    lesson_frame: dict = None
-) -> dict:
-    """
-    Build draft_feedback response from micro_eval result.
-
-    Calculates bar score, maps issues, optionally includes ghost suggestion,
-    and generates micro_tip when no issues are detected.
-
-    Args:
-        conversation_id: UUID of the conversation
-        eval_result: Result from llm_provider.micro_eval()
-        now_ms: Current timestamp in milliseconds
-        ghost_suggestion: Optional ghost suggestion from autocomplete
-        draft: Optional draft text for micro_tip generation
-        lesson_frame: Optional lesson frame for micro_tip generation
-
-    Returns:
-        Dict matching DraftFeedbackOut schema
-    """
-    # Calculate bar score (weighted average)
-    bar_score_raw = (
-        eval_result["spelling_score"] * 0.20 +
-        eval_result["grammar_score"] * 0.25 +
-        100 * 0.10 +  # syntax (perfect for now)
-        eval_result["lesson_alignment_score"] * 0.30 +
-        eval_result["naturalness_score"] * 0.15
-    )
-
-    # Map issues to DraftIssue schema
-    issues = []
-    for issue in eval_result.get("top_issues", []):
-        issues.append({
-            "category": issue["category"],
-            "title": issue["title"],
-            "explanation": issue["explanation"],
-            "highlight_spans": issue.get("highlight_spans", []),
-            "suggestions": issue.get("suggestions", [])
-        })
-
-    # Generate micro_tip when no issues
-    micro_tip = None
-    if not issues and draft:
-        micro_tip = _generate_micro_tip(draft, lesson_frame or {})
-
-    # Extract rich signals from eval_result (if available)
-    suggested_next_words = eval_result.get("suggested_next_words", [])
-    topic = eval_result.get("topic")
-    intent = eval_result.get("intent")
-
-    # Generate rewrite suggestion from first issue (if available)
-    rewrite = None
-    if issues and issues[0].get("suggestions"):
-        # Use the first suggestion as a rewrite
-        rewrite = issues[0]["suggestions"][0] if issues[0]["suggestions"] else None
-
-    return DraftFeedbackOut(
-        type="draft_feedback",
-        conversation_id=conversation_id,
-        bar_score_raw=bar_score_raw,
-        bar_score_components={
-            "spelling": eval_result["spelling_score"],
-            "grammar": eval_result["grammar_score"],
-            "syntax": 100.0,
-            "lesson_alignment": eval_result["lesson_alignment_score"],
-            "naturalness": eval_result["naturalness_score"]
-        },
-        lesson_alignment_score=eval_result["lesson_alignment_score"],
-        issues=issues,
-        ghost_suggestion=ghost_suggestion,
-        micro_tip=micro_tip,
-        suggested_next_words=suggested_next_words,
-        topic=topic,
-        intent=intent,
-        rewrite=rewrite,
-        draft=draft or "",  # Include draft text in response
-        server_ts_ms=now_ms
-    ).model_dump()
-
-
 async def _evaluate_draft_feedback(
     conversation: ChatConversation,
     draft_text: str,
@@ -422,37 +190,16 @@ async def _evaluate_draft_feedback(
     ghost_suggestion: Optional[str] = None,
     include_grammar_check: bool = False,
 ) -> dict:
-    """
-    Run the draft feedback pipeline and return the serialized feedback payload.
-
-    This keeps draft_update and request_autocomplete aligned on the same
-    evaluation/mapping behavior while allowing autocomplete to skip the
-    extra LanguageTool call.
-    """
-    lt_issues: List[dict] = []
-    if include_grammar_check:
-        logger.info(f"[LT_CHECK] CHAT_DRAFT_GRAMMAR_PROVIDER={CHAT_DRAFT_GRAMMAR_PROVIDER}")
-        lt_issues = await _get_grammar_issues(draft_text)
-        logger.info(f"[LT_RESULT] {len(lt_issues)} issues from LT for '{draft_text[:30]}...'")
-
-    eval_result = await llm_provider.micro_eval(
-        context=conversation.session_summary,
-        lesson_frame=conversation.lesson_frame_json,
-        draft=draft_text,
-        student_profile=conversation.student_profile_json
-    )
-
-    if lt_issues:
-        heuristic_issues = eval_result.get("top_issues", [])
-        eval_result["top_issues"] = _merge_issues(lt_issues, heuristic_issues)
-
-    return _build_draft_feedback(
-        conversation_id=str(conversation.id),
-        eval_result=eval_result,
+    """Adapt endpoint config to the shared feedback-evaluation service."""
+    return await evaluate_draft_feedback(
+        conversation=conversation,
+        draft_text=draft_text,
         now_ms=now_ms,
+        llm_provider=llm_provider,
+        grammar_provider=CHAT_DRAFT_GRAMMAR_PROVIDER,
+        grammar_url=CHAT_LANGUAGETOOL_URL,
         ghost_suggestion=ghost_suggestion,
-        draft=draft_text,
-        lesson_frame=conversation.lesson_frame_json
+        include_grammar_check=include_grammar_check,
     )
 
 
@@ -608,24 +355,13 @@ async def _freeze_user_message_feedback(
     content: str,
     chat_provider,
 ) -> dict:
-    """Evaluate and send the draft feedback snapshot for a submitted message."""
-    eval_result = await chat_provider.micro_eval(
-        context=conversation.session_summary,
-        lesson_frame=conversation.lesson_frame_json,
-        draft=content,
-        student_profile=conversation.student_profile_json
+    """Adapt endpoint config to the shared frozen-feedback service."""
+    return await freeze_user_message_feedback(
+        websocket=websocket,
+        conversation=conversation,
+        content=content,
+        chat_provider=chat_provider,
     )
-
-    feedback = _build_draft_feedback(
-        conversation_id=str(conversation.id),
-        eval_result=eval_result,
-        now_ms=int(utc_now().timestamp() * 1000),
-        ghost_suggestion=None,
-        draft=content,
-        lesson_frame=conversation.lesson_frame_json
-    )
-    await websocket.send_json(feedback)
-    return feedback
 
 
 async def _stream_assistant_response(
