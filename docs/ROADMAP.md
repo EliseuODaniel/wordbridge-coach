@@ -73,6 +73,7 @@ Notas do baseline:
 - trigesima quarta microfatia aplicada: extração da persistência de mensagens e dos payloads/eventos finais para `api/app/services/chat_delivery_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - trigesima quinta microfatia aplicada: extração dos helpers puros de prompt, geração, fallback e sanitização para `api/app/services/chat_text_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 - trigesima sexta microfatia aplicada: extração do lookup e da serialização REST para `api/app/services/chat_rest_service.py`, com wrappers compatíveis e cobertura própria no quality gate
+- trigesima setima microfatia aplicada: extração do enriquecimento do payload Lingvist para `api/app/services/lingvist_payload_service.py`, com wrappers compatíveis e cobertura própria no quality gate
 
 ## Fase 2: Limpeza estrutural
 

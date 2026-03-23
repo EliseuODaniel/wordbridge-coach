@@ -75,6 +75,7 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - a persistência de mensagens e os payloads/eventos finais do Chat Coach agora também vivem em `api/app/services/chat_delivery_service.py`, deixando `chat.py` com menos efeito colateral direto
 - os helpers puros de prompt, configuração de geração, fallback e sanitização do Chat Coach agora também vivem em `api/app/services/chat_text_service.py`, deixando `chat.py` quase todo como camada adaptadora
 - o lookup e a serialização do bloco REST do Chat Coach agora também vivem em `api/app/services/chat_rest_service.py`, reduzindo o miolo restante de `chat.py`
+- o enriquecimento do payload Lingvist agora também vive em `api/app/services/lingvist_payload_service.py`, reduzindo o peso de `cards.py` sem mexer na regra de seleção
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
 - o `UserSelection` deixou de usar stats aleatórias e agora consome idioma alvo, meta de vocabulário e stats reais disponíveis por perfil
@@ -167,6 +168,6 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 ## Próximos passos imediatos
 
 1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
-2. Continuar a refatoração do backend, agora avaliando se o próximo corte deve voltar para `cards.py`/`card_selection.py` ou endurecer mais a cobertura integrada do Chat Coach completo.
+2. Continuar a refatoração do backend, agora avaliando se o próximo corte em cards deve atacar `submit_answer` ou mover mais lookup/serialização comum para services.
 3. Expandir a cobertura do backend para regras de progressão e idioma além da trilha recém-adicionada.
 4. Consolidar o quality gate novo em CI e decidir se a próxima etapa adiciona E2E automatizado no mesmo pipeline.

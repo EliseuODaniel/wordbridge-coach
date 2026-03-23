@@ -806,3 +806,27 @@ Depois das extrações de runtime, draft, feedback, contexto, delivery e texto, 
 - `chat.py` fica ainda mais próximo de um roteador/adaptador fino
 - o bloco REST do Chat Coach ganha fronteira própria e testável
 - o próximo corte natural já pode sair de `chat.py` e voltar para outros hotspots do backend, como `cards.py` e `card_selection.py`
+
+## 2026-03-23 - Mover o enriquecimento Lingvist de cards para services
+
+Status: aceito
+
+### Contexto
+
+Depois de estabilizar o Chat Coach, o próximo hotspot confirmado voltou a ser `cards.py`. A parte de enriquecimento Lingvist ainda misturava lookup de entidades, geração de URLs de áudio, micro-progress e transformação do payload no próprio endpoint.
+
+### Decisão
+
+- criar `api/app/services/lingvist_payload_service.py` para concentrar:
+  - lookup de entidades do card Lingvist
+  - resolução de `memory_stage` e idioma alvo
+  - geração de URLs de áudio relativas
+  - montagem de `grammar_tag_pt`, tradução e `micro_progress`
+  - payload final `LingvistCardResponse`
+- manter wrappers finos em `cards.py` para preservar compatibilidade
+- adicionar cobertura dedicada e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `cards.py` perde uma faixa relevante de montagem de payload e enrichment
+- a próxima fatia pode focar no fluxo de `submit_answer` ou em serialização comum dos cards com menos ruído estrutural
