@@ -3,6 +3,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from app.api.api_v1.endpoints import chat as chat_endpoint
+from app.services import chat_runtime_service
 from app.core.database import SessionLocal
 from app.main import app
 from app.models import ChatConversation, ChatMessage, Language, User
@@ -103,7 +104,7 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
     session.close()
 
     monkeypatch.setattr(
-        chat_endpoint,
+        chat_runtime_service,
         "get_user_model_profiles",
         lambda db, user_id: {
             "chat_model_profile": "chat-profile",
@@ -119,7 +120,7 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
         raise AssertionError(f"Unexpected profile id: {profile_id}")
 
     monkeypatch.setattr(
-        chat_endpoint,
+        chat_runtime_service,
         "get_llm_provider_for_profile",
         fake_get_provider_for_profile,
     )

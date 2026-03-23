@@ -65,6 +65,7 @@ Notas do baseline:
 - vigesima sexta microfatia aplicada: encapsulamento do turno `user_message` do Chat Coach e uso de contexto teacher baseado nas mensagens do aluno
 - vigesima setima microfatia aplicada: criação de runtime dedicado para a sessão WebSocket do Chat Coach
 - vigesima oitava microfatia aplicada: limpeza do `UserSelection` para usar idioma/meta reais e stats reais por perfil
+- vigesima nona microfatia aplicada: extração do runtime e do roteamento base do WebSocket de chat para `api/app/services/chat_runtime_service.py`, com cobertura unitária própria e inclusão no quality gate
 
 ## Fase 2: Limpeza estrutural
 
@@ -84,7 +85,7 @@ Prioridade alta:
 - [~] continuar quebrando o fluxo WebSocket de `chat.py` em helpers menores e testáveis
 - [~] continuar removendo pressupostos de idioma do domínio de progressão
 - [ ] isolar melhor integrações de LLM local e LanguageTool
-- [~] decidir se o próximo passo de chat é extrair um coordinator/service próprio para o WebSocket
+- [x] decidir e aplicar a extração do runtime/service próprio para o WebSocket
 - [~] continuar removendo pontos provisórios visíveis do frontend, começando pela seleção de perfil
 
 ## Fase 4: Qualidade e confiança

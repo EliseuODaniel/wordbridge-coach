@@ -619,3 +619,27 @@ Status: aceito
 - a seleção de perfil ficou mais honesta e previsível
 - o frontend perdeu um dos placeholders mais visíveis do produto
 - o contrato de usuários ficou mais útil para futuras evoluções da tela de onboarding/perfil
+
+## 2026-03-23 - Mover runtime e roteamento base do WebSocket de chat para services
+
+Status: aceito
+
+### Contexto
+
+Mesmo após várias extrações locais, `api/app/api/api_v1/endpoints/chat.py` ainda acumulava inicialização de sessão WebSocket, lookup de conversa, carregamento de providers e roteamento de eventos. Isso mantinha o endpoint mais pesado do que o ideal para uma fronteira HTTP/WS.
+
+### Decisão
+
+- criar `api/app/services/chat_runtime_service.py` para concentrar:
+  - runtime resolvido da sessão WebSocket
+  - carregamento de providers por conversa
+  - montagem do payload padrão de erro WS
+  - roteamento base de eventos WS
+- manter `chat.py` responsável pelos handlers de domínio e pelo endpoint em si
+- adicionar cobertura unitária própria para essa nova fronteira e colocá-la no quality gate
+
+### Impacto
+
+- o endpoint de chat fica mais fino e mais próximo de uma camada de borda
+- a orquestração WebSocket ganha uma fronteira interna testável fora do endpoint
+- o próximo corte pode focar em mover mais coordenação de turno ou isolar melhor integrações externas sem reabrir o mesmo acoplamento estrutural
