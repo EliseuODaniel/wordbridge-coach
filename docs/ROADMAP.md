@@ -1,0 +1,84 @@
+# Roadmap
+
+Data de início desta nova fase: 2026-03-23
+
+## Objetivo
+
+Refatorar o projeto com segurança, reduzindo complexidade e melhorando legibilidade, testabilidade e onboarding.
+
+## Fase 0: Reset de governança
+
+Status: concluida
+
+- [x] definir `AGENTS.md` como regra única do repositório
+- [x] criar documentação oficial em `docs/`
+- [x] remover OpenSpec e instruções específicas de Claude
+- [x] revisar o restante da documentação operacional após a limpeza
+
+## Fase 1: Baseline técnico
+
+Status: em andamento
+
+- [x] validar comandos reais de setup, lint, build e testes
+- [x] reduzir a fila inicial de lint do frontend ate voltar para baseline limpo
+- [~] revisar o `docker-compose.yml` com foco em simplicidade
+- [ ] mapear módulos mais acoplados no backend e frontend
+- [ ] registrar riscos confirmados em `docs/DECISIONS.md`
+
+Notas do baseline:
+
+- `docker compose config --quiet`: OK
+- `frontend npm ci`: OK
+- `frontend build`: OK
+- `frontend lint`: OK depois das fatias de hooks/efeitos e tipagem de erros/contratos
+- `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
+- `api/.venv` local criado para testes de backend
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_spec4_card_selection.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_utilities.py -q`: OK
+- `python3 -m py_compile api/app/api/api_v1/endpoints/chat.py api/tests/test_chat_utilities.py`: OK
+- `cd api && TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test ./test-runner.sh --spec4`: OK
+- primeira microfatia aplicada: alinhamento do setup operacional e simplificacao do shell inicial do frontend
+- segunda microfatia aplicada: limpeza de hooks/efeitos em componentes base; lint caiu de 46 para 41 problemas
+- terceira microfatia aplicada: padronizacao de erros da API, remocao de `any` e fechamento da fila residual de lint
+- quarta microfatia aplicada: consolidacao da configuracao repetida dos servicos LLM no compose e extracao de helpers de usuario/idioma no fluxo de cards
+- quinta microfatia aplicada: extracao de helpers locais no endpoint Lingvist para separar lookup, audio e montagem de payload
+- sexta microfatia aplicada: extracao de helpers de stats/relearn em `submit_answer` e recuperacao do fluxo local de testes do backend
+- setima microfatia aplicada: limpeza do bloco REST de `chat.py`, correção do sanitizer e validação utilitária local de Chat Coach
+- oitava microfatia aplicada: extração do pipeline comum de `draft_feedback` no Chat Coach e cobertura utilitária dos novos helpers
+- nona microfatia aplicada: extração das funções puras de prompt/config/fallback em `handle_user_message` com expansão da suíte utilitária de chat
+- decima microfatia aplicada: extração de helpers de persistência/event payload em `handle_user_message` com ampliação da cobertura utilitária de teacher analysis
+- decima primeira microfatia aplicada: extração do payload `assistant_done` e da geração/envio de `teacher_analysis` com fallback, mantendo chat utilitário e Spec4 verdes
+- decima segunda microfatia aplicada: extração do congelamento de feedback do envio, da persistência do `user_message` e da preparação dos inputs de geração em `handle_user_message`
+- decima terceira microfatia aplicada: primeiro teste integrado do WebSocket de chat e correção da persistência de `teacher_analysis` em `metadata_json`
+- decima quarta microfatia aplicada: extração da finalização do turno do assistente e da persistência/envio de `teacher_analysis`, com expansão da suíte utilitária de chat
+- decima quinta microfatia aplicada: endurecimento do fixture de banco em `conftest.py` para reduzir resíduos de schema em execuções seriais repetidas
+- decima sexta microfatia aplicada: centralização de tempo UTC em helper compartilhado e migração parcial de schemas/configs quentes para padrões atuais do Pydantic
+
+## Fase 2: Limpeza estrutural
+
+- [x] remover arquivos legados e snapshots que não são mais documentação viva
+- [x] revisar comentários e referências internas para evitar apontar para docs removidas
+- [x] consolidar documentação útil sob `docs/`
+
+## Fase 3: Primeira onda de refatoração
+
+Prioridade alta:
+
+- [ ] simplificar a entrada do frontend e a separação entre modos
+- [ ] revisar os serviços da API com maior acoplamento
+- [~] continuar quebrando o fluxo WebSocket de `chat.py` em helpers menores e testáveis
+- [ ] isolar melhor integrações de LLM local e LanguageTool
+
+## Fase 4: Qualidade e confiança
+
+- [ ] alinhar testes ao comportamento realmente suportado
+- [~] manter suítes de backend com banco compartilhado em execução serial
+- [ ] revisar lacunas de cobertura nos fluxos críticos
+- [ ] eliminar falsos positivos de documentação e scripts antigos
+
+## Critérios de sucesso
+
+- onboarding mais curto
+- menos arquivos concorrendo como fonte de verdade
+- documentação compatível com o código atual
+- refatorações futuras divididas em fatias pequenas e verificáveis

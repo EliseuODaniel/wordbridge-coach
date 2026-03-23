@@ -4,8 +4,8 @@ from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Boolean, In
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
+from app.core.time import utc_now
 import uuid
-from datetime import datetime
 
 
 class UserThemeStats(BaseModel):
@@ -21,8 +21,8 @@ class UserThemeStats(BaseModel):
     accuracy = Column(Float, default=0.0, nullable=False, comment="Accuracy rate (correct / attempts)")
     avg_response_time_ms = Column(Float, default=0.0, nullable=False, comment="Average response time in milliseconds")
     last_practiced_at = Column(DateTime, nullable=True, comment="Last practice timestamp")
-    created_at = Column(DateTime, default=datetime.utcnow, comment="Creation timestamp")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="Update timestamp")
+    created_at = Column(DateTime, default=utc_now, comment="Creation timestamp")
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, comment="Update timestamp")
 
     # Relationships
     user = relationship("User", back_populates="theme_stats")
@@ -60,7 +60,7 @@ class UserThemeStats(BaseModel):
                 (self.avg_response_time_ms * (self.attempts - 1) + response_time_ms) / self.attempts
             )
 
-        self.last_practiced_at = datetime.utcnow()
+        self.last_practiced_at = utc_now()
 
     def __repr__(self):
         return f"<UserThemeStats(user_id='{self.user_id}', theme_id='{self.theme_id}', accuracy={self.accuracy:.3f})>"

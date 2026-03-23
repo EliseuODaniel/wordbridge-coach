@@ -1,6 +1,6 @@
 /** Main App Component */
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import StudySession from './components/StudySession';
 import LingvistSession from './components/LingvistSession';
 import ChatCoachSession from './components/ChatCoachSession';
@@ -10,18 +10,24 @@ import './App.css';
 
 type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
+function getInitialTrainingMode(): TrainingMode {
+  const params = new URLSearchParams(window.location.search);
+  const modeParam = params.get('mode');
+  if (modeParam === 'lingvist' || modeParam === 'spec4' || modeParam === 'chat') {
+    return modeParam;
+  }
+
+  const savedMode = localStorage.getItem('preferredTrainingMode');
+  if (savedMode === 'lingvist' || savedMode === 'spec4' || savedMode === 'chat') {
+    return savedMode;
+  }
+
+  return 'spec4';
+}
+
 function App() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [trainingMode, setTrainingMode] = useState<TrainingMode>('spec4');
-
-  // Read mode from URL query param (for E2E testing)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const modeParam = params.get('mode');
-    if (modeParam === 'lingvist' || modeParam === 'spec4' || modeParam === 'chat') {
-      setTrainingMode(modeParam);
-    }
-  }, []);
+  const [trainingMode, setTrainingMode] = useState<TrainingMode>(getInitialTrainingMode);
 
   // Optional: Add API health check
   useEffect(() => {
@@ -47,6 +53,7 @@ function App() {
   };
 
   const handleModeSelect = (mode: TrainingMode) => {
+    localStorage.setItem('preferredTrainingMode', mode);
     setTrainingMode(mode);
   };
 

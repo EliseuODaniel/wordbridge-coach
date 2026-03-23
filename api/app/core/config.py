@@ -3,10 +3,12 @@
 import os
 from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
     # Project info
     PROJECT_NAME: str = "FillTheWord API"
     VERSION: str = "0.1.0"
@@ -42,9 +44,5 @@ class Settings(BaseSettings):
         elif isinstance(v, (list, str)):
             return v
         raise ValueError(v)
-
-    class Config:
-        env_file = ".env"
-
 
 settings = Settings()

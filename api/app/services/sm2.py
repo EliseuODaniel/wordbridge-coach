@@ -1,8 +1,10 @@
 """SM-2 Algorithm implementation for FillTheWord"""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict, Any, Tuple
 from enum import Enum
+
+from app.core.time import utc_now
 
 
 class MemoryStage(Enum):
@@ -66,7 +68,7 @@ class SM2Algorithm:
                 new_interval_days = round(current_interval_days * new_easiness_factor)
         
         # Calculate next review time
-        next_review_at = datetime.utcnow() + timedelta(days=new_interval_days)
+        next_review_at = utc_now() + timedelta(days=new_interval_days)
         
         # Determine memory stage
         new_status = cls._calculate_memory_stage(new_repetitions, new_interval_days)

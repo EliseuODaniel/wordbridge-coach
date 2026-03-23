@@ -4,10 +4,11 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, DATE
-from datetime import datetime, timedelta
+from datetime import timedelta
 import uuid
 
 from app.core.database import get_db
+from app.core.time import utc_now, utc_today
 from app.models import User, UserCardState, Card, ReviewEvent, Sentence, Word, Language
 from app.models.user_card_state import MemoryStage
 from pydantic import BaseModel
@@ -147,7 +148,7 @@ async def get_basic_stats(
                 mature_count = count
 
         # 3. Reviews today
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
         reviews_today = db.query(ReviewEvent).filter(
             and_(
@@ -197,7 +198,7 @@ async def get_basic_stats(
         ).count() or 0
 
         # 6. Upcoming reviews (next 7 days)
-        upcoming_start = datetime.utcnow().date()
+        upcoming_start = utc_today()
         upcoming_end = upcoming_start + timedelta(days=7)
 
         upcoming_reviews = db.query(

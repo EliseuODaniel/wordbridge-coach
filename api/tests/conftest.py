@@ -1,9 +1,19 @@
 """Pytest configuration and fixtures for FillTheWord testing"""
 
+import os
+
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test"
+)
+os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["DEBUG"] = os.getenv("TEST_DEBUG", "false")
+
 import pytest
 import uuid
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 from typing import Dict, List, Generator
@@ -18,9 +28,8 @@ from app.models import (
 )
 from app.models.sentence import SourceType
 
-# Test database URL - PostgreSQL test database
-# Note: Inside Docker containers, use service name 'db_test' instead of 'localhost'
-SQLALCHEMY_DATABASE_URL = "postgresql://ftw_user:ftw_password@db_test:5432/filltheword_test"
+# Host execution uses localhost:5433, while containers may override via TEST_DATABASE_URL.
+SQLALCHEMY_DATABASE_URL = TEST_DATABASE_URL
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -30,14 +39,29 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def _drop_postgres_enum_types() -> None:
+    """Remove enum types that may survive interrupted test runs on PostgreSQL."""
+    if not SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
+        return
+
+    enum_names = ("sourcetype", "memorystage", "messagerole")
+    with engine.begin() as connection:
+        for enum_name in enum_names:
+            connection.execute(text(f"DROP TYPE IF EXISTS {enum_name} CASCADE"))
+
+
 @pytest.fixture(scope="session")
 def db() -> Generator:
     """Setup test database and run migrations"""
+    # Reset any leftover schema objects from interrupted runs before recreating tables.
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
+    _drop_postgres_enum_types()
     # Create all tables using SQLAlchemy models
     Base.metadata.create_all(bind=engine)
     yield
     # Clean up test database
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
+    _drop_postgres_enum_types()
 
 
 @pytest.fixture

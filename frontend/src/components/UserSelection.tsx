@@ -1,6 +1,6 @@
 /** User Selection Component */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usersApi, type CreateUserRequest, type UpdateUserRequest } from '../services/api';
 import ProfileCard, { type ProfileStats, type Profile } from './ProfileCard';
 import ConfirmDialog from './ConfirmDialog';
@@ -42,14 +42,6 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
   const [nativeLanguage, setNativeLanguage] = useState('pt');
   const [wordGoalRank, setWordGoalRank] = useState(100);
   const [loading, setLoading] = useState(false);
-
-  // Load last used mode from localStorage
-  useEffect(() => {
-    const lastMode = localStorage.getItem('preferredTrainingMode') as TrainingMode | null;
-    if (lastMode && (lastMode === 'spec4' || lastMode === 'lingvist' || lastMode === 'chat')) {
-      onModeSelect(lastMode);
-    }
-  }, []);
 
   // Edit mode states
   const [editingUser, setEditingUser] = useState<string | null>(null);

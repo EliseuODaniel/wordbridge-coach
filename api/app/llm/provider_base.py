@@ -12,7 +12,6 @@ class LLMProvider(ABC):
     - MockLLMProvider (development, no GPU)
     - LlamaCppProvider (production, local llama.cpp server)
     - OpenAIProvider (optional, cloud API)
-    - AnthropicProvider (optional, cloud API)
     """
 
     @abstractmethod

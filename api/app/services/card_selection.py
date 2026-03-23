@@ -3,13 +3,14 @@
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
-from datetime import datetime, timedelta
+from datetime import timedelta
 import random
 
 from app.models import (
     User, Word, Sentence, Card, UserFrequencyProgress, UserSessionStats, ReviewEvent,
     UserCardState, WordFrequency, Language
 )
+from app.core.time import utc_now
 from app.services.vocabulary_progression import VocabularyProgressionService
 
 
@@ -19,6 +20,26 @@ class CardSelectionService:
     def __init__(self, db: Session):
         self.db = db
         self.progression_service = VocabularyProgressionService(db)
+
+    def _get_user_and_target_language(self, user_id: str) -> Tuple[Optional[User], Optional[Language]]:
+        """Load user and target language together for card selection decisions."""
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user or not user.target_language_id:
+            return user, None
+
+        target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+        return user, target_lang
+
+    def _get_excluded_word_id(self, exclude_card_id: Optional[str]) -> Optional[str]:
+        """Resolve excluded card to its underlying word_id when available."""
+        if not exclude_card_id:
+            return None
+
+        excluded_card = self.db.query(Card).filter(Card.id == exclude_card_id).first()
+        if not excluded_card or not excluded_card.sentence:
+            return None
+
+        return excluded_card.sentence.word_id
 
     def _get_recent_word_ids(self, user_id: str, days: int = 7, limit: int = 50) -> set:
         """
@@ -32,7 +53,7 @@ class CardSelectionService:
         Returns:
             Set of word IDs recently seen
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = utc_now() - timedelta(days=days)
 
         # Get distinct word IDs from recent review events
         # Explicitly specify FROM ReviewEvent and JOIN with Card and Sentence
@@ -181,12 +202,7 @@ class CardSelectionService:
             progress: User's frequency progress
             exclude_card_id: Optional card ID to exclude (soft preference)
         """
-        # Get user's target language
-        user = self.db.query(User).filter(User.id == user_id).first()
-        if not user or not user.target_language_id:
-            return None
-
-        target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+        user, target_lang = self._get_user_and_target_language(user_id)
         if not target_lang:
             return None
 
@@ -202,11 +218,7 @@ class CardSelectionService:
         )
 
         # Soft exclusion: prefer other words if possible
-        excluded_word_id = None
-        if exclude_card_id:
-            excluded_card = self.db.query(Card).filter(Card.id == exclude_card_id).first()
-            if excluded_card and excluded_card.sentence:
-                excluded_word_id = excluded_card.sentence.word_id
+        excluded_word_id = self._get_excluded_word_id(exclude_card_id)
 
         # Anti-repetition: get recently seen words answered CORRECTLY (last 7 days, max 50)
         recent_word_ids = self._get_recent_correct_word_ids(user_id, days=7, limit=50)
@@ -266,14 +278,7 @@ class CardSelectionService:
 
         # Get user's progress for gating
         progress = self.progression_service.get_or_create_user_progress(user_id)
-        user = db.query(User).filter(User.id == user_id).first()
-
-        if not user or not user.target_language_id:
-            return []
-
-        # Get user's target language code for WordFrequency join
-        from app.models import Language
-        target_lang = db.query(Language).filter(Language.id == user.target_language_id).first()
+        user, target_lang = self._get_user_and_target_language(user_id)
         if not target_lang:
             return []
         target_lang_code = target_lang.code
@@ -289,7 +294,7 @@ class CardSelectionService:
         ).filter(
             UserCardState.user_id == user_id,
             Word.language_id == user.target_language_id,
-            UserCardState.next_review_at <= datetime.utcnow(),
+            UserCardState.next_review_at <= utc_now(),
             UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE])
         )
 
@@ -351,11 +356,7 @@ class CardSelectionService:
             progress: User's frequency progress
             exclude_card_id: Optional card ID to exclude
         """
-        user = self.db.query(User).filter(User.id == user_id).first()
-        if not user or not user.target_language_id:
-            return None
-
-        target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
+        user, target_lang = self._get_user_and_target_language(user_id)
         if not target_lang:
             return None
 
@@ -410,7 +411,6 @@ class CardSelectionService:
         """
         from app.models import WordFrequency
         from app.models.user_frequency_progress import UserFrequencyProgress
-        from app.models import Language
 
         # Get user's target language for proper filtering
         target_language_code = "en"  # Default fallback
@@ -418,11 +418,9 @@ class CardSelectionService:
 
         if user_id:
             # Get user's language and gating constraints
-            user = self.db.query(User).filter(User.id == user_id).first()
-            if user and user.target_language_id:
-                target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
-                if target_lang:
-                    target_language_code = target_lang.code
+            _, target_lang = self._get_user_and_target_language(user_id)
+            if target_lang:
+                target_language_code = target_lang.code
 
             progress = self.db.query(UserFrequencyProgress).filter(UserFrequencyProgress.user_id == user_id).first()
             if progress:
@@ -459,13 +457,10 @@ class CardSelectionService:
                 return None
 
             # Check if this is the excluded word (convert exclude_card_id to word_id)
-            if exclude_card_id:
-                from app.models import Card as CardModel
-                excluded_card = self.db.query(CardModel).filter(CardModel.id == exclude_card_id).first()
-                if excluded_card and excluded_card.sentence and excluded_card.sentence.word_id:
-                    if str(word.id) == str(excluded_card.sentence.word_id):
-                        print(f"DEBUG: Excluded word {word.id} found (from card {exclude_card_id}), returning None")
-                        return None
+            excluded_word_id = self._get_excluded_word_id(exclude_card_id)
+            if excluded_word_id and str(word.id) == str(excluded_word_id):
+                print(f"DEBUG: Excluded word {word.id} found (from card {exclude_card_id}), returning None")
+                return None
 
             return word
 
@@ -513,7 +508,7 @@ class CardSelectionService:
         Returns:
             Dictionary with card data for API response
         """
-        from app.models import Card, User, Language
+        from app.models import Card
 
         # Find or create card for this sentence
         card = self.db.query(Card).filter(
@@ -565,12 +560,10 @@ class CardSelectionService:
             print(f"INFO: Created card {card.id} for sentence {sentence.id}")
 
         # Get user's target language code for audio URLs
-        user = self.db.query(User).filter(User.id == user_id).first()
         lang_code = 'en'  # Default fallback
-        if user and user.target_language_id:
-            target_lang = self.db.query(Language).filter(Language.id == user.target_language_id).first()
-            if target_lang:
-                lang_code = target_lang.code
+        _, target_lang = self._get_user_and_target_language(user_id)
+        if target_lang:
+            lang_code = target_lang.code
 
         # Build audio URLs using TTS service endpoints (via nginx proxy)
         from urllib.parse import quote
@@ -685,7 +678,7 @@ class CardSelectionService:
         Returns:
             Set of word IDs recently answered correctly
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = utc_now() - timedelta(days=days)
 
         recent_correct = self.db.query(ReviewEvent)\
             .join(Card, ReviewEvent.card_id == Card.id)\
@@ -716,7 +709,7 @@ class CardSelectionService:
         ).filter(
             UserCardState.user_id == user_id,
             UserCardState.is_relearn == True,
-            UserCardState.relearn_due <= datetime.utcnow()
+            UserCardState.relearn_due <= utc_now()
         )
 
         if exclude_card_id:
@@ -743,7 +736,7 @@ class CardSelectionService:
 
         count = self.db.query(UserCardState).filter(
             UserCardState.user_id == user_id,
-            UserCardState.next_review_at <= datetime.utcnow(),
+            UserCardState.next_review_at <= utc_now(),
             UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE])
         ).count()
 

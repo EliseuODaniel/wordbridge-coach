@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { llmProfilesApi, type LLMProfile } from '../services/api';
+import { getApiErrorMessage, llmProfilesApi, type LLMProfile } from '../services/api';
 
 interface LLMSettingsPanelProps {
   userId?: string;
@@ -39,9 +39,9 @@ export const LLMSettingsPanel: React.FC<LLMSettingsPanelProps> = ({ userId, isOp
         setChatModel(prefsData.chat_model_profile);
         setTeacherModel(prefsData.teacher_model_profile);
 
-      } catch (err: any) {
+      } catch (err) {
         console.error('[LLM_SETTINGS] Failed to load data:', err);
-        setError(err.response?.data?.detail || 'Failed to load LLM settings');
+        setError(getApiErrorMessage(err, 'Failed to load LLM settings'));
       } finally {
         setLoading(false);
       }
@@ -67,9 +67,9 @@ export const LLMSettingsPanel: React.FC<LLMSettingsPanelProps> = ({ userId, isOp
       setSuccessMessage('Model preferences saved successfully!');
       setTimeout(() => setSuccessMessage(null), 3000);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('[LLM_SETTINGS] Failed to save:', err);
-      setError(err.response?.data?.detail || 'Failed to save preferences');
+      setError(getApiErrorMessage(err, 'Failed to save preferences'));
     } finally {
       setSaving(false);
     }

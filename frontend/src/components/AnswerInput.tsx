@@ -30,13 +30,6 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
     }
   }, []);
 
-  // Clear answer when card changes (new card = fresh start)
-  useEffect(() => {
-    if (cardId) {
-      setAnswer('');
-    }
-  }, [cardId]);
-
   // Unified focus handling for feedback and card changes
   useEffect(() => {
     if (!inputRef.current) return;
@@ -46,17 +39,12 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
       if (!el) return;
 
       if (feedback) {
-        if (feedback.correct) {
-          setAnswer('');
-          el.focus();
-        } else {
+        if (!feedback.correct) {
           el.select();
-          el.focus();
         }
-      } else {
-        // feedback null ou trocou card: só focar, sem select
-        el.focus();
       }
+
+      el.focus();
     });
   }, [feedback, cardId]);  // Combined dependencies
 

@@ -1,6 +1,6 @@
 /** Confirm Dialog Component */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -23,8 +23,6 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
   variant = 'danger'
 }) => {
-  if (!isOpen) return null;
-
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       onCancel();
@@ -37,24 +35,27 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onCancel();
       }
     };
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleGlobalKeyDown);
-      // Prevent body scroll when modal is open
-      document.body.style.overflow = 'hidden';
-    }
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    document.body.style.overflow = 'hidden';
 
     return () => {
       document.removeEventListener('keydown', handleGlobalKeyDown);
       document.body.style.overflow = 'unset';
     };
   }, [isOpen, onCancel]);
+
+  if (!isOpen) return null;
 
   return (
     <div

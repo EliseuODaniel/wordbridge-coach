@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.models.user_card_state import MemoryStage
 from app.models.word_frequency import WordFrequency
+from app.models.word_theme import WordTheme
 from app.models.word_theme_mapping import WordThemeMapping
 
 
@@ -1211,43 +1212,81 @@ def ensure_themes_and_mappings(db: Session):
     """Ensure themes and mappings exist (idempotent)"""
     print("\nEnsuring themes and word-theme mappings...")
 
-    from app.models.word_theme import WordTheme
-    from app.models.word_theme_mapping import WordThemeMapping
-
-    # Check if themes exist
     theme_count = db.query(WordTheme).count()
-
-    # Check if mappings exist
     mapping_count = db.query(WordThemeMapping).count()
+    if theme_count == 0:
+        theme_defs = [
+            ("Daily Actions", "Common everyday actions and verbs"),
+            ("House & Home", "Words related to home and daily living"),
+            ("Food & Drink", "Food, beverages, and eating vocabulary"),
+            ("People & Family", "People, family members, and relationships"),
+            ("Time & Weather", "Time expressions and weather vocabulary"),
+            ("School & Learning", "Education and learning vocabulary"),
+            ("Basic Nouns", "Essential everyday nouns"),
+            ("Basic Adjectives", "Common descriptive words"),
+            ("Question Words", "Words used to ask questions"),
+            ("Connecting Words", "Conjunctions and connectors"),
+        ]
 
-    # Import seed_themes functions
-    sys.path.insert(0, '/app')
-    try:
-        from seed_themes import create_basic_themes, map_words_to_themes
+        for name, description in theme_defs:
+            db.add(
+                WordTheme(
+                    id=str(uuid.uuid4()),
+                    name=name,
+                    description=description,
+                    is_active=True,
+                )
+            )
+        db.commit()
+        print(f"✅ Created {len(theme_defs)} themes")
+    else:
+        print(f"✅ Themes already exist ({theme_count} themes)")
 
-        # Create themes if needed
-        if theme_count == 0:
-            print("No themes found, creating themes...")
-            themes = create_basic_themes(db)
-            db.commit()
-            print(f"✅ Created {len(themes)} themes")
-        else:
-            print(f"✅ Themes already exist ({theme_count} themes)")
+    if mapping_count == 0:
+        theme_by_name = {
+            theme.name: theme
+            for theme in db.query(WordTheme).all()
+        }
+        words_by_text = {
+            word.text: word
+            for word in db.query(Word).all()
+        }
 
-        # Create mappings if needed
-        if mapping_count == 0:
-            print("No mappings found, creating word-theme mappings...")
-            map_words_to_themes(db)
-            db.commit()
-            print(f"✅ Created word-theme mappings")
-        else:
-            print(f"✅ Word-theme mappings already exist ({mapping_count} mappings)")
+        mapping_plan = {
+            "Daily Actions": ["be", "have", "do", "go", "come", "make", "take", "give", "get", "work", "play", "read", "write"],
+            "House & Home": ["house", "home", "table", "book", "water", "room", "kitchen", "bed"],
+            "Food & Drink": ["water", "food", "drink", "bread", "milk"],
+            "People & Family": ["man", "woman", "child", "friend", "family"],
+            "Time & Weather": ["time", "day", "year", "today", "tomorrow"],
+            "School & Learning": ["school", "book", "read", "write", "student"],
+            "Basic Nouns": ["book", "house", "water", "friend", "family", "world", "time", "day"],
+            "Basic Adjectives": ["good", "new", "old", "beautiful", "small", "big"],
+            "Question Words": ["what", "when", "where", "why", "who", "how"],
+            "Connecting Words": ["and", "but", "or", "because", "if", "then"],
+        }
 
-    except ImportError as e:
-        print(f"⚠️  Could not import seed_themes: {e}")
-        print("Themes/mappings not seeded - run 'python seed_themes.py' manually if needed")
-    finally:
-        sys.path.pop(0)
+        created = 0
+        for theme_name, words in mapping_plan.items():
+            theme = theme_by_name.get(theme_name)
+            if not theme:
+                continue
+            for word_text in words:
+                word = words_by_text.get(word_text)
+                if not word:
+                    continue
+                db.add(
+                    WordThemeMapping(
+                        id=str(uuid.uuid4()),
+                        word_id=word.id,
+                        theme_id=theme.id,
+                    )
+                )
+                created += 1
+
+        db.commit()
+        print(f"✅ Created {created} word-theme mappings")
+    else:
+        print(f"✅ Word-theme mappings already exist ({mapping_count} mappings)")
 
 
 def build_sentence_index(sentence_bank_path: str, max_sentences_per_token: int = 200):

@@ -1,10 +1,10 @@
 /**
  * ScoreBar Component
  *
- * Displays a quality score (0-100) with color coding and EMA smoothing.
+ * Displays a quality score (0-100) with color coding.
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 interface ScoreBarProps {
   score: number; // 0-100
@@ -19,23 +19,7 @@ const ScoreBar: React.FC<ScoreBarProps> = ({
   showLabel = true,
   className = ''
 }) => {
-  // EMA smoothing state
-  const [displayedScore, setDisplayedScore] = useState(score);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // EMA smoothing (alpha = 0.4 for responsive but smooth updates)
-  useEffect(() => {
-    if (!isInitialized) {
-      setDisplayedScore(score);
-      setIsInitialized(true);
-      return;
-    }
-
-    // Apply EMA smoothing: displayed = alpha * new + (1 - alpha) * displayed
-    const alpha = 0.4;
-    const smoothed = alpha * score + (1 - alpha) * displayedScore;
-    setDisplayedScore(smoothed);
-  }, [score, displayedScore, isInitialized]);
+  const displayedScore = Math.max(0, Math.min(100, score));
 
   // Color coding based on score
   const getColor = (s: number): string => {
@@ -58,7 +42,7 @@ const ScoreBar: React.FC<ScoreBarProps> = ({
     lg: { bar: 'h-4', text: 'text-base' }
   };
 
-  const percentage = Math.max(0, Math.min(100, displayedScore));
+  const percentage = displayedScore;
   const colorClass = getColor(displayedScore);
   const textColorClass = getTextColor(displayedScore);
   const { bar: barSize, text: textSize } = sizeClasses[size];

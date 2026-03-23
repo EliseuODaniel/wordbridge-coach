@@ -29,7 +29,7 @@ class ChatConversation(BaseModel):
     lesson_frame_json = Column(JSONB, default={}, nullable=False)
     """
     Pedagogical objective for current turn
-    See Lesson Frame schema in openspec/changes/2025-12-chat-coach-mode-v1.md
+    The persisted shape is defined by the active Chat Coach runtime.
     """
     session_summary = Column(Text, default="", nullable=False)
 

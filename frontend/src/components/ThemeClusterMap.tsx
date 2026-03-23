@@ -1,7 +1,13 @@
 /** Theme Cluster Map Component */
 
 import React, { useState, useEffect } from 'react';
-import { insightsApi, type ThemePerformanceResponse } from '../services/api';
+import {
+  insightsApi,
+  getApiErrorCode,
+  getApiErrorMessage,
+  getApiErrorStatus,
+  type ThemePerformanceResponse,
+} from '../services/api';
 import { withRetry } from '../utils/apiUtils';
 
 interface ThemeClusterMapProps {
@@ -23,35 +29,23 @@ const ThemeClusterMap: React.FC<ThemeClusterMapProps> = ({ userId, refreshTrigge
       try {
         const themesData = await withRetry(
           () => insightsApi.getUserThemes(userId),
-          {
-            maxRetries: 2,
-            baseDelay: 1000,
-            retryCondition: (error) => {
-              // Retry on network errors and 5xx errors
-              if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNABORTED') {
-                return true;
-              }
-              if (error.response?.status >= 500) {
-                return true;
-              }
-              return false;
-            }
-          }
+          { maxRetries: 2, baseDelay: 1000 }
         );
         setThemes(themesData);
       } catch (err) {
         console.error('Error fetching theme performance after retries:', err);
-        const axiosError = err as any;
+        const status = getApiErrorStatus(err);
+        const code = getApiErrorCode(err);
+        const message = getApiErrorMessage(err, 'Unknown error');
 
-        // Check specific error types
-        if (axiosError?.response?.status === 404) {
+        if (status === 404) {
           setError('No theme data available yet');
-        } else if (axiosError?.response?.status >= 500) {
+        } else if (typeof status === 'number' && status >= 500) {
           setError('Server temporarily unavailable - please refresh');
-        } else if (axiosError?.code === 'NETWORK_ERROR' || axiosError?.message?.includes('Network Error')) {
+        } else if (code === 'NETWORK_ERROR' || message.includes('Network Error')) {
           setError('Network error - check your connection');
         } else {
-          setError(`Error: ${axiosError?.message || 'Unknown error'}`);
+          setError(`Error: ${message}`);
         }
       } finally {
         setLoading(false);

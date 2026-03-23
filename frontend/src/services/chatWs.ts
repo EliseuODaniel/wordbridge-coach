@@ -35,6 +35,12 @@ export interface ChatWSConfig {
   onConnectionChange?: (connected: boolean) => void;
 }
 
+type ChatWSClientEvent =
+  | DraftUpdateEvent
+  | UserMessageEvent
+  | RequestAutocompleteEvent
+  | PingEvent;
+
 export class ChatWS {
   private ws: WebSocket | null = null;
   private conversationId: string;
@@ -264,7 +270,7 @@ export class ChatWS {
   /**
    * Send event to server
    */
-  private send(event: any): void {
+  private send(event: ChatWSClientEvent): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(event));
     } else {

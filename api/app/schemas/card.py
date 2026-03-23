@@ -1,9 +1,11 @@
 """Pydantic schemas for Card operations"""
 
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 import uuid
+
+from app.core.time import utc_now
 
 
 class Gap(BaseModel):
@@ -14,6 +16,22 @@ class Gap(BaseModel):
 
 class CardResponse(BaseModel):
     """Response schema for GET /api/cards/next - EXACT match to specification"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "card_id": "550e8400-e29b-41d4-a716-446655440000",
+            "word_id": "660e8400-e29b-41d4-a716-446655440000",
+            "sentence_id": "770e8400-e29b-41d4-a716-446655440000",
+            "word": "book",
+            "sentence": "The ___ is on the table.",
+            "gap": {"start": 4, "end": 8},
+            "sentence_translation": "O livro está na mesa.",
+            "grammar_hint": "É um objeto que você lê",
+            "memory_stage": "LEARNING",
+            "audio_word_url": "/api/tts/word/550e8400-e29b-41d4-a716-446655440000?text=book&lang=en",
+            "audio_sentence_url": "/api/tts/sentence/550e8400-e29b-41d4-a716-446655440000?text=The%20book%20is%20on%20the%20table.&lang=en"
+        }
+    })
+
     card_id: str = Field(..., description="Unique card identifier")
     word_id: str = Field(..., description="Word ID for insights")
     sentence_id: str = Field(..., description="Sentence ID for variety tracking (Spec4)")
@@ -28,74 +46,51 @@ class CardResponse(BaseModel):
     audio_sentence_url: str = Field(..., description="URL for sentence audio")
     sentence_source: Optional[str] = Field(None, description="Source title (e.g., 'Dracula') if from sentence bank")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "card_id": "550e8400-e29b-41d4-a716-446655440000",
-                "word_id": "660e8400-e29b-41d4-a716-446655440000",
-                "sentence_id": "770e8400-e29b-41d4-a716-446655440000",
-                "word": "book",
-                "sentence": "The ___ is on the table.",
-                "gap": {"start": 4, "end": 8},
-                "sentence_translation": "O livro está na mesa.",
-                "grammar_hint": "É um objeto que você lê",
-                "memory_stage": "LEARNING",
-                "audio_word_url": "/api/tts/word/550e8400-e29b-41d4-a716-446655440000?text=book&lang=en",
-                "audio_sentence_url": "/api/tts/sentence/550e8400-e29b-41d4-a716-446655440000?text=The%20book%20is%20on%20the%20table.&lang=en"
-            }
-        }
-
-
 class AnswerRequest(BaseModel):
     """Request schema for POST /api/cards/{id}/answer"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "answer": "book",
+            "response_time_ms": 3200,
+            "attempts": 1,
+            "hints_used": 0
+        }
+    })
+
     answer: str = Field(..., description="User's answer")
     response_time_ms: int = Field(..., description="Response time in milliseconds")
     attempts: int = Field(default=1, description="Number of attempts taken")
     hints_used: int = Field(default=0, description="Number of hints used")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "answer": "book",
-                "response_time_ms": 3200,
-                "attempts": 1,
-                "hints_used": 0
-            }
-        }
-
-
 class AnswerResponse(BaseModel):
     """Response schema for POST /api/cards/{id}/answer - EXACT match to specification"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "correct": True,
+            "correct_answer": "book",
+            "sentence_full": "The book is on the table.",
+            "quality": 5,
+            "next_review_at": "2024-01-21T10:00:00Z"
+        }
+    })
+
     correct: bool = Field(..., description="Whether answer was correct")
     correct_answer: str = Field(..., description="The correct answer")
     sentence_full: str = Field(..., description="Complete sentence with correct answer")
     quality: int = Field(..., description="SM-2 quality score (0-5)")
     next_review_at: datetime = Field(..., description="When to review this card next")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "correct": True,
-                "correct_answer": "book",
-                "sentence_full": "The book is on the table.",
-                "quality": 5,
-                "next_review_at": "2024-01-21T10:00:00Z"
-            }
-        }
-
-
 class ErrorResponse(BaseModel):
     """Standard error response"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "error": "card_not_found",
+            "message": "Card not found",
+            "timestamp": "2024-01-15T10:00:00Z"
+        }
+    })
+
     error: str = Field(..., description="Error type")
     message: str = Field(..., description="Human readable message")
     details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "error": "card_not_found",
-                "message": "Card not found",
-                "timestamp": "2024-01-15T10:00:00Z"
-            }
-        }
+    timestamp: datetime = Field(default_factory=utc_now, description="Error timestamp")

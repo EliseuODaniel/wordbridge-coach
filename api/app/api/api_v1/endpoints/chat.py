@@ -7,11 +7,11 @@ from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSoc
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import uuid
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
+from app.core.time import utc_now
 from app.models import User, ChatConversation, ChatMessage
 from app.schemas.chat import (
     ChatConversationCreate,
@@ -51,6 +51,75 @@ _feedback_cache = {}
 # Cache for last processed draft text (conversation_id -> last_draft_text)
 # Used to bypass throttle when text changes
 _last_draft_texts = {}
+
+
+def _get_user_or_404(db: Session, user_id: str) -> User:
+    """Load a user or raise a standardized 404 error."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "User not found", "message": f"User '{user_id}' not found"}
+        )
+    return user
+
+
+def _get_conversation_or_404(db: Session, conversation_id: str) -> ChatConversation:
+    """Load a conversation or raise a standardized 404 error."""
+    conversation = db.query(ChatConversation).filter(
+        ChatConversation.id == conversation_id
+    ).first()
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Conversation not found", "message": f"Conversation '{conversation_id}' not found"}
+        )
+    return conversation
+
+
+def _serialize_conversation(conversation: ChatConversation) -> ChatConversationResponse:
+    """Convert a ChatConversation model into the REST response schema."""
+    return ChatConversationResponse(
+        id=str(conversation.id),
+        user_id=str(conversation.user_id),
+        title=conversation.title,
+        student_profile_json=conversation.student_profile_json,
+        lesson_frame_json=conversation.lesson_frame_json,
+        session_summary=conversation.session_summary,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at
+    )
+
+
+def _serialize_message(message: ChatMessage) -> ChatMessageResponse:
+    """Convert a ChatMessage model into the REST response schema."""
+    return ChatMessageResponse(
+        id=str(message.id),
+        conversation_id=str(message.conversation_id),
+        role=message.role,
+        content=message.content,
+        metadata_json=message.metadata_json,
+        created_at=message.created_at
+    )
+
+
+def _serialize_conversation_list_item(db: Session, conversation: ChatConversation) -> dict:
+    """Build the list payload for a conversation including message count."""
+    message_count = db.query(ChatMessage).filter(
+        ChatMessage.conversation_id == conversation.id
+    ).count()
+
+    return {
+        "id": str(conversation.id),
+        "user_id": str(conversation.user_id),
+        "title": conversation.title,
+        "student_profile_json": conversation.student_profile_json,
+        "lesson_frame_json": conversation.lesson_frame_json,
+        "session_summary": conversation.session_summary,
+        "created_at": conversation.created_at,
+        "updated_at": conversation.updated_at,
+        "message_count": message_count
+    }
 
 
 async def _get_grammar_issues(draft_text: str) -> List[dict]:
@@ -322,6 +391,343 @@ def _build_draft_feedback(
     ).model_dump()
 
 
+async def _evaluate_draft_feedback(
+    conversation: ChatConversation,
+    draft_text: str,
+    now_ms: int,
+    ghost_suggestion: Optional[str] = None,
+    include_grammar_check: bool = False,
+) -> dict:
+    """
+    Run the draft feedback pipeline and return the serialized feedback payload.
+
+    This keeps draft_update and request_autocomplete aligned on the same
+    evaluation/mapping behavior while allowing autocomplete to skip the
+    extra LanguageTool call.
+    """
+    lt_issues: List[dict] = []
+    if include_grammar_check:
+        logger.info(f"[LT_CHECK] CHAT_DRAFT_GRAMMAR_PROVIDER={CHAT_DRAFT_GRAMMAR_PROVIDER}")
+        lt_issues = await _get_grammar_issues(draft_text)
+        logger.info(f"[LT_RESULT] {len(lt_issues)} issues from LT for '{draft_text[:30]}...'")
+
+    eval_result = await llm_provider.micro_eval(
+        context=conversation.session_summary,
+        lesson_frame=conversation.lesson_frame_json,
+        draft=draft_text,
+        student_profile=conversation.student_profile_json
+    )
+
+    if lt_issues:
+        heuristic_issues = eval_result.get("top_issues", [])
+        eval_result["top_issues"] = _merge_issues(lt_issues, heuristic_issues)
+
+    return _build_draft_feedback(
+        conversation_id=str(conversation.id),
+        eval_result=eval_result,
+        now_ms=now_ms,
+        ghost_suggestion=ghost_suggestion,
+        draft=draft_text,
+        lesson_frame=conversation.lesson_frame_json
+    )
+
+
+def _cache_draft_feedback(conversation_id: str, draft_text: str, feedback: dict) -> None:
+    """Persist the last feedback and draft text for throttle reuse."""
+    _feedback_cache[conversation_id] = feedback
+    _last_draft_texts[conversation_id] = draft_text
+
+
+def _build_throttled_feedback(last_feedback: dict, draft_text: str, now_ms: int) -> dict:
+    """Return a shallow copy of cached feedback updated for the current draft."""
+    updated_feedback = dict(last_feedback)
+    updated_feedback["server_ts_ms"] = now_ms
+    updated_feedback["draft"] = draft_text
+    return updated_feedback
+
+
+def _build_chat_system_prompt(lesson_frame: dict) -> str:
+    """Build the chat tutor system prompt from the current lesson frame."""
+    return f"""You are an English tutor helping a {lesson_frame.get('cefr_target', 'A2')} student.
+Topic: {lesson_frame.get('topic', 'conversation')}
+Goal: {lesson_frame.get('learning_goal', 'practice conversation')}
+
+Keep it natural:
+- Reply briefly (1-3 sentences) as if chatting with a friend
+- Always ask a follow-up question
+- Never correct grammar or explain rules
+- If they write in Portuguese/Spanish, encourage them to use English
+- No examples, quotes, or meta-commentary
+"""
+
+
+def _get_chat_stop_sequences() -> List[str]:
+    """Return sanitized stop sequences for chat generation."""
+    stop_sequences = [
+        '\n\n"',
+        '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:',
+        '">', '<|',
+        '\n\nCRITICAL INSTRUCTIONS',
+        '\nNote:', '\n(Note:', '\nTeacher:', '\nAnalysis:',
+        '\nExplanation:', '\nCorrection:', '\nMeta:', '\nSystem:',
+    ]
+    return [s for s in stop_sequences if isinstance(s, str) and s.strip()]
+
+
+def _build_chat_generation_config() -> dict:
+    """Return the default generation config for chat replies."""
+    return {
+        "temperature": 0.5,
+        "max_tokens": 300,
+        "top_p": 0.9,
+        "stop": _get_chat_stop_sequences(),
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0
+    }
+
+
+def _build_teacher_analysis_fallback(error: Exception) -> dict:
+    """Build the fallback payload used when teacher analysis generation fails."""
+    error_reason = str(error)[:100]
+    return {
+        "teacher_summary": f"Teacher analysis failed: {error_reason}",
+        "rewrite": None,
+        "corrections": [],
+        "next_practice": [],
+        "debug_reason": error_reason
+    }
+
+
+def _create_chat_message(conversation_id, role: str, content: str) -> ChatMessage:
+    """Create a chat message model instance for a conversation turn."""
+    return ChatMessage(
+        conversation_id=conversation_id,
+        role=role,
+        content=content
+    )
+
+
+def _persist_user_message(db: Session, conversation: ChatConversation, content: str) -> ChatMessage:
+    """Persist a user chat turn and return the stored message model."""
+    user_message = _create_chat_message(conversation.id, "user", content)
+    db.add(user_message)
+    db.commit()
+    return user_message
+
+
+def _persist_assistant_message(db: Session, conversation: ChatConversation, content: str) -> ChatMessage:
+    """Persist the assistant reply and refresh conversation update time."""
+    assistant_message = _create_chat_message(conversation.id, "assistant", content)
+    db.add(assistant_message)
+    conversation.updated_at = utc_now()
+    db.commit()
+    return assistant_message
+
+
+def _attach_teacher_analysis_metadata(user_message: ChatMessage, teacher_analysis: dict) -> None:
+    """Store teacher analysis inside the user message metadata payload."""
+    metadata = dict(user_message.metadata_json or {})
+    metadata["teacher_analysis"] = teacher_analysis
+    user_message.metadata_json = metadata
+
+
+def _build_teacher_analysis_event_payload(
+    conversation_id: str,
+    user_message_id: str,
+    analysis: dict
+) -> dict:
+    """Build the websocket payload for teacher analysis responses."""
+    return TeacherAnalysisOut(
+        type="teacher_analysis",
+        conversation_id=conversation_id,
+        user_message_id=user_message_id,
+        analysis=analysis
+    ).model_dump()
+
+
+def _build_assistant_done_payload(conversation_id: str, full_content: str, lesson_frame: dict) -> dict:
+    """Build the final assistant_done websocket payload."""
+    return AssistantDoneOut(
+        type="assistant_done",
+        conversation_id=conversation_id,
+        full_content=full_content,
+        lesson_frame=lesson_frame,
+        summary_update="Student sent a message."
+    ).model_dump()
+
+
+def _build_chat_generation_inputs(conversation: ChatConversation, db: Session) -> tuple[List[dict], str, dict]:
+    """Build the context, prompt, and generation config used for chat streaming."""
+    messages = _build_context_messages(str(conversation.id), db, limit=10, exclude_system=True)
+    system_prompt = _build_chat_system_prompt(conversation.lesson_frame_json)
+    generation_config = _build_chat_generation_config()
+    return messages, system_prompt, generation_config
+
+
+async def _freeze_user_message_feedback(
+    websocket: WebSocket,
+    conversation: ChatConversation,
+    content: str,
+    chat_provider,
+) -> dict:
+    """Evaluate and send the draft feedback snapshot for a submitted message."""
+    eval_result = await chat_provider.micro_eval(
+        context=conversation.session_summary,
+        lesson_frame=conversation.lesson_frame_json,
+        draft=content,
+        student_profile=conversation.student_profile_json
+    )
+
+    feedback = _build_draft_feedback(
+        conversation_id=str(conversation.id),
+        eval_result=eval_result,
+        now_ms=int(utc_now().timestamp() * 1000),
+        ghost_suggestion=None,
+        draft=content,
+        lesson_frame=conversation.lesson_frame_json
+    )
+    await websocket.send_json(feedback)
+    return feedback
+
+
+async def _stream_assistant_response(
+    websocket: WebSocket,
+    conversation_id: str,
+    chat_provider,
+    messages: List[dict],
+    system_prompt: str,
+    generation_config: dict,
+) -> str:
+    """Stream assistant tokens to the client and return the aggregated response."""
+    full_response = ""
+
+    logger.info(
+        f"[CHAT_LLM] Starting stream with profile chat_provider.model={chat_provider.model}"
+    )
+    async for token in chat_provider.chat_stream(messages, system_prompt, generation_config):
+        full_response += token
+        await websocket.send_json(AssistantStreamTokenOut(
+            type="assistant_stream_token",
+            conversation_id=conversation_id,
+            token=token
+        ).model_dump())
+
+    return full_response
+
+
+async def _generate_teacher_analysis_with_fallback(
+    teacher_provider,
+    conversation: ChatConversation,
+    content: str,
+) -> tuple[dict, bool]:
+    """Return teacher analysis and whether it came from the fallback path."""
+    conv_id_str = str(conversation.id)
+
+    try:
+        logger.info(
+            f"[TEACHER_ANALYSIS] Starting generation for conv={conv_id_str[:8]} "
+            f"with profile teacher_provider.model={teacher_provider.model}"
+        )
+
+        teacher_analysis = await teacher_provider.generate_teacher_analysis(
+            user_message=content,
+            context=conversation.session_summary,
+            lesson_frame=conversation.lesson_frame_json
+        )
+
+        logger.info(
+            "[TEACHER_ANALYSIS] Generated successfully, "
+            f"keys={list(teacher_analysis.keys()) if teacher_analysis else 'None'}"
+        )
+        return teacher_analysis, False
+    except Exception as error:
+        logger.error(f"[TEACHER_ANALYSIS] Failed to generate: {error}")
+        import traceback
+        traceback.print_exc()
+        return _build_teacher_analysis_fallback(error), True
+
+
+async def _send_teacher_analysis_event(
+    websocket: WebSocket,
+    conversation_id: str,
+    user_message_id: str,
+    analysis: dict,
+) -> None:
+    """Send the teacher analysis payload to the websocket client."""
+    event_payload = _build_teacher_analysis_event_payload(
+        conversation_id=conversation_id,
+        user_message_id=user_message_id,
+        analysis=analysis
+    )
+
+    has_rewrite = bool(analysis and analysis.get('rewrite'))
+    corrections_count = len(analysis.get('corrections', [])) if analysis else 0
+
+    logger.info(
+        f"[TEACHER_ANALYSIS] Sending WS event: type={event_payload['type']}, "
+        f"conv={conversation_id[:8]}, payload_size={len(str(event_payload))}, "
+        f"has_rewrite={has_rewrite}, corrections_count={corrections_count}"
+    )
+    await websocket.send_json(event_payload)
+    logger.info("[TEACHER_ANALYSIS] WS event sent successfully")
+
+
+async def _finalize_assistant_turn(
+    websocket: WebSocket,
+    db: Session,
+    conversation: ChatConversation,
+    full_response: str,
+) -> str:
+    """Sanitize, persist, and emit the final assistant response payload."""
+    sanitized_response = _sanitize_assistant_response(full_response)
+
+    logger.info(
+        f"[CHAT_SANITIZE] Original length: {len(full_response)}, "
+        f"Sanitized length: {len(sanitized_response)}, "
+        f"Removed: {len(full_response) - len(sanitized_response)} chars"
+    )
+
+    _persist_assistant_message(db, conversation, sanitized_response)
+    await websocket.send_json(
+        _build_assistant_done_payload(
+            conversation_id=str(conversation.id),
+            full_content=sanitized_response,
+            lesson_frame=conversation.lesson_frame_json
+        )
+    )
+    return sanitized_response
+
+
+async def _persist_and_emit_teacher_analysis(
+    websocket: WebSocket,
+    db: Session,
+    conversation: ChatConversation,
+    user_message: ChatMessage,
+    teacher_analysis: dict,
+    used_fallback: bool,
+) -> None:
+    """Persist teacher analysis when valid and emit the websocket event."""
+    try:
+        if not used_fallback:
+            _attach_teacher_analysis_metadata(user_message, teacher_analysis)
+            db.commit()
+
+        await _send_teacher_analysis_event(
+            websocket=websocket,
+            conversation_id=str(conversation.id),
+            user_message_id=str(user_message.id),
+            analysis=teacher_analysis
+        )
+
+        if used_fallback:
+            logger.info(
+                f"[TEACHER_ANALYSIS] Sent fallback with reason: "
+                f"{teacher_analysis['debug_reason']}"
+            )
+    except Exception as error:
+        logger.error(f"[TEACHER_ANALYSIS] Failed to send fallback: {error}")
+
+
 def _sanitize_assistant_response(response: str) -> str:
     """
     Remove meta-commentary and extra user simulation from LLM response.
@@ -372,11 +778,11 @@ def _sanitize_assistant_response(response: str) -> str:
 
     response = '\n'.join(truncated_lines)
 
-    # Remove quoted paragraph at the end (looks like user simulation)
+    # Remove trailing quoted block(s) after a blank line.
+    # This catches single-line and multiline user simulations at the end.
+    response = re.sub(r'\n\s*\n"[\s\S]*"\s*$', '', response).strip()
+
     lines = response.split('\n')
-    if len(lines) >= 2 and not lines[-2].strip():
-        if lines[-1].strip().startswith('"'):
-            lines = lines[:-1]
 
     # Truncate at role labels (LLM started a second turn)
     for i, line in enumerate(lines):
@@ -500,13 +906,7 @@ async def create_conversation(
     Creates a conversation with default lesson frame and empty session summary.
     """
     try:
-        # Verify user exists
-        user = db.query(User).filter(User.id == conversation_data.user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "User not found", "message": f"User '{conversation_data.user_id}' not found"}
-            )
+        _get_user_or_404(db, conversation_data.user_id)
 
         # Create conversation
         conversation = ChatConversation(
@@ -530,16 +930,7 @@ async def create_conversation(
         db.add(system_message)
         db.commit()
 
-        return ChatConversationResponse(
-            id=str(conversation.id),
-            user_id=str(conversation.user_id),
-            title=conversation.title,
-            student_profile_json=conversation.student_profile_json,
-            lesson_frame_json=conversation.lesson_frame_json,
-            session_summary=conversation.session_summary,
-            created_at=conversation.created_at,
-            updated_at=conversation.updated_at
-        )
+        return _serialize_conversation(conversation)
 
     except HTTPException:
         raise
@@ -560,39 +951,14 @@ async def list_conversations(
     List all conversations for a user (ordered by updated_at DESC).
     """
     try:
-        # Verify user exists
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "User not found", "message": f"User '{user_id}' not found"}
-            )
+        _get_user_or_404(db, user_id)
 
         # Get conversations
         conversations = db.query(ChatConversation).filter(
             ChatConversation.user_id == user_id
         ).order_by(ChatConversation.updated_at.desc()).all()
 
-        # Count messages for each conversation
-        result = []
-        for conv in conversations:
-            message_count = db.query(ChatMessage).filter(
-                ChatMessage.conversation_id == conv.id
-            ).count()
-
-            result.append({
-                "id": str(conv.id),
-                "user_id": str(conv.user_id),
-                "title": conv.title,
-                "student_profile_json": conv.student_profile_json,
-                "lesson_frame_json": conv.lesson_frame_json,
-                "session_summary": conv.session_summary,
-                "created_at": conv.created_at,
-                "updated_at": conv.updated_at,
-                "message_count": message_count
-            })
-
-        return result
+        return [_serialize_conversation_list_item(db, conv) for conv in conversations]
 
     except HTTPException:
         raise
@@ -618,33 +984,14 @@ async def get_conversation_messages(
     - offset: pagination offset (default: 0)
     """
     try:
-        # Verify conversation exists
-        conversation = db.query(ChatConversation).filter(
-            ChatConversation.id == conversation_id
-        ).first()
-
-        if not conversation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "Conversation not found", "message": f"Conversation '{conversation_id}' not found"}
-            )
+        _get_conversation_or_404(db, conversation_id)
 
         # Get messages
         messages = db.query(ChatMessage).filter(
             ChatMessage.conversation_id == conversation_id
         ).order_by(ChatMessage.created_at.asc()).offset(offset).limit(limit).all()
 
-        return [
-            ChatMessageResponse(
-                id=str(msg.id),
-                conversation_id=str(msg.conversation_id),
-                role=msg.role,
-                content=msg.content,
-                metadata_json=msg.metadata_json,
-                created_at=msg.created_at
-            )
-            for msg in messages
-        ]
+        return [_serialize_message(msg) for msg in messages]
 
     except HTTPException:
         raise
@@ -664,16 +1011,7 @@ async def delete_conversation(
     Delete a conversation and all its messages (CASCADE).
     """
     try:
-        # Verify conversation exists
-        conversation = db.query(ChatConversation).filter(
-            ChatConversation.id == conversation_id
-        ).first()
-
-        if not conversation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "Conversation not found", "message": f"Conversation '{conversation_id}' not found"}
-            )
+        conversation = _get_conversation_or_404(db, conversation_id)
 
         # Delete conversation (messages will be CASCADE deleted)
         db.delete(conversation)
@@ -715,7 +1053,6 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
     try:
         # Use explicit transaction to avoid PostgreSQL set_session issues
         with db.begin():
-            # Verify conversation exists
             conversation = db.query(ChatConversation).filter(
                 ChatConversation.id == conversation_id
             ).first()
@@ -766,7 +1103,7 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
 
             logger.info(f"[WS_RX] event_type={event_type}, data_keys={list(data.keys())}")
 
-            now_ms = int(datetime.now().timestamp() * 1000)
+            now_ms = int(utc_now().timestamp() * 1000)
 
             # Route events by type
             if event_type == "draft_update":
@@ -834,51 +1171,22 @@ async def handle_draft_update(websocket: WebSocket, data: dict, conversation: Ch
         # Update timestamp
         _micro_eval_timestamps[conversation.id] = now_ms
 
-        # Step 1: Get real grammar issues from LanguageTool (if enabled)
-        logger.info(f"[LT_CHECK] CHAT_DRAFT_GRAMMAR_PROVIDER={CHAT_DRAFT_GRAMMAR_PROVIDER}")
-        lt_issues = await _get_grammar_issues(draft_text)
-        logger.info(f"[LT_RESULT] {len(lt_issues)} issues from LT for '{draft_text[:30]}...'")
-
-        # Step 2: Run micro_eval (MockLLMProvider) for rich signals + heuristic issues
-        eval_result = await llm_provider.micro_eval(
-            context=conversation.session_summary,
-            lesson_frame=conversation.lesson_frame_json,
-            draft=draft_text,
-            student_profile=conversation.student_profile_json
-        )
-
-        # Step 3: Merge LanguageTool issues with heuristic issues
-        heuristic_issues = eval_result.get("top_issues", [])
-        merged_issues = _merge_issues(lt_issues, heuristic_issues)
-
-        # Step 4: Override eval_result issues with merged issues
-        eval_result["top_issues"] = merged_issues
-
-        # Step 5: Build and send draft_feedback using helper (no ghost suggestion)
-        feedback = _build_draft_feedback(
-            conversation_id=str(conversation.id),
-            eval_result=eval_result,
+        feedback = await _evaluate_draft_feedback(
+            conversation=conversation,
+            draft_text=draft_text,
             now_ms=now_ms,
-            ghost_suggestion=None,
-            draft=draft_text,
-            lesson_frame=conversation.lesson_frame_json
+            include_grammar_check=True
         )
 
-        # Cache feedback for reuse when throttled
-        _feedback_cache[conversation_id] = feedback
-
-        # Cache last processed draft text
-        _last_draft_texts[conversation_id] = draft_text
-
+        _cache_draft_feedback(conversation_id, draft_text, feedback)
         await websocket.send_json(feedback)
     else:
         # Micro_eval throttled: reuse last feedback to prevent "dead" panel
         last_feedback = _feedback_cache.get(conversation_id)
         if last_feedback:
-            # Update timestamp and draft text to keep panel alive
-            last_feedback["server_ts_ms"] = now_ms
-            last_feedback["draft"] = draft_text
-            await websocket.send_json(last_feedback)
+            await websocket.send_json(
+                _build_throttled_feedback(last_feedback, draft_text, now_ms)
+            )
         # else: first draft, no cache yet, just skip (rare case)
 
 
@@ -891,14 +1199,6 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
     """
     draft_text = data.get("draft_text", "")
 
-    # Step 1: Run micro_eval to get real issues and scores
-    eval_result = await llm_provider.micro_eval(
-        context=conversation.session_summary,
-        lesson_frame=conversation.lesson_frame_json,
-        draft=draft_text,
-        student_profile=conversation.student_profile_json
-    )
-
     # Step 2: Call autocomplete to get ghost suggestion
     autocomplete_result = await llm_provider.autocomplete(
         context=conversation.session_summary,
@@ -907,16 +1207,13 @@ async def handle_request_autocomplete(websocket: WebSocket, data: dict, conversa
         student_profile=conversation.student_profile_json
     )
 
-    now_ms = int(datetime.now().timestamp() * 1000)
+    now_ms = int(utc_now().timestamp() * 1000)
 
-    # Step 3: Build feedback with REAL issues + ghost suggestion
-    feedback = _build_draft_feedback(
-        conversation_id=str(conversation.id),
-        eval_result=eval_result,
+    feedback = await _evaluate_draft_feedback(
+        conversation=conversation,
+        draft_text=draft_text,
         now_ms=now_ms,
-        ghost_suggestion=autocomplete_result.get("ghost_suggestion", ""),
-        draft=draft_text,
-        lesson_frame=conversation.lesson_frame_json
+        ghost_suggestion=autocomplete_result.get("ghost_suggestion", "")
     )
 
     # Send draft_feedback with real issues + ghost suggestion
@@ -930,175 +1227,47 @@ async def handle_user_message(websocket: WebSocket, data: dict, conversation: Ch
 
     # Run micro_eval to freeze feedback for the message being sent
     # Note: micro_eval uses chat_provider (not teacher) since it's part of chat flow
-    eval_result = await chat_provider.micro_eval(
-        context=conversation.session_summary,
-        lesson_frame=conversation.lesson_frame_json,
-        draft=content,
-        student_profile=conversation.student_profile_json
+    await _freeze_user_message_feedback(
+        websocket=websocket,
+        conversation=conversation,
+        content=content,
+        chat_provider=chat_provider
     )
-
-    # Send draft_feedback to freeze the feedback (without ghost suggestion)
-    now_ms = int(datetime.now().timestamp() * 1000)
-    feedback = _build_draft_feedback(
-        conversation_id=str(conversation.id),
-        eval_result=eval_result,
-        now_ms=now_ms,
-        ghost_suggestion=None,
-        draft=content,
-        lesson_frame=conversation.lesson_frame_json
-    )
-    await websocket.send_json(feedback)
 
     # Persist user message
-    user_message = ChatMessage(
-        conversation_id=conversation.id,
-        role="user",
-        content=content
-    )
-    db.add(user_message)
-    db.commit()
+    user_message = _persist_user_message(db, conversation, content)
 
     # Build messages for LLM excluding system (we'll inject fresh system_prompt)
-    messages = _build_context_messages(str(conversation.id), db, limit=10, exclude_system=True)
+    messages, system_prompt, generation_config = _build_chat_generation_inputs(conversation, db)
 
-    # Build system prompt from lesson_frame
-    # PASSO 2: Remover header "CRITICAL INSTRUCTIONS" (incentiva eco)
-    # Manter instruções curtas (5-7 linhas), sem listas enormes
-    lesson_frame = conversation.lesson_frame_json
-    system_prompt = f"""You are an English tutor helping a {lesson_frame.get('cefr_target', 'A2')} student.
-Topic: {lesson_frame.get('topic', 'conversation')}
-Goal: {lesson_frame.get('learning_goal', 'practice conversation')}
-
-Keep it natural:
-- Reply briefly (1-3 sentences) as if chatting with a friend
-- Always ask a follow-up question
-- Never correct grammar or explain rules
-- If they write in Portuguese/Spanish, encourage them to use English
-- No examples, quotes, or meta-commentary
-"""
-    full_response = ""
-
-    # PASSO 2: Stop sequences do CHAT (sem strings vazias)
-    # Adicionar stops para cortar se o modelo começar a ecoar meta
-    stop_sequences = [
-        '\n\n"',
-        '\nUser:', '\nUSER:', '\nStudent:', '\nSTUDENT:',
-        '">', '<|',
-        '\n\nCRITICAL INSTRUCTIONS',  # PASSO 2: Cortar se começar ecoar sistema
-        '\nNote:', '\n(Note:', '\nTeacher:', '\nAnalysis:',  # PASSO 2: Cortar meta commentary
-        '\nExplanation:', '\nCorrection:', '\nMeta:', '\nSystem:',
-    ]
-    # Filter out any empty strings or whitespace-only strings
-    stop_sequences = [s for s in stop_sequences if isinstance(s, str) and s.strip()]
-
-    generation_config = {
-        "temperature": 0.5,
-        "max_tokens": 300,
-        "top_p": 0.9,
-        "stop": stop_sequences,  # Clean list without empty strings
-        "frequency_penalty": 0.0,
-        "presence_penalty": 0.0
-    }
-
-    # Stream chat response using chat_provider
-    logger.info(f"[CHAT_LLM] Starting stream with profile chat_provider.model={chat_provider.model}")
-    async for token in chat_provider.chat_stream(messages, system_prompt, generation_config):
-        full_response += token
-        await websocket.send_json(AssistantStreamTokenOut(
-            type="assistant_stream_token",
-            conversation_id=str(conversation.id),
-            token=token
-        ).model_dump())
-
-    # PASSO 2: Defensive sanitization to remove any user simulation LLM may have generated
-    # Aplique sanitizer ANTES de persistir e no assistant_done content
-    sanitized_response = _sanitize_assistant_response(full_response)
-
-    # PASSO 2: Se streaming mostrou meta durante geração, no assistant_done
-    # substitua o conteúdo final com o sanitized
-    # O frontend deve usar assistant_done como fonte final
-    logger.info(f"[CHAT_SANITIZE] Original length: {len(full_response)}, Sanitized length: {len(sanitized_response)}, Removed: {len(full_response) - len(sanitized_response)} chars")
-
-    # Persist assistant message (with sanitized content)
-    assistant_message = ChatMessage(
-        conversation_id=conversation.id,
-        role="assistant",
-        content=sanitized_response  # PASSO 2: Persist sanitized version
-    )
-    db.add(assistant_message)
-
-    # Update conversation (lesson_frame, session_summary)
-    # For now, keep the same lesson_frame (in real implementation, LLM would generate new one)
-    conversation.updated_at = datetime.utcnow()
-    db.commit()
-
-    # Send assistant_done
-    # PASSO 2: Enviar sanitized_content para o frontend usar como fonte final
-    await websocket.send_json(AssistantDoneOut(
-        type="assistant_done",
+    full_response = await _stream_assistant_response(
+        websocket=websocket,
         conversation_id=str(conversation.id),
-        full_content=sanitized_response,  # PASSO 2: Use sanitized version
-        lesson_frame=conversation.lesson_frame_json,
-        summary_update="Student sent a message."
-    ).model_dump())
+        chat_provider=chat_provider,
+        messages=messages,
+        system_prompt=system_prompt,
+        generation_config=generation_config
+    )
+
+    await _finalize_assistant_turn(
+        websocket=websocket,
+        db=db,
+        conversation=conversation,
+        full_response=full_response
+    )
 
     # Generate teacher analysis (separate LLM call, JSON output only)
-    # PASSO 0: Log errors and raw output for debugging
-    try:
-        conv_id_str = str(conversation.id)
-        logger.info(f"[TEACHER_ANALYSIS] Starting generation for conv={conv_id_str[:8]} with profile teacher_provider.model={teacher_provider.model}")
+    teacher_analysis, used_fallback = await _generate_teacher_analysis_with_fallback(
+        teacher_provider=teacher_provider,
+        conversation=conversation,
+        content=content
+    )
 
-        teacher_analysis = await teacher_provider.generate_teacher_analysis(
-            user_message=content,
-            context=conversation.session_summary,
-            lesson_frame=conversation.lesson_frame_json
-        )
-
-        logger.info(f"[TEACHER_ANALYSIS] Generated successfully, keys={list(teacher_analysis.keys()) if teacher_analysis else 'None'}")
-
-        # Persist teacher analysis in user_message metadata (NOT in content)
-        if user_message.metadata_json is None:
-            user_message.metadata_json = {}
-        user_message.metadata_json['teacher_analysis'] = teacher_analysis
-        db.commit()
-
-        # Send teacher_analysis event to client
-        event_payload = TeacherAnalysisOut(
-            type="teacher_analysis",
-            conversation_id=conv_id_str,
-            user_message_id=str(user_message.id),
-            analysis=teacher_analysis
-        ).model_dump()
-
-        has_rewrite = bool(teacher_analysis and teacher_analysis.get('rewrite'))
-        corrections_count = len(teacher_analysis.get('corrections', [])) if teacher_analysis else 0
-
-        logger.info(f"[TEACHER_ANALYSIS] Sending WS event: type={event_payload['type']}, conv={conv_id_str[:8]}, payload_size={len(str(event_payload))}, has_rewrite={has_rewrite}, corrections_count={corrections_count}")
-        await websocket.send_json(event_payload)
-        logger.info(f"[TEACHER_ANALYSIS] WS event sent successfully")
-    except Exception as e:
-        logger.error(f"[TEACHER_ANALYSIS] Failed to generate: {e}")
-        import traceback
-        traceback.print_exc()
-
-        # PASSO 1: NUNCA retorne "temporarily unavailable" silencioso
-        # Mostrar motivo real do erro para debug
-        error_reason = str(e)[:100]  # Primeiros 100 chars do erro
-        fallback_analysis = {
-            "teacher_summary": f"Teacher analysis failed: {error_reason}",
-            "rewrite": None,
-            "corrections": [],
-            "next_practice": [],
-            "debug_reason": error_reason  # Só server logs, não UI
-        }
-        try:
-            await websocket.send_json(TeacherAnalysisOut(
-                type="teacher_analysis",
-                conversation_id=str(conversation.id),
-                user_message_id=str(user_message.id),
-                analysis=fallback_analysis
-            ).model_dump())
-            logger.info(f"[TEACHER_ANALYSIS] Sent fallback with reason: {error_reason}")
-        except Exception as fallback_err:
-            logger.error(f"[TEACHER_ANALYSIS] Failed to send fallback: {fallback_err}")
-        # Do not block conversation if teacher analysis fails
+    await _persist_and_emit_teacher_analysis(
+        websocket=websocket,
+        db=db,
+        conversation=conversation,
+        user_message=user_message,
+        teacher_analysis=teacher_analysis,
+        used_fallback=used_fallback
+    )

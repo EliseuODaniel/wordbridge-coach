@@ -16,6 +16,7 @@ import { LLMSettingsPanel } from './LLMSettingsPanel';
 import type {
   ChatConversation,
   DraftFeedbackEvent,
+  DraftIssue,
   AssistantStreamTokenEvent,
   AssistantDoneEvent,
   TeacherAnalysisEvent,
@@ -60,7 +61,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
   // Real-time feedback state
   const [barScore, setBarScore] = useState<number>(100);
-  const [issues, setIssues] = useState<any[]>([]);
+  const [issues, setIssues] = useState<DraftIssue[]>([]);
   const [ghostSuggestion, setGhostSuggestion] = useState<string | null>(null);
   const [microTip, setMicroTip] = useState<string | null>(null);
   const [suggestedNextWords, setSuggestedNextWords] = useState<string[]>([]);
@@ -71,7 +72,7 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
 
   // Track if we're showing feedback from a sent message
   const [isShowingLastFeedback, setIsShowingLastFeedback] = useState<boolean>(false);
-  const lastFeedbackRef = useRef<{ barScore: number; issues: any[] } | null>(null);
+  const lastFeedbackRef = useRef<{ barScore: number; issues: DraftIssue[] } | null>(null);
 
   // Streaming state
   const [isStreaming, setIsStreaming] = useState(false);
@@ -124,7 +125,17 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
         setMessages(userMessages);
 
         // Connect WebSocket
-        connectWebSocket(newConversation.id);
+        chatWsRef.current = new ChatWS({
+          conversationId: newConversation.id,
+          onDraftFeedback: handleDraftFeedback,
+          onStreamToken: handleStreamToken,
+          onAssistantDone: handleAssistantDone,
+          onTeacherAnalysis: handleTeacherAnalysis,
+          onError: handleError,
+          onConnectionChange: (connected) => {
+            console.log('WebSocket connection:', connected);
+          },
+        });
       } catch (error) {
         console.error('Failed to initialize conversation:', error);
       } finally {
@@ -198,23 +209,6 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     pinnedToBottomRef.current = true;
     setShowJumpToLatest(false);
     scrollToBottom();
-  };
-
-  /**
-   * Connect WebSocket for real-time communication
-   */
-  const connectWebSocket = (conversationId: string) => {
-    chatWsRef.current = new ChatWS({
-      conversationId,
-      onDraftFeedback: handleDraftFeedback,
-      onStreamToken: handleStreamToken,
-      onAssistantDone: handleAssistantDone,
-      onTeacherAnalysis: handleTeacherAnalysis,
-      onError: handleError,
-      onConnectionChange: (connected) => {
-        console.log('WebSocket connection:', connected);
-      },
-    });
   };
 
   /**

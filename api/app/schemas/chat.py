@@ -1,7 +1,7 @@
 """Pydantic schemas for Chat Coach operations (REST + WebSocket)"""
 
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 import uuid
 
@@ -12,20 +12,40 @@ import uuid
 
 class ChatConversationCreate(BaseModel):
     """Request schema for POST /api/v1/chat/conversations"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "title": "Practice Past Simple"
+        }
+    })
+
     user_id: str = Field(..., description="User ID")
     title: str = Field(default="Practice Chat", description="Conversation title")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "title": "Practice Past Simple"
-            }
-        }
 
 
 class ChatConversationResponse(BaseModel):
     """Response schema for chat conversation"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "660e8400-e29b-41d4-a716-446655440000",
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "title": "Practice Past Simple",
+            "student_profile_json": {
+                "cefr_level": "A2",
+                "common_errors": ["past_simple", "articles"]
+            },
+            "lesson_frame_json": {
+                "cefr_target": "A2",
+                "learning_goal": "past_simple_practice",
+                "expected_intent": "describe_recent_activity",
+                "topic": "weekend_plans"
+            },
+            "session_summary": "",
+            "created_at": "2025-12-25T10:00:00Z",
+            "updated_at": "2025-12-25T10:00:00Z"
+        }
+    })
+
     id: str = Field(..., description="Conversation ID")
     user_id: str = Field(..., description="User ID")
     title: str = Field(..., description="Conversation title")
@@ -35,50 +55,25 @@ class ChatConversationResponse(BaseModel):
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "660e8400-e29b-41d4-a716-446655440000",
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "title": "Practice Past Simple",
-                "student_profile_json": {
-                    "cefr_level": "A2",
-                    "common_errors": ["past_simple", "articles"]
-                },
-                "lesson_frame_json": {
-                    "cefr_target": "A2",
-                    "learning_goal": "past_simple_practice",
-                    "expected_intent": "describe_recent_activity",
-                    "topic": "weekend_plans"
-                },
-                "session_summary": "",
-                "created_at": "2025-12-25T10:00:00Z",
-                "updated_at": "2025-12-25T10:00:00Z"
-            }
-        }
-
-
 class ChatMessageResponse(BaseModel):
     """Response schema for chat message"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "770e8400-e29b-41d4-a716-446655440000",
+            "conversation_id": "660e8400-e29b-41d4-a716-446655440000",
+            "role": "assistant",
+            "content": "Hello! Let's practice past simple. What did you do last weekend?",
+            "metadata_json": {},
+            "created_at": "2025-12-25T10:00:01Z"
+        }
+    })
+
     id: str = Field(..., description="Message ID")
     conversation_id: str = Field(..., description="Conversation ID")
     role: str = Field(..., description="Message role: system|user|assistant")
     content: str = Field(..., description="Message content")
     metadata_json: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Optional metadata")
     created_at: datetime = Field(..., description="Creation timestamp")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "770e8400-e29b-41d4-a716-446655440000",
-                "conversation_id": "660e8400-e29b-41d4-a716-446655440000",
-                "role": "assistant",
-                "content": "Hello! Let's practice past simple. What did you do last weekend?",
-                "metadata_json": {},
-                "created_at": "2025-12-25T10:00:01Z"
-            }
-        }
-
 
 # ============================================================================
 # WebSocket Schemas (Real-time Communication)
@@ -122,26 +117,51 @@ class Ping(BaseModel):
 
 class DraftIssue(BaseModel):
     """Issue detected in draft (spelling, grammar, syntax, etc.)"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "category": "grammar",
+            "title": "Verb tense",
+            "explanation": "Use past simple for yesterday: 'go' → 'went'",
+            "highlight_spans": [{"start": 2, "end": 4}],
+            "suggestions": ["went", "traveled", "drove"]
+        }
+    })
+
     category: str = Field(..., description="Issue category: spelling|grammar|syntax|semantic|style")
     title: str = Field(..., description="Issue title")
     explanation: str = Field(..., description="Short explanation")
     highlight_spans: List[Dict[str, int]] = Field(default_factory=list, description="Character spans to highlight")
     suggestions: List[str] = Field(default_factory=list, description="Suggested corrections")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "category": "grammar",
-                "title": "Verb tense",
-                "explanation": "Use past simple for yesterday: 'go' → 'went'",
-                "highlight_spans": [{"start": 2, "end": 4}],
-                "suggestions": ["went", "traveled", "drove"]
-            }
-        }
-
-
 class DraftFeedbackOut(BaseModel):
     """Server event: draft_feedback (response to draft_update)"""
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "type": "draft_feedback",
+            "conversation_id": "660e8400-e29b-41d4-a716-446655440000",
+            "bar_score_raw": 45.0,
+            "bar_score_components": {
+                "spelling": 100.0,
+                "grammar": 20.0,
+                "syntax": 80.0,
+                "lesson_alignment": 30.0,
+                "naturalness": 50.0
+            },
+            "lesson_alignment_score": 30.0,
+            "issues": [
+                {
+                    "category": "grammar",
+                    "title": "Verb tense",
+                    "explanation": "Use past simple: 'go' → 'went'",
+                    "highlight_spans": [{"start": 2, "end": 4}],
+                    "suggestions": ["went", "traveled"]
+                }
+            ],
+            "ghost_suggestion": "went to the",
+            "server_ts_ms": 1735132810050
+        }
+    })
+
     type: str = Field(default="draft_feedback", description="Event type")
     conversation_id: str = Field(..., description="Conversation ID")
     bar_score_raw: float = Field(..., description="Raw score 0-100")
@@ -156,35 +176,6 @@ class DraftFeedbackOut(BaseModel):
     rewrite: Optional[str] = Field(None, description="Suggested rewrite of the entire draft")
     draft: str = Field(default="", description="Draft text (for debugging/display)")
     server_ts_ms: int = Field(..., description="Server timestamp (milliseconds)")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "type": "draft_feedback",
-                "conversation_id": "660e8400-e29b-41d4-a716-446655440000",
-                "bar_score_raw": 45.0,
-                "bar_score_components": {
-                    "spelling": 100.0,
-                    "grammar": 20.0,
-                    "syntax": 80.0,
-                    "lesson_alignment": 30.0,
-                    "naturalness": 50.0
-                },
-                "lesson_alignment_score": 30.0,
-                "issues": [
-                    {
-                        "category": "grammar",
-                        "title": "Verb tense",
-                        "explanation": "Use past simple: 'go' → 'went'",
-                        "highlight_spans": [{"start": 2, "end": 4}],
-                        "suggestions": ["went", "traveled"]
-                    }
-                ],
-                "ghost_suggestion": "went to the",
-                "server_ts_ms": 1735132810050
-            }
-        }
-
 
 class AssistantStreamTokenOut(BaseModel):
     """Server event: assistant_stream_token (streaming response)"""

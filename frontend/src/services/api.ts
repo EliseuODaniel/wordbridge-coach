@@ -3,6 +3,98 @@
 import axios from 'axios';
 
 // Types based on API specification
+export type JsonObject = Record<string, unknown>;
+
+export interface ApiErrorDetailObject {
+  error?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface ApiErrorResponse {
+  detail?: string | ApiErrorDetailObject;
+  message?: string;
+  error?: string;
+}
+
+interface CardQueryParams {
+  user_id?: string;
+  exclude_card_id?: string;
+}
+
+const getApiErrorDetailMessage = (detail: string | ApiErrorDetailObject | undefined): string | null => {
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string' && detail.message.trim()) {
+      return detail.message;
+    }
+
+    if (typeof detail.error === 'string' && detail.error.trim()) {
+      return detail.error;
+    }
+
+    return JSON.stringify(detail);
+  }
+
+  return null;
+};
+
+export const getApiErrorStatus = (error: unknown): number | undefined => {
+  if (!axios.isAxiosError<ApiErrorResponse>(error)) {
+    return undefined;
+  }
+
+  return error.response?.status;
+};
+
+export const getApiErrorCode = (error: unknown): string | undefined => {
+  if (!axios.isAxiosError(error)) {
+    return undefined;
+  }
+
+  return error.code;
+};
+
+export const getApiErrorMessage = (
+  error: unknown,
+  fallback: string = 'Request failed'
+): string => {
+  if (axios.isAxiosError<ApiErrorResponse>(error)) {
+    const detailMessage = getApiErrorDetailMessage(error.response?.data?.detail);
+    if (detailMessage) {
+      return detailMessage;
+    }
+
+    if (typeof error.response?.data?.message === 'string' && error.response.data.message.trim()) {
+      return error.response.data.message;
+    }
+
+    if (typeof error.response?.data?.error === 'string' && error.response.data.error.trim()) {
+      return error.response.data.error;
+    }
+
+    if (error.message) {
+      return error.message;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+export const isRetryableApiError = (error: unknown): boolean => {
+  const code = getApiErrorCode(error);
+  const status = getApiErrorStatus(error);
+
+  return code === 'NETWORK_ERROR' || code === 'ECONNABORTED' || (typeof status === 'number' && status >= 500);
+};
+
 export interface Gap {
   start: number;
   end: number;
@@ -123,7 +215,7 @@ api.interceptors.response.use(
 export const cardsApi = {
   // Get next card for study (Spec4 mode)
   getNextCard: async (userId?: string, excludeCardId?: string): Promise<CardResponse> => {
-    const params: any = {};
+    const params: CardQueryParams = {};
     if (userId) params.user_id = userId;
     if (excludeCardId) params.exclude_card_id = excludeCardId;
     const response = await api.get('/api/v1/cards/next-spec4', { params });
@@ -132,7 +224,7 @@ export const cardsApi = {
 
   // Get next card for Lingvist mode
   getNextLingvistCard: async (userId?: string, excludeCardId?: string): Promise<LingvistCardResponse> => {
-    const params: any = {};
+    const params: CardQueryParams = {};
     if (userId) params.user_id = userId;
     if (excludeCardId) params.exclude_card_id = excludeCardId;
     const response = await api.get('/api/v1/cards/next-lingvist', { params });
@@ -188,7 +280,7 @@ export const usersApi = {
   },
 
   // Delete user
-  deleteUser: async (userId: string): Promise<{message: string; deleted_records: any}> => {
+  deleteUser: async (userId: string): Promise<{ message: string; deleted_records: JsonObject }> => {
     const response = await api.delete(`/api/v1/users/${userId}`);
     return response.data;
   },
@@ -306,8 +398,8 @@ export interface ChatConversation {
   id: string;
   user_id: string;
   title: string;
-  student_profile_json: Record<string, any>;
-  lesson_frame_json: Record<string, any>;
+  student_profile_json: JsonObject;
+  lesson_frame_json: JsonObject;
   session_summary: string;
   created_at: string;
   updated_at: string;
@@ -317,8 +409,8 @@ export interface ChatConversationList {
   id: string;
   user_id: string;
   title: string;
-  student_profile_json: Record<string, any>;
-  lesson_frame_json: Record<string, any>;
+  student_profile_json: JsonObject;
+  lesson_frame_json: JsonObject;
   session_summary: string;
   created_at: string;
   updated_at: string;
@@ -330,7 +422,7 @@ export interface ChatMessage {
   conversation_id: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
-  metadata_json: Record<string, any>;
+  metadata_json: JsonObject;
   created_at: string;
 }
 
@@ -409,7 +501,7 @@ export interface AssistantDoneEvent {
   type: 'assistant_done';
   conversation_id: string;
   full_content: string;
-  lesson_frame: Record<string, any>;
+  lesson_frame: JsonObject;
   summary_update: string;
 }
 

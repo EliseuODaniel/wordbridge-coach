@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import uuid
 
 from app.core.database import get_db
+from app.core.time import utc_now
 from app.models import User, Language, Card, UserCardState, UserWordStats, MemoryStage, Sentence, Word, ReviewEvent
 
 router = APIRouter()
@@ -145,7 +146,6 @@ def initialize_user_card_states(db: Session, user_id: str, target_language_id: s
     """
     try:
         from sqlalchemy import and_
-        from datetime import datetime
 
         # Get active cards from Band 1 (ranks 1-1000) for the target language
         band_1_cards = db.query(Card).join(Sentence).join(Word).filter(
@@ -181,7 +181,7 @@ def initialize_user_card_states(db: Session, user_id: str, target_language_id: s
                     easiness_factor=2.5,
                     interval_days=1,
                     repetitions=0,
-                    next_review_at=datetime.utcnow()
+                    next_review_at=utc_now()
                 )
                 new_states.append(new_state)
 

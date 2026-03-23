@@ -1,7 +1,12 @@
 /** Word Frequency Insight Component - Refactored with Coverage Curve */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { insightsApi, type WordInsightResponse } from '../services/api';
+import {
+  insightsApi,
+  getApiErrorCode,
+  getApiErrorStatus,
+  type WordInsightResponse,
+} from '../services/api';
 import { withRetry } from '../utils/apiUtils';
 
 interface CoveragePoint {
@@ -37,48 +42,26 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
           // Use wordId endpoint (works correctly)
           data = await withRetry(
             () => insightsApi.getWordInsights(wordId),
-            {
-              maxRetries: 2,
-              baseDelay: 1000,
-              retryCondition: (error) => {
-                if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNABORTED') {
-                  return true;
-                }
-                if (error.response?.status >= 500) {
-                  return true;
-                }
-                return false;
-              }
-            }
+            { maxRetries: 2, baseDelay: 1000 }
           );
         } else {
           // Fallback to cardId endpoint (may not work)
           data = await withRetry(
             () => insightsApi.getWordInsightsByCard(id),
-            {
-              maxRetries: 2,
-              baseDelay: 1000,
-              retryCondition: (error) => {
-                if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNABORTED') {
-                  return true;
-                }
-                if (error.response?.status >= 500) {
-                  return true;
-                }
-                return false;
-              }
-            }
+            { maxRetries: 2, baseDelay: 1000 }
           );
         }
         setInsight(data);
       } catch (err) {
         console.error('Error fetching word insights after retries:', err);
-        // Check if it's a 404 (no frequency data) vs actual error
-        if ((err as any)?.response?.status === 404) {
+        const status = getApiErrorStatus(err);
+        const code = getApiErrorCode(err);
+
+        if (status === 404) {
           setError('No frequency data available for this word');
-        } else if ((err as any)?.response?.status >= 500) {
+        } else if (typeof status === 'number' && status >= 500) {
           setError('Server temporarily unavailable - please refresh');
-        } else if ((err as any)?.code === 'NETWORK_ERROR') {
+        } else if (code === 'NETWORK_ERROR') {
           setError('Network error - check your connection');
         } else {
           setError('Failed to load word frequency data');
@@ -89,7 +72,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
     };
 
     fetchInsight();
-  }, [cardId, refreshTrigger]);
+  }, [cardId, wordId, refreshTrigger]);
 
   // Generate coverage curve based on the word's rank and coverage
   const coverageCurve = useMemo(() => {

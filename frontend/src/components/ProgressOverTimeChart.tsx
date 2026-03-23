@@ -1,7 +1,12 @@
 /** Progress Over Time Chart Component */
 
 import React, { useState, useEffect } from 'react';
-import { insightsApi, type DailyStatsResponse } from '../services/api';
+import {
+  insightsApi,
+  getApiErrorCode,
+  getApiErrorStatus,
+  type DailyStatsResponse,
+} from '../services/api';
 import { withRetry } from '../utils/apiUtils';
 
 interface ProgressOverTimeChartProps {
@@ -23,29 +28,19 @@ const ProgressOverTimeChart: React.FC<ProgressOverTimeChartProps> = ({ userId, r
       try {
         const dailyStats = await withRetry(
           () => insightsApi.getUserDailyStats(userId, 30),
-          {
-            maxRetries: 2,
-            baseDelay: 1000,
-            retryCondition: (error) => {
-              if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNABORTED') {
-                return true;
-              }
-              if (error.response?.status >= 500) {
-                return true;
-              }
-              return false;
-            }
-          }
+          { maxRetries: 2, baseDelay: 1000 }
         );
         setData(dailyStats);
       } catch (err) {
         console.error('Error fetching daily stats after retries:', err);
-        // Check if it's a 404 (no data) vs actual error
-        if ((err as any)?.response?.status === 404) {
+        const status = getApiErrorStatus(err);
+        const code = getApiErrorCode(err);
+
+        if (status === 404) {
           setError('No progress data yet');
-        } else if ((err as any)?.response?.status >= 500) {
+        } else if (typeof status === 'number' && status >= 500) {
           setError('Server temporarily unavailable - please refresh');
-        } else if ((err as any)?.code === 'NETWORK_ERROR') {
+        } else if (code === 'NETWORK_ERROR') {
           setError('Network error - check your connection');
         } else {
           setError('Failed to load progress data');

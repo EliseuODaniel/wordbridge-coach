@@ -21,16 +21,7 @@ const WordThemeBadge: React.FC<WordThemeBadgeProps> = ({ wordId, className = '' 
       try {
         const wordThemes = await withRetry(
           () => insightsApi.getWordThemes(wordId),
-          {
-            maxRetries: 1,
-            baseDelay: 500,
-            retryCondition: (error) => {
-              if (error.response?.status >= 500) {
-                return true;
-              }
-              return false;
-            }
-          }
+          { maxRetries: 1, baseDelay: 500 }
         );
         setThemes(wordThemes);
       } catch (err) {

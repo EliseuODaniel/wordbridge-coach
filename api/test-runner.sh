@@ -20,6 +20,15 @@ TEST_TYPE="all"
 COVERAGE=false
 VERBOSE=false
 SPEC4_ONLY=false
+PYTHON_BIN="python"
+PIP_BIN="pip"
+PYTEST_BIN="pytest"
+
+if [[ -x ".venv/bin/python" ]]; then
+    PYTHON_BIN=".venv/bin/python"
+    PIP_BIN=".venv/bin/pip"
+    PYTEST_BIN=".venv/bin/pytest"
+fi
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -75,15 +84,19 @@ done
 # Check if virtual environment is activated
 if [[ "$VIRTUAL_ENV" == "" ]]; then
     echo -e "${YELLOW}Warning: No virtual environment detected${NC}"
-    echo "Consider activating venv first: source venv/bin/activate"
+    if [[ "$PYTHON_BIN" == ".venv/bin/python" ]]; then
+        echo "Using repo-local test environment at .venv/"
+    else
+        echo "Consider activating venv first: source .venv/bin/activate"
+    fi
     echo ""
 fi
 
 # Check if test dependencies are installed
 echo -e "${BLUE}Checking test dependencies...${NC}"
-if ! python -c "import pytest" 2>/dev/null; then
+if ! "$PYTHON_BIN" -c "import pytest" 2>/dev/null; then
     echo -e "${YELLOW}Installing test dependencies...${NC}"
-    pip install -r requirements-test.txt
+    "$PIP_BIN" install -r requirements-test.txt
 fi
 
 # Create test database if needed
@@ -91,7 +104,7 @@ echo -e "${BLUE}Setting up test environment...${NC}"
 
 # Check if test database is available
 echo -e "${BLUE}Checking test database connectivity...${NC}"
-if ! python -c "
+if ! "$PYTHON_BIN" -c "
 import psycopg2
 try:
     conn = psycopg2.connect('postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test')
@@ -99,16 +112,17 @@ try:
     print('Test database is accessible')
 except Exception as e:
     print(f'Test database not accessible: {e}')
-    print('Please run: docker-compose --profile test up -d db_test')
+    print('Please run: docker compose --profile test up -d db_test')
     exit(1)
 " 2>/dev/null; then
     echo -e "${RED}❌ Test database not accessible. Please start the test database:${NC}"
-    echo -e "${YELLOW}docker-compose --profile test up -d db_test${NC}"
+    echo -e "${YELLOW}docker compose --profile test up -d db_test${NC}"
     exit 1
 fi
 
 # Build pytest command
-PYTEST_CMD="pytest"
+PYTEST_CMD="$PYTEST_BIN"
+PYTEST_ENV_PREFIX="PYTHONPATH=. DEBUG=false"
 
 if [[ "$VERBOSE" == true ]]; then
     PYTEST_CMD="$PYTEST_CMD -v"
@@ -136,11 +150,11 @@ esac
 
 # Run tests
 echo -e "${BLUE}Running tests: $TEST_TYPE${NC}"
-echo -e "${BLUE}Command: $PYTEST_CMD $TEST_DIR${NC}"
+echo -e "${BLUE}Command: $PYTEST_ENV_PREFIX $PYTEST_CMD $TEST_DIR${NC}"
 echo ""
 
 # Execute tests
-if eval "$PYTEST_CMD $TEST_DIR"; then
+if eval "$PYTEST_ENV_PREFIX $PYTEST_CMD $TEST_DIR"; then
     echo ""
     echo -e "${GREEN}✅ All tests passed!${NC}"
 

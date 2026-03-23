@@ -1,7 +1,13 @@
 /** Lingvist Mode Study Session Component */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { cardsApi, type LingvistCardResponse, type AnswerResponse } from '../services/api';
+import {
+  cardsApi,
+  getApiErrorMessage,
+  getApiErrorStatus,
+  type LingvistCardResponse,
+  type AnswerResponse,
+} from '../services/api';
 import { audioService } from '../services/audio';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
@@ -85,20 +91,10 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
     } catch (error) {
       console.error('❌ Error loading Lingvist card:', error);
 
-      // Extract error message from axios error if available
-      let errorMsg = 'Failed to load card. Please try again.';
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as any;
-        if (axiosError.response?.data?.detail) {
-          errorMsg = `Error ${axiosError.response.status}: ${axiosError.response.data.detail}`;
-        } else if (axiosError.message) {
-          errorMsg = axiosError.message;
-        }
-      } else if (error instanceof Error) {
-        errorMsg = error.message;
-      }
+      const status = getApiErrorStatus(error);
+      const message = getApiErrorMessage(error, 'Failed to load card. Please try again.');
 
-      setErrorMessage(errorMsg);
+      setErrorMessage(status ? `Error ${status}: ${message}` : message);
       setCurrentCard(null);
     }
   }, [userId]);
@@ -332,6 +328,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit }) => 
             <div className="bg-gray-800 rounded-lg p-8">
               {/* Inline Gap Input */}
               <InlineGapInput
+                key={currentCard.card_id}
                 sentence={currentCard.sentence}
                 gap={currentCard.gap}
                 correctAnswer={currentCard.correct_answer}

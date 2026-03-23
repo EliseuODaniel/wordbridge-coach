@@ -1,4 +1,17 @@
-version: '3.8'
+x-llama-cuda-service: &llama-cuda-service
+  image: ghcr.io/ggml-org/llama.cpp:server-cuda
+  restart: unless-stopped
+  volumes:
+    - ./llm_models:/models
+  networks:
+    - filltheword-net
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
 
 services:
   # PostgreSQL Database (Development)
@@ -120,13 +133,10 @@ services:
 
   # LLM Service (llama.cpp with CUDA)
   llm:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    <<: *llama-cuda-service
     container_name: filltheword-llm
-    restart: unless-stopped
     ports:
       - "8080:8080"  # Internal only (accessible via Docker network)
-    volumes:
-      - ./llm_models:/models
     command: >
       -m /models/model.gguf
       -c 4096
@@ -134,16 +144,6 @@ services:
       --port 8080
       --n-gpu-layers 999
       --parallel 2
-    networks:
-      - filltheword-net
-    # GPU support (CUDA enabled for NVIDIA RTX 4070 Laptop)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -152,13 +152,10 @@ services:
 
   # LLM Chat Service (Phi-3 Mini 4K - Fast Chat)
   llm_chat:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    <<: *llama-cuda-service
     container_name: filltheword-llm-chat
-    restart: unless-stopped
     ports:
       - "8081:8081"
-    volumes:
-      - ./llm_models:/models
     command: >
       -m /models/Phi-3-mini-4k-instruct-q4.gguf
       -c 4096
@@ -166,15 +163,6 @@ services:
       --port 8081
       --n-gpu-layers 999
       --parallel 2
-    networks:
-      - filltheword-net
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     profiles:
       - fastchat
     healthcheck:
@@ -185,13 +173,10 @@ services:
 
   # LLM Teacher Service (Qwen 2.5 3B - Fast Teacher Analysis)
   llm_teacher:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    <<: *llama-cuda-service
     container_name: filltheword-llm-teacher
-    restart: unless-stopped
     ports:
       - "8082:8082"
-    volumes:
-      - ./llm_models:/models
     command: >
       -m /models/qwen2.5-3b-instruct-q4_k_m.gguf
       -c 2048
@@ -199,15 +184,6 @@ services:
       --port 8082
       --n-gpu-layers 999
       --parallel 2
-    networks:
-      - filltheword-net
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 30s

@@ -1,7 +1,7 @@
 /** Main Study Session Component */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { cardsApi } from '../services/api';
+import { cardsApi, getApiErrorMessage, getApiErrorStatus } from '../services/api';
 import type { CardResponse, AnswerResponse } from '../services/api';
 import { audioService } from '../services/audio';
 import { statsService, type StatsData, type SettingsData } from '../services/stats';
@@ -90,8 +90,8 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       setCurrentCard(card);
 
     } catch (error) {
-      const errorStatus = (error as any)?.response?.status;
-      const errorMessage = (error as any)?.response?.data?.message || (error as any)?.message;
+      const errorStatus = getApiErrorStatus(error);
+      const errorMessage = getApiErrorMessage(error, 'Failed to load next card');
 
       console.error(`❌ Error loading next card (attempt ${retryCount + 1}/${maxRetries + 1}):`, {
         error: errorMessage,
@@ -186,32 +186,19 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
       }
 
     } catch (error) {
+      const status = getApiErrorStatus(error);
+      const errorMessage = getApiErrorMessage(error, 'Error submitting answer');
+
       console.error('❌ Error submitting answer:', {
-        error: (error as any)?.message,
-        status: (error as any)?.response?.status,
-        data: (error as any)?.response?.data
+        error: errorMessage,
+        status,
+        rawError: error
       });
-
-      // Extract real error message from server response
-      const status = (error as any)?.response?.status || '???';
-      const errorData = (error as any)?.response?.data;
-      let errorMessage = 'Error submitting answer';
-
-      if (errorData?.detail) {
-        // FastAPI error format: {detail: {error: "...", message: "..."}}
-        if (typeof errorData.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (typeof errorData.detail === 'object') {
-          errorMessage = errorData.detail.message || errorData.detail.error || JSON.stringify(errorData.detail);
-        }
-      } else if ((error as any)?.message) {
-        errorMessage = (error as any).message;
-      }
 
       // Show user feedback but still allow them to try again
       setFeedback({
         correct: false,
-        correct_answer: `Error ${status}: ${errorMessage}`,
+        correct_answer: status ? `Error ${status}: ${errorMessage}` : `Error: ${errorMessage}`,
         sentence_full: currentCard.sentence || '',
         quality: 0,
         next_review_at: new Date().toISOString()
@@ -294,9 +281,7 @@ const StudySession: React.FC<StudySessionProps> = ({ userId }) => {
 
     // Detect first user interaction (click, keydown, touch)
     const handleUserInteraction = () => {
-      if (!userHasInteracted) {
-        setUserHasInteracted(true);
-      }
+      setUserHasInteracted(true);
     };
 
     // Add event listeners for user interaction
@@ -367,6 +352,7 @@ return (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Answer Input - Always visible */}
               <AnswerInput
+                key={`${currentCard.card_id}:${feedback?.correct ? 'resolved' : 'active'}`}
                 onSubmit={handleSubmit}
                 isSubmitting={isSubmitting}
                 placeholder="Type the missing word..."

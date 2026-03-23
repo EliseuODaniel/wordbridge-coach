@@ -4,12 +4,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
-from datetime import datetime, timedelta
+from datetime import timedelta
 import uuid
 import os
 import logging
 
 from app.core.database import get_db
+from app.core.time import utc_now, utc_today
 from app.core.config import settings
 from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse, ErrorResponse
 from app.schemas.lingvist import LingvistCardResponse, MicroProgress
@@ -292,7 +293,7 @@ def create_sample_data_if_needed(db: Session):
                 repetitions=0,
                 easiness_factor=2.5,
                 interval_days=1,
-                next_review_at=datetime.utcnow(),
+                next_review_at=utc_now(),
                 status=MemoryStage.NEW,
                 total_reviews=0,
                 correct_reviews=0
@@ -305,6 +306,247 @@ def create_sample_data_if_needed(db: Session):
     except Exception as e:
         db.rollback()
         print(f"Error creating sample data: {e}")
+
+
+def _resolve_request_user_id(db: Session, user_id: Optional[str]) -> str:
+    """Resolve omitted user_id to the local demo user."""
+    if user_id:
+        return user_id
+
+    demo_user = db.query(User).filter(User.username == "demo").first()
+    if not demo_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Demo user not found", "message": "User setup required"}
+        )
+
+    return demo_user.id
+
+
+def _get_user_target_language_code(db: Session, user_id: str, default: str = "en") -> str:
+    """Return the target language code for a user when available."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.target_language_id:
+        return default
+
+    target_lang = db.query(Language).filter(Language.id == user.target_language_id).first()
+    return target_lang.code if target_lang else default
+
+
+def _get_card_memory_stage(db: Session, user_id: str, card_id: str) -> str:
+    """Resolve the persisted memory stage for a card, defaulting to NEW."""
+    card_state = db.query(UserCardState).filter(
+        and_(
+            UserCardState.user_id == user_id,
+            UserCardState.card_id == card_id
+        )
+    ).first()
+
+    return card_state.status.value if card_state else "NEW"
+
+
+def _get_lingvist_entities_from_context(
+    db: Session,
+    card_context: dict
+) -> tuple[Card, Word, Sentence]:
+    """Load the card, word, and sentence referenced by a card context payload."""
+    card = db.query(Card).filter(Card.id == card_context["card_id"]).first()
+    word = db.query(Word).filter(Word.id == card_context["word_id"]).first()
+    sentence = db.query(Sentence).filter(Sentence.id == card_context["sentence_id"]).first()
+
+    if not card or not word or not sentence:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Card data incomplete", "message": "Missing card/word/sentence"}
+        )
+
+    return card, word, sentence
+
+
+def _build_relative_audio_urls(card: Card, word: Word, sentence: Sentence, lang_code: str) -> tuple[str, str]:
+    """Build relative API audio URLs for a word and its filled sentence."""
+    from urllib.parse import quote
+
+    word_text_encoded = quote(word.text or "")
+    audio_word_url = f"/api/tts/word/{card.id}?text={word_text_encoded}&lang={lang_code}"
+
+    sentence_with_gap = sentence.text or ""
+    sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
+    sentence_text_encoded = quote(sentence_with_word)
+    audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+
+    return audio_word_url, audio_sentence_url
+
+
+def _build_lingvist_card_response(
+    db: Session,
+    user_id: str,
+    user: User,
+    card_context: dict
+) -> LingvistCardResponse:
+    """Build the enriched Lingvist payload from a base card context."""
+    card, word, sentence = _get_lingvist_entities_from_context(db, card_context)
+
+    # Auto-generate translations if missing (on-demand with DB cache)
+    _autofill_translations(db, word, sentence, card)
+
+    grammar_tag_pt = _build_grammar_tag_pt(word)
+    word_translation_pt = _extract_word_translation(word)
+    sentence_translation_pt = (sentence.translation or "").strip() or None
+    micro_progress = _get_micro_progress(db, user_id, user)
+    lang_code = _get_user_target_language_code(db, user_id)
+    audio_word_url, audio_sentence_url = _build_relative_audio_urls(card, word, sentence, lang_code)
+
+    return LingvistCardResponse(
+        card_id=str(card.id),
+        word_id=str(word.id),
+        sentence_id=str(sentence.id),
+        word=word.text,
+        sentence=sentence.text or "",
+        gap={"start": card.gap_start or 0, "end": card.gap_end or 0},
+        correct_answer=word.text,
+        grammar_tag_pt=grammar_tag_pt,
+        word_translation_pt=word_translation_pt,
+        sentence_translation_pt=sentence_translation_pt,
+        sentence_source=sentence.source_title if sentence.source_title else None,
+        is_new=card_context["is_new"],
+        micro_progress=micro_progress,
+        audio_word_url=audio_word_url,
+        audio_sentence_url=audio_sentence_url
+    )
+
+
+def _get_or_create_daily_stats(db: Session, user_id: str):
+    """Load today's daily stats row, creating it when needed."""
+    from app.models.user_daily_stats import UserDailyStats
+
+    today = utc_today()
+    daily_stats = db.query(UserDailyStats).filter(
+        UserDailyStats.user_id == user_id,
+        UserDailyStats.date == today
+    ).first()
+
+    if daily_stats:
+        return daily_stats
+
+    daily_stats = UserDailyStats(
+        user_id=user_id,
+        date=today,
+        cards_answered=0,
+        new_words_learned=0,
+        reviews_done=0,
+        accuracy=0.0
+    )
+    db.add(daily_stats)
+    db.flush()
+    return daily_stats
+
+
+def _update_user_accuracy_last_20(db: Session, user_id: str, is_correct: bool) -> Optional[User]:
+    """Recompute rolling accuracy for the user based on the latest answer."""
+    from sqlalchemy import desc
+
+    recent_20 = db.query(ReviewEvent)\
+        .filter(ReviewEvent.user_id == user_id)\
+        .order_by(desc(ReviewEvent.created_at))\
+        .limit(19)\
+        .all()
+
+    correct_count = sum(1 for review in recent_20 if review.was_correct)
+    if is_correct:
+        correct_count += 1
+
+    total_count = len(recent_20) + 1
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+
+    user.accuracy_last_20 = correct_count / total_count if total_count > 0 else None
+    print(f"DEBUG: Updated user accuracy_last_20={user.accuracy_last_20}")
+    return user
+
+
+def _update_relearn_state(
+    db: Session,
+    user: Optional[User],
+    user_card_state: UserCardState,
+    card_id: str,
+    user_id: str,
+    quality: int
+) -> None:
+    """Apply Lingvist relearn queue updates for the reviewed card."""
+    if not user or user.mode != 'lingvist':
+        return
+
+    should_relearn = SM2Algorithm.should_enter_relearn(quality)
+
+    if should_relearn:
+        user_card_state.is_relearn = True
+
+        relearn_count = db.query(ReviewEvent)\
+            .filter(
+                ReviewEvent.user_id == user_id,
+                ReviewEvent.card_id == card_id,
+                ReviewEvent.quality < 3
+            )\
+            .count()
+
+        relearn_interval = SM2Algorithm.calculate_relearn_interval(relearn_count)
+        user_card_state.relearn_due = utc_now() + relearn_interval
+        print(f"DEBUG: Card entered relearn queue, due in {relearn_interval}, count={relearn_count}")
+        return
+
+    if user_card_state.is_relearn:
+        user_card_state.is_relearn = False
+        user_card_state.relearn_due = None
+        print("DEBUG: Card exited relearn queue, returning to normal SM-2")
+
+
+def _update_theme_stats(
+    db: Session,
+    user_id: str,
+    word_id: str,
+    was_correct: bool,
+    response_time_ms: int
+) -> None:
+    """Update theme-level stats for every active theme linked to the word."""
+    theme_mappings = db.query(WordThemeMapping.theme_id).filter(
+        and_(
+            WordThemeMapping.word_id == word_id,
+            WordThemeMapping.is_active == True
+        )
+    ).all()
+
+    for theme_mapping in theme_mappings:
+        theme_id = theme_mapping[0]
+
+        theme_stats = db.query(UserThemeStats).filter(
+            and_(
+                UserThemeStats.user_id == user_id,
+                UserThemeStats.theme_id == theme_id
+            )
+        ).first()
+
+        if not theme_stats:
+            theme_stats = UserThemeStats(
+                user_id=user_id,
+                theme_id=theme_id,
+                attempts=0,
+                correct=0,
+                accuracy=0.0,
+                avg_response_time_ms=0.0
+            )
+            db.add(theme_stats)
+            db.flush()
+
+        theme_stats.add_attempt(
+            was_correct=was_correct,
+            response_time_ms=response_time_ms
+        )
+        print(
+            f"DEBUG: Updated UserThemeStats for theme_id={theme_id}, "
+            f"attempts={theme_stats.attempts}, accuracy={theme_stats.accuracy:.3f}"
+        )
 
 
 @router.get("/next", response_model=CardResponse)
@@ -326,15 +568,7 @@ async def get_next_card(
         # Ensure we have sample data
         create_sample_data_if_needed(db)
 
-        # Get demo user if user_id not provided
-        if not user_id:
-            demo_user = db.query(User).filter(User.username == "demo").first()
-            if not demo_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Demo user not found", "message": "User setup required"}
-                )
-            user_id = demo_user.id
+        user_id = _resolve_request_user_id(db, user_id)
 
         # Get user's daily new limit
         user = db.query(User).filter(User.id == user_id).first()
@@ -376,7 +610,7 @@ async def get_next_card(
 
         # Find next card using SM-2 priority logic with daily limit
         # Priority 1: Due cards for review
-        now = datetime.utcnow()
+        now = utc_now()
         due_card = db.query(UserCardState).join(Card).filter(
             and_(
                 UserCardState.user_id == user_id,
@@ -555,15 +789,7 @@ async def submit_answer(
             print(f"DEBUG: Error calculating SM2 quality: {e}")
             raise
 
-        # Get or create UserCardState for demo user
-        if not user_id:
-            demo_user = db.query(User).filter(User.username == "demo").first()
-            if not demo_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Demo user not found", "message": "User setup required"}
-                )
-            user_id = demo_user.id
+        user_id = _resolve_request_user_id(db, user_id)
 
         # Get or create UserCardState (always required for Spec4)
         user_card_state = db.query(UserCardState).filter(
@@ -582,7 +808,7 @@ async def submit_answer(
                 repetitions=0,
                 easiness_factor=2.5,
                 interval_days=1,
-                next_review_at=datetime.utcnow(),
+                next_review_at=utc_now(),
                 status=MemoryStage.NEW,
                 total_reviews=0,
                 correct_reviews=0
@@ -627,26 +853,7 @@ async def submit_answer(
         db.add(review_event)
         print(f"DEBUG: ReviewEvent created with sentence_id={sentence_id}, attempts={answer_data.attempts}")
 
-        # Update or create UserDailyStats
-        from app.models.user_daily_stats import UserDailyStats
-
-        today = datetime.utcnow().date()
-        daily_stats = db.query(UserDailyStats).filter(
-            UserDailyStats.user_id == user_id,
-            UserDailyStats.date == today
-        ).first()
-
-        if not daily_stats:
-            daily_stats = UserDailyStats(
-                user_id=user_id,
-                date=today,
-                cards_answered=0,
-                new_words_learned=0,
-                reviews_done=0,
-                accuracy=0.0
-            )
-            db.add(daily_stats)
-            db.flush()  # Flush to ensure it's persisted before updating
+        daily_stats = _get_or_create_daily_stats(db, user_id)
 
         # Update daily stats using the model's method
         daily_stats.update_accuracy(was_correct=is_correct)
@@ -672,97 +879,19 @@ async def submit_answer(
         else:
             user_card_state.status = MemoryStage.NEW
 
-        # Update user's accuracy_last_20 (adaptive scheduler)
-        from sqlalchemy import desc
-
-        recent_20 = db.query(ReviewEvent)\
-            .filter(ReviewEvent.user_id == user_id)\
-            .order_by(desc(ReviewEvent.created_at))\
-            .limit(19)\
-            .all()  # Get last 19 (plus current = 20)
-
-        correct_count = sum(1 for r in recent_20 if r.was_correct)
-        if is_correct:
-            correct_count += 1
-
-        total_count = len(recent_20) + 1  # +1 for current answer
-
-        # Get user and update accuracy
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            user.accuracy_last_20 = correct_count / total_count if total_count > 0 else None
-            print(f"DEBUG: Updated user accuracy_last_20={user.accuracy_last_20}")
-
-            # Adaptive Scheduler: Relearn queue logic (Lingvist mode only)
-            if user.mode == 'lingvist':
-                # Check if card should enter/exit relearn queue
-                should_relearn = SM2Algorithm.should_enter_relearn(quality)
-
-                if should_relearn:
-                    # Enter or advance in relearn queue
-                    user_card_state.is_relearn = True
-
-                    # Calculate next relearn interval
-                    # Count how many times this card has been in relearn
-                    relearn_count = db.query(ReviewEvent)\
-                        .filter(
-                            ReviewEvent.user_id == user_id,
-                            ReviewEvent.card_id == card_id,
-                            ReviewEvent.quality < 3  # Previous failures
-                        )\
-                        .count()
-
-                    relearn_interval = SM2Algorithm.calculate_relearn_interval(relearn_count)
-                    user_card_state.relearn_due = datetime.utcnow() + relearn_interval
-                    print(f"DEBUG: Card entered relearn queue, due in {relearn_interval}, count={relearn_count}")
-                else:
-                    # Exit relearn queue (quality >= 4, well-recalled)
-                    if user_card_state.is_relearn:
-                        user_card_state.is_relearn = False
-                        user_card_state.relearn_due = None
-                        print(f"DEBUG: Card exited relearn queue, returning to normal SM-2")
+        user = _update_user_accuracy_last_20(db, user_id, is_correct)
+        _update_relearn_state(db, user, user_card_state, card_id, user_id, quality)
 
         print(f"DEBUG: UserCardState updated successfully")
 
-        # Update UserThemeStats for all themes associated with this word
         word_id = card.sentence.word_id
-        theme_mappings = db.query(WordThemeMapping.theme_id).filter(
-            and_(
-                WordThemeMapping.word_id == word_id,
-                WordThemeMapping.is_active == True
-            )
-        ).all()
-
-        for theme_mapping in theme_mappings:
-            theme_id = theme_mapping[0]  # Extract theme_id from tuple
-
-            # Get or create UserThemeStats
-            theme_stats = db.query(UserThemeStats).filter(
-                and_(
-                    UserThemeStats.user_id == user_id,
-                    UserThemeStats.theme_id == theme_id
-                )
-            ).first()
-
-            if not theme_stats:
-                # Create new UserThemeStats
-                theme_stats = UserThemeStats(
-                    user_id=user_id,
-                    theme_id=theme_id,
-                    attempts=0,
-                    correct=0,
-                    accuracy=0.0,
-                    avg_response_time_ms=0.0
-                )
-                db.add(theme_stats)
-                db.flush()  # Flush to ensure it's persisted before updating
-
-            # Add attempt using model's method
-            theme_stats.add_attempt(
-                was_correct=is_correct,
-                response_time_ms=answer_data.response_time_ms
-            )
-            print(f"DEBUG: Updated UserThemeStats for theme_id={theme_id}, attempts={theme_stats.attempts}, accuracy={theme_stats.accuracy:.3f}")
+        _update_theme_stats(
+            db=db,
+            user_id=user_id,
+            word_id=word_id,
+            was_correct=is_correct,
+            response_time_ms=answer_data.response_time_ms
+        )
 
         # CRITICAL: Update Spec4 progression after correct answer
         if is_correct:
@@ -827,15 +956,7 @@ async def get_next_card_spec4(
     Get next card for study using Spec4 intelligent selection algorithm
     """
     try:
-        # Get demo user if user_id not provided
-        if not user_id:
-            demo_user = db.query(User).filter(User.username == "demo").first()
-            if not demo_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Demo user not found", "message": "User setup required"}
-                )
-            user_id = demo_user.id
+        user_id = _resolve_request_user_id(db, user_id)
 
         # Initialize Spec4 card selection service
         card_service = CardSelectionService(db)
@@ -856,28 +977,7 @@ async def get_next_card_spec4(
                 }
             )
 
-        # Get target language code for TTS
-        user = db.query(User).filter(User.id == user_id).first()
-        target_lang_code = "en"  # Default
-        if user and user.target_language_id:
-            target_lang = db.query(Language).filter(Language.id == user.target_language_id).first()
-            if target_lang:
-                target_lang_code = target_lang.code
-
-        # Determine memory_stage from UserCardState (if exists)
-        card_state = db.query(UserCardState).filter(
-            and_(
-                UserCardState.user_id == user_id,
-                UserCardState.card_id == card_context["card_id"]
-            )
-        ).first()
-
-        if card_state:
-            # Use real SM-2 status from UserCardState
-            memory_stage = card_state.status.value  # Convert enum to string (uppercase)
-        else:
-            # No state yet, it's a new card
-            memory_stage = "NEW"
+        memory_stage = _get_card_memory_stage(db, user_id, card_context["card_id"])
 
         return CardResponse(
             card_id=card_context["card_id"],  # CRITICAL: Real Card.id from database
@@ -924,18 +1024,7 @@ async def get_next_card_lingvist(
     translations are missing, generates them on-demand using Argos Translate.
     """
     try:
-        from app.schemas.lingvist import LingvistCardResponse, MicroProgress
-        from app.services.card_selection import CardSelectionService
-
-        # Get demo user if user_id not provided
-        if not user_id:
-            demo_user = db.query(User).filter(User.username == "demo").first()
-            if not demo_user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Demo user not found", "message": "User setup required"}
-                )
-            user_id = demo_user.id
+        user_id = _resolve_request_user_id(db, user_id)
 
         # Initialize Spec4 card selection service
         card_service = CardSelectionService(db)
@@ -966,64 +1055,12 @@ async def get_next_card_lingvist(
                 detail={"error": "No cards available", "message": "No cards available for study at this time"}
             )
 
-        # Get actual card, word, and sentence objects
-        card = db.query(Card).filter(Card.id == card_context["card_id"]).first()
-        word = db.query(Word).filter(Word.id == card_context["word_id"]).first()
-        sentence = db.query(Sentence).filter(Sentence.id == card_context["sentence_id"]).first()
-
-        if not card or not word or not sentence:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "Card data incomplete", "message": "Missing card/word/sentence"}
-            )
-
-        # Auto-generate translations if missing (on-demand with DB cache)
-        _autofill_translations(db, word, sentence, card)
-
-        # Build grammar_tag_pt from word.part_of_speech and word.features
-        grammar_tag_pt = _build_grammar_tag_pt(word)
-
-        # Extract PT-BR translations
-        word_translation_pt = _extract_word_translation(word)
-        # Normalize sentence.translation: treat ""/whitespace as None
-        sentence_translation_pt = (sentence.translation or "").strip() or None
-
-        # Get micro_progress from UserSessionStats
-        micro_progress = _get_micro_progress(db, user_id, user)
-
-        # Build audio URLs
-        from urllib.parse import quote
-        lang_code = "en"  # TODO: Get from user.target_language
-
-        word_text_encoded = quote(word.text or "")
-        audio_word_url = f"/api/tts/word/{card.id}?text={word_text_encoded}&lang={lang_code}"
-
-        sentence_with_gap = sentence.text or ""
-        sentence_with_word = sentence_with_gap.replace("___", word.text, 1)
-        sentence_text_encoded = quote(sentence_with_word)
-        audio_sentence_url = f"/api/tts/sentence/{card.id}?text={sentence_text_encoded}&lang={lang_code}"
+        response = _build_lingvist_card_response(db, user_id, user, card_context)
 
         # Commit database changes (including autofilled translations)
         db.commit()
 
-        # Build enriched response
-        return LingvistCardResponse(
-            card_id=str(card.id),
-            word_id=str(word.id),
-            sentence_id=str(sentence.id),
-            word=word.text,
-            sentence=sentence.text or "",
-            gap={"start": card.gap_start or 0, "end": card.gap_end or 0},
-            correct_answer=word.text,  # Expected answer for validation
-            grammar_tag_pt=grammar_tag_pt,
-            word_translation_pt=word_translation_pt,
-            sentence_translation_pt=sentence_translation_pt,
-            sentence_source=sentence.source_title if sentence.source_title else None,
-            is_new=card_context["is_new"],
-            micro_progress=micro_progress,
-            audio_word_url=audio_word_url,
-            audio_sentence_url=audio_sentence_url
-        )
+        return response
 
     except HTTPException:
         raise

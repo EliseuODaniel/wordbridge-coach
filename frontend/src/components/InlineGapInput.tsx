@@ -25,8 +25,8 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
   onUserEdit,
 }) => {
   const [value, setValue] = useState('');
-  const [isLocked, setIsLocked] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submitPendingRef = useRef(false);
 
   // Normalize text for comparison (case-insensitive, trim, no extra spaces)
   const normalizeText = (text: string) => {
@@ -35,21 +35,21 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
 
   // Focus input on mount
   useEffect(() => {
-    if (!disabled && !isLocked && inputRef.current) {
+    if (!disabled && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [disabled, isLocked]);
+  }, [disabled]);
 
-  // Auto-unlock when submission completes and answer is not correct
+  // Clear pending submission lock after the parent finishes processing.
   useEffect(() => {
-    // Unlock when disabled changes from true to false AND answer is not correct
-    // This allows retry after incorrect answer
-    if (!disabled && !isCorrect && isLocked) {
-      setIsLocked(false);
+    if (!disabled && !isCorrect) {
+      submitPendingRef.current = false;
       inputRef.current?.focus();
-      inputRef.current?.select();
+      if (isIncorrect) {
+        inputRef.current?.select();
+      }
     }
-  }, [disabled, isCorrect, isLocked]);
+  }, [disabled, isCorrect, isIncorrect]);
 
   // Split sentence into parts: before gap, gap (input), after gap
   const beforeGap = sentence.slice(0, gap.start);
@@ -57,7 +57,7 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
 
   // Auto-submit when answer matches exactly
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isLocked) return;
+    if (submitPendingRef.current || disabled) return;
 
     const newValue = e.target.value;
 
@@ -74,17 +74,17 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
         typed: newValue,
         correct: correctAnswer,
       });
-      setIsLocked(true);
+      submitPendingRef.current = true;
       onSubmit(newValue);
     }
   };
 
   // Handle Enter key as fallback
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !isLocked && value.trim()) {
+    if (e.key === 'Enter' && !submitPendingRef.current && !disabled && value.trim()) {
       e.preventDefault();
       console.log('⏎ Enter fallback: submitting answer', value);
-      setIsLocked(true);
+      submitPendingRef.current = true;
       onSubmit(value);
     }
   };
@@ -101,16 +101,18 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        disabled={disabled || isLocked}
+        disabled={disabled}
         className={`
           inline-block px-2 py-1 mx-1 rounded border-b-2 bg-transparent
           text-center font-semibold transition-all duration-200
           focus:outline-none focus:ring-0
           ${
-            isLocked
+            disabled
               ? isCorrect
                 ? 'border-green-500 text-green-400'
-                : 'border-red-500 text-red-400'
+                : isIncorrect
+                  ? 'border-red-500 text-red-400'
+                  : 'border-gray-500 text-gray-100'
               : 'border-gray-500 text-gray-100 focus:border-primary-500'
           }
           ${disabled ? 'opacity-50 cursor-not-allowed' : ''}

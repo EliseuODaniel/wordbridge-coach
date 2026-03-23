@@ -1,0 +1,145 @@
+# Project Status
+
+Data de referência: 2026-03-23
+
+## Resumo executivo
+
+FillTheWord já funciona como uma aplicação local multi-serviço para estudo de vocabulário. O projeto foi além do MVP original e hoje mistura:
+
+- loop principal de estudo com SRS
+- um modo estilo Lingvist
+- um modo Chat Coach com LLM local
+- TTS local com cache em disco
+- LanguageTool para apoio de escrita
+
+O código existe, mas a governança documental antiga gerou múltiplas versões da verdade. A partir desta data, este arquivo passa a registrar o estado oficial do projeto.
+
+## Estado atual do produto
+
+### Baseline tecnico validado nesta fase
+
+- `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
+- `cd frontend && npm ci`: OK
+- `cd frontend && npm run build`: OK
+- `cd frontend && npm run lint`: OK apos a limpeza de hooks, contratos de erro e tipagem de APIs no frontend
+- `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_spec4_card_selection.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_utilities.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_chat_websocket_flow.py -q`: OK
+- `python3 -m py_compile api/app/api/api_v1/endpoints/chat.py api/tests/test_chat_utilities.py`: OK
+- `cd api && TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test ./test-runner.sh --spec4`: OK
+
+### Áreas implementadas
+
+- API principal em FastAPI com rotas de cards, stats, settings, users, insights, chat e perfis de LLM
+- frontend React com seleção de usuário e três modos de treino
+- serviço TTS separado
+- compose local com banco, API, frontend, TTS, LLM principal, LLM teacher, LLM chat opcional e LanguageTool
+- suíte de testes backend e uma base de testes E2E com Playwright
+
+### Áreas que precisam de atenção
+
+- documentação estava espalhada e conflitante
+- README anterior misturava estado atual com snapshots antigos de implementação
+- há sinais de crescimento orgânico forte em Chat Coach e Lingvist
+- o projeto ainda precisa de uma rodada de simplificação arquitetural antes de novas features
+- o próximo foco técnico saiu de lint básico e passou para simplificação estrutural dos módulos mais acoplados
+- o ambiente de testes do backend voltou a funcionar localmente para a trilha Spec4 e utilitários de chat, mas ainda faltam mais suítes e redução de warnings
+- agora existe também um teste integrado do WebSocket do Chat Coach cobrindo `user_message -> stream -> assistant_done -> teacher_analysis`
+- o Chat Coach REST e o pipeline de feedback já começaram a ser desacoplados, mas o loop WebSocket ainda concentra muita responsabilidade
+- o bloco `handle_user_message` já perdeu parte da duplicação estrutural, da persistência, do congelamento de feedback, do payload final e da geração/envio de teacher analysis, mas ainda concentra coordenação demais para um único handler
+- o `handle_user_message` agora já delega também a finalização do turno do assistente e a persistência/envio de `teacher_analysis`, então o restante do debt nesse fluxo ficou mais concentrado em orquestração e warnings do que em blocos repetidos
+- o fixture de banco dos testes backend ficou mais resiliente para execuções seriais repetidas, reduzindo falhas por resíduos de schema e enums PostgreSQL
+- o backend agora centraliza mais do tempo UTC em helper compartilhado e já migrou parte dos schemas/configs quentes para padrões atuais de Pydantic
+- as suítes que compartilham o mesmo banco de teste devem rodar em série; em paralelo elas brigam pelo ciclo `create_all/drop_all`
+
+### Hotspots confirmados para refatoracao
+
+Frontend:
+
+- `frontend/src/components/ChatCoachSession.tsx`
+- `frontend/src/components/LingvistSession.tsx`
+- `frontend/src/components/UserSelection.tsx`
+- `frontend/src/components/StudySession.tsx`
+- `frontend/src/services/api.ts`
+
+Backend:
+
+- `api/app/api/api_v1/endpoints/cards.py`
+- `api/app/api/api_v1/endpoints/chat.py`
+- `api/app/llm/mock_provider.py`
+- `api/app/services/card_selection.py`
+
+## Componentes ativos
+
+### Backend
+
+Local: `api/`
+
+Capacidades observadas:
+
+- seleção de cards e regras de progressão
+- estatísticas e insights
+- configurações de usuário
+- modo Chat Coach
+- preferências de perfil de LLM
+- integração com tradução e LanguageTool
+
+### Frontend
+
+Local: `frontend/`
+
+Capacidades observadas:
+
+- fluxo de seleção de usuário
+- Study Session
+- Lingvist Session
+- Chat Coach Session
+- painéis de analytics e componentes auxiliares
+
+### TTS
+
+Local: `tts/`
+
+Capacidades observadas:
+
+- geração e cache de áudio
+- endpoints próprios de saúde e áudio
+
+### Infra local
+
+Arquivo principal: `docker-compose.yml`
+
+Serviços hoje definidos:
+
+- `db`
+- `db_test`
+- `api`
+- `tts`
+- `llm`
+- `llm_chat`
+- `llm_teacher`
+- `languagetool`
+- `frontend`
+
+## Riscos principais
+
+1. O produto prometido em docs antigas não batia mais com o código.
+2. Há acoplamento considerável entre modos de estudo, analytics e integrações de IA local.
+3. A superfície do `docker-compose.yml` cresceu e precisa ser revisada com foco em simplicidade.
+4. Parte da documentação operacional ainda precisa ser validada durante a próxima rodada de refatoração.
+
+## Objetivo desta nova fase
+
+Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
+
+- drift entre docs e código
+- acoplamento desnecessário
+- ruído histórico no repositório
+- custo cognitivo de onboarding
+
+## Próximos passos imediatos
+
+1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
+2. Continuar a próxima fatia de backend no Chat Coach, separando ainda mais a coordenação do `handle_user_message` e abrindo caminho para testes de fluxo WebSocket mais completos.
+3. Expandir a mesma confiabilidade de teste para WebSocket/chat e integrações auxiliares alem dos utilitários já cobertos.
