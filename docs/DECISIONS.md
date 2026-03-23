@@ -579,3 +579,43 @@ O Chat Coach já tinha um helper para construir contexto apenas com mensagens do
 - a orquestração de `handle_user_message` ficou menor
 - a análise pedagógica do professor ficou mais coerente com o que o aluno realmente escreveu
 - os testes utilitários e o fluxo integrado de WebSocket passaram a proteger esse comportamento novo
+
+## 2026-03-23 - Resolver dependências da sessão WebSocket de chat em um runtime dedicado
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das extrações anteriores, o endpoint WebSocket ainda precisava resolver conversa, providers e tracking de throttle no próprio corpo do handler. Isso deixava o setup da sessão espalhado e pouco reutilizável.
+
+### Decisão
+
+- introduzir um runtime dedicado para a sessão WebSocket do Chat Coach
+- concentrar resolução de conversa, providers e estado inicial de throttle nesse runtime
+- manter o comportamento externo do endpoint igual nesta fatia
+
+### Impacto
+
+- o endpoint ficou mais próximo de um orchestrator fino
+- o próximo passo pode mover esse runtime para `services/` com menos risco
+- a evolução do Chat Coach ganhou uma fronteira interna mais clara
+
+## 2026-03-23 - Remover placeholders aleatórios da seleção de perfil
+
+Status: aceito
+
+### Contexto
+
+`UserSelection.tsx` ainda mostrava stats aleatórias e assumia idioma/meta padrão em pontos onde o backend já tinha ou podia ter dados reais. Isso passava uma sensação de produto provisório, mesmo com a base já bem mais madura.
+
+### Decisão
+
+- fazer o backend de usuários devolver `target_language` e `word_goal_rank`
+- fazer o frontend carregar stats reais por perfil quando disponíveis
+- preservar fallback seguro para zero quando uma consulta de stats falhar
+
+### Impacto
+
+- a seleção de perfil ficou mais honesta e previsível
+- o frontend perdeu um dos placeholders mais visíveis do produto
+- o contrato de usuários ficou mais útil para futuras evoluções da tela de onboarding/perfil

@@ -11,7 +11,8 @@ export interface Profile {
   id: string;
   username: string;
   language_preference: string;
-  target_language?: string;
+  target_language: string;
+  word_goal_rank: number;
   created_at: string;
   stats?: ProfileStats;
 }
@@ -44,7 +45,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
   };
 
   const nativeLang = getLanguageName(profile.language_preference);
-  const targetLang = profile.target_language ? getLanguageName(profile.target_language) : { name: 'English', flag: '🇺🇸' };
+  const targetLang = getLanguageName(profile.target_language);
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();

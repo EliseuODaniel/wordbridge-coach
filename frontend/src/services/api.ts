@@ -159,8 +159,9 @@ export interface User {
   id: string;
   username: string;
   language_preference: string;
+  target_language: string;
+  word_goal_rank: number;
   mode: string;
-  // Note: target_language is stored in backend but not returned in list API
   created_at: string;
 }
 

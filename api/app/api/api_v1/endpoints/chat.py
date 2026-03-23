@@ -2,6 +2,7 @@
 
 import os
 import logging
+from dataclasses import dataclass
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -51,6 +52,15 @@ _feedback_cache = {}
 # Cache for last processed draft text (conversation_id -> last_draft_text)
 # Used to bypass throttle when text changes
 _last_draft_texts = {}
+
+
+@dataclass
+class ChatWebSocketRuntime:
+    """Resolved runtime dependencies for a chat websocket session."""
+
+    conversation: ChatConversation
+    chat_provider: object
+    teacher_provider: object
 
 
 def _build_ws_error_payload(message: str, code: str) -> dict:
@@ -164,6 +174,22 @@ def _initialize_micro_eval_tracking(conversation_id: str) -> None:
     """Ensure throttle state exists for the websocket conversation."""
     if conversation_id not in _micro_eval_timestamps:
         _micro_eval_timestamps[conversation_id] = 0
+
+
+def _initialize_websocket_runtime(db: Session, conversation_id: str) -> Optional[ChatWebSocketRuntime]:
+    """Resolve conversation and providers required to run a websocket session."""
+    conversation = _get_websocket_conversation(db, conversation_id)
+    if not conversation:
+        return None
+
+    chat_provider, teacher_provider = _load_chat_providers_for_conversation(db, conversation)
+    _initialize_micro_eval_tracking(conversation_id)
+
+    return ChatWebSocketRuntime(
+        conversation=conversation,
+        chat_provider=chat_provider,
+        teacher_provider=teacher_provider,
+    )
 
 
 async def _route_websocket_event(
@@ -1196,21 +1222,8 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
     db = SessionLocal()
 
     try:
-        conversation = _get_websocket_conversation(db, conversation_id)
-        if not conversation:
-            await _send_ws_error(
-                websocket,
-                message="Conversation not found",
-                code="NOT_FOUND"
-            )
-            await websocket.close()
-            return
-
-        # Get user's LLM model preferences (chat vs teacher)
         try:
-            chat_provider, teacher_provider = _load_chat_providers_for_conversation(
-                db, conversation
-            )
+            runtime = _initialize_websocket_runtime(db, conversation_id)
         except Exception as e:
             logger.error(f"[LLM_PROFILES] Failed to load preferences: {e}")
             await _send_ws_error(
@@ -1221,7 +1234,14 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
             await websocket.close()
             return
 
-        _initialize_micro_eval_tracking(conversation_id)
+        if not runtime:
+            await _send_ws_error(
+                websocket,
+                message="Conversation not found",
+                code="NOT_FOUND"
+            )
+            await websocket.close()
+            return
 
         # Main WebSocket loop
         while True:
@@ -1236,11 +1256,11 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
             await _route_websocket_event(
                 websocket=websocket,
                 data=data,
-                conversation=conversation,
+                conversation=runtime.conversation,
                 now_ms=now_ms,
                 db=db,
-                chat_provider=chat_provider,
-                teacher_provider=teacher_provider
+                chat_provider=runtime.chat_provider,
+                teacher_provider=runtime.teacher_provider
             )
 
     except WebSocketDisconnect:

@@ -1,7 +1,8 @@
 /** User Selection Component */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { usersApi, type CreateUserRequest, type UpdateUserRequest } from '../services/api';
+import { statsService } from '../services/stats';
 import ProfileCard, { type ProfileStats, type Profile } from './ProfileCard';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -35,6 +36,13 @@ const VOCABULARY_GOALS = [
   { rank: 10000, label: '10000 words', description: 'Near-native vocabulary' }
 ];
 
+function buildProfileStats(stats: Awaited<ReturnType<typeof statsService.getBasicStats>>): ProfileStats {
+  return {
+    mastered_words: stats.mature_count,
+    accuracy: Math.round(stats.accuracy_today * 100),
+  };
+}
+
 const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSelect, selectedMode }) => {
   const [users, setUsers] = useState<Profile[]>([]);
   const [newUsername, setNewUsername] = useState('');
@@ -59,27 +67,36 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
   const profilesListRef = useRef<HTMLDivElement>(null);
 
   // Load existing users
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       const usersFromApi = await usersApi.listUsers();
-      // Add placeholder stats for now - in real app these would come from API
-      const usersWithStats: Profile[] = usersFromApi.map(user => ({
-        ...user,
-        target_language: 'en', // Default target language since it's not returned by API
-        stats: {
-          mastered_words: Math.floor(Math.random() * 500), // Placeholder
-          accuracy: 60 + Math.floor(Math.random() * 35) // Placeholder between 60-95%
-        }
-      }));
+      const usersWithStats = await Promise.all(
+        usersFromApi.map(async (user) => {
+          try {
+            const stats = await statsService.getBasicStats(user.id);
+            return {
+              ...user,
+              stats: buildProfileStats(stats),
+            } satisfies Profile;
+          } catch (error) {
+            console.warn(`Failed to load stats for user ${user.id}:`, error);
+            return {
+              ...user,
+              stats: { mastered_words: 0, accuracy: 0 },
+            } satisfies Profile;
+          }
+        })
+      );
+
       setUsers(usersWithStats);
     } catch (error) {
       console.error('Error loading users:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +112,6 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
       };
 
       const newUser = await usersApi.createUser(userData);
-      // Add placeholder stats for the new user
       const userWithStats = {
         ...newUser,
         stats: { mastered_words: 0, accuracy: 0 } as ProfileStats
@@ -125,9 +141,9 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
     if (user) {
       setEditingUser(userId);
       setEditUsername(user.username);
-      setEditTargetLanguage(user.target_language || 'en');
+      setEditTargetLanguage(user.target_language);
       setEditNativeLanguage(user.language_preference);
-      setEditWordGoalRank(100);  // Default for now - backend doesn't return current goal
+      setEditWordGoalRank(user.word_goal_rank);
     }
   };
 
@@ -157,9 +173,14 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
       };
 
       const updatedUser = await usersApi.updateUser(userId, updateData);
-      setUsers(users.map(user =>
-        user.id === userId ? updatedUser : user
-      ));
+      setUsers(users.map(user => (
+        user.id === userId
+          ? {
+              ...updatedUser,
+              stats: user.stats,
+            }
+          : user
+      )));
       handleCancelEdit();
     } catch (error) {
       console.error('Error updating user:', error);

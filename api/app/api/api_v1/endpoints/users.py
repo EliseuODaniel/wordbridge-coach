@@ -18,8 +18,29 @@ class UserResponse(BaseModel):
     id: str
     username: str
     language_preference: str
+    target_language: str
+    word_goal_rank: int
     mode: str
     created_at: str
+
+
+def _serialize_user_response(user: User) -> dict:
+    """Serialize a user model into the shared response payload."""
+    target_language = (
+        user.target_language_obj.code
+        if user.target_language_obj and user.target_language_obj.code
+        else "en"
+    )
+
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "language_preference": user.language_preference,
+        "target_language": target_language,
+        "word_goal_rank": user.word_goal_rank,
+        "mode": user.mode,
+        "created_at": user.created_at.isoformat()
+    }
 
 
 class CreateUserRequest(BaseModel):
@@ -47,16 +68,7 @@ async def list_users(db: Session = Depends(get_db)):
     """
     try:
         users = db.query(User).all()
-        return [
-            {
-                "id": str(user.id),
-                "username": user.username,
-                "language_preference": user.language_preference,
-                "mode": user.mode,
-                "created_at": user.created_at.isoformat()
-            }
-            for user in users
-        ]
+        return [_serialize_user_response(user) for user in users]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -121,13 +133,8 @@ async def create_user(
         # Initialize UserCardState for Band 1 cards for new users
         initialize_user_card_states(db, new_user.id, target_lang.id)
 
-        return {
-            "id": str(new_user.id),
-            "username": new_user.username,
-            "language_preference": new_user.language_preference,
-            "mode": new_user.mode,
-            "created_at": new_user.created_at.isoformat()
-        }
+        db.refresh(new_user)
+        return _serialize_user_response(new_user)
 
     except HTTPException:
         raise
@@ -213,13 +220,7 @@ async def get_user(
                 detail={"error": "User not found", "message": f"User with ID {user_id} not found"}
             )
 
-        return {
-            "id": str(user.id),
-            "username": user.username,
-            "language_preference": user.language_preference,
-            "mode": user.mode,
-            "created_at": user.created_at.isoformat()
-        }
+        return _serialize_user_response(user)
 
     except HTTPException:
         raise
@@ -358,13 +359,7 @@ async def update_user(
             # Initialize new cards for the new target language
             initialize_user_card_states(db, user_id, user.target_language_id)
 
-        return {
-            "id": str(user.id),
-            "username": user.username,
-            "language_preference": user.language_preference,
-            "mode": user.mode,
-            "created_at": user.created_at.isoformat()
-        }
+        return _serialize_user_response(user)
 
     except HTTPException:
         raise
