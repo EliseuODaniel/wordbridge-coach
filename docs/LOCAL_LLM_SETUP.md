@@ -10,6 +10,11 @@ Registrar o setup local mínimo para os serviços de LLM usados pelo projeto.
 - GPU NVIDIA recomendada para melhor desempenho
 - espaço livre para modelos GGUF
 
+Ambiente local validado nesta rodada:
+
+- NVIDIA GeForce RTX 4070 Laptop GPU com 8 GB de VRAM
+- `llama.cpp` via `ghcr.io/ggml-org/llama.cpp:server-cuda`
+
 ## Modelos
 
 O compose espera modelos em `llm_models/`.
@@ -20,7 +25,16 @@ Arquivo principal esperado pelo serviço `llm`:
 llm_models/model.gguf
 ```
 
-Há também referências a modelos dedicados para `llm_chat` e `llm_teacher`.
+Modelo principal recomendado para este repositório:
+
+```bash
+ggml-org/gemma-4-E4B-it-GGUF
+```
+
+Perfis opcionais continuam disponíveis para modelos menores em serviços separados:
+
+- `Phi-3 Mini 4K` para chat rápido
+- `Qwen2.5 3B Instruct` para teacher analysis rápida
 
 ## Download
 
@@ -32,8 +46,10 @@ Script disponível:
 
 Se necessário, crie o link simbólico esperado pelo serviço principal:
 
+Se necessário, crie o link simbólico esperado pelo serviço principal:
+
 ```bash
-ln -s llm_models/qwen2.5-7b-instruct-q4_k_m.gguf llm_models/model.gguf
+ln -s llm_models/gemma-4-E4B-it-Q4_K_M.gguf llm_models/model.gguf
 ```
 
 ## Subida dos serviços
@@ -44,10 +60,10 @@ Modo padrão:
 docker compose up -d
 ```
 
-Modo com perfil `fastchat`:
+Modo com perfis opcionais de LLM secundária:
 
 ```bash
-docker compose --profile fastchat up -d
+docker compose --profile optional-llm --profile fastchat up -d
 ```
 
 ## Verificação
@@ -60,4 +76,4 @@ docker logs filltheword-llm-teacher
 
 ## Observação
 
-Este setup ainda fará parte da próxima rodada de simplificação. A documentação aqui registra o comportamento atual, não uma arquitetura final.
+O padrão recomendado agora é subir apenas o `llm` principal com Gemma 4 E4B e ativar serviços secundários só quando houver ganho claro de latência. Isso reduz pressão de VRAM no ambiente local de 8 GB.

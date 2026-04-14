@@ -1,6 +1,6 @@
 /** API utility functions for retry logic */
 
-import { isRetryableApiError } from '../services/api';
+import { isRetryableApiError } from '../services/apiErrors';
 
 export interface RetryOptions {
   maxRetries?: number;

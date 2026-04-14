@@ -8,7 +8,7 @@ test.describe('Study Session (Spec4)', () => {
     // Create profile with unique name and small goal=20 for faster cards
     const uniqueName = `StudyTestUser${Date.now()}`;
     await page.fill('[data-testid="profile-create-name"]', uniqueName);
-    await page.fill('[data-testid="profile-goal-slider"]', '100');
+    await page.click('[data-testid="profile-goal-100"]');
     await page.click('[data-testid="profile-create-start"]');
 
     // Wait for navigation with faster approach

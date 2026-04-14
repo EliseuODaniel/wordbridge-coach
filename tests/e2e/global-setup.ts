@@ -1,4 +1,4 @@
-import { chromium, FullConfig } from '@playwright/test';
+import { request, FullConfig } from '@playwright/test';
 
 async function globalSetup(config: FullConfig) {
   console.log('🚀 Setting up FillTheWord E2E test environment...');
@@ -14,15 +14,16 @@ async function globalSetup(config: FullConfig) {
 
   while (attempts < maxAttempts) {
     try {
-      const browser = await chromium.launch();
-      const context = await browser.newContext();
-      const response = await context.request.get(`${apiURL}/`);
+      const apiClient = await request.newContext();
+      const response = await apiClient.get(`${apiURL}/health`);
 
       if (response.status() === 200) {
         console.log('✅ API is healthy and ready');
-        await browser.close();
+        await apiClient.dispose();
         break;
       }
+
+      await apiClient.dispose();
     } catch (error) {
       attempts++;
       console.log(`⏳ Waiting for API... attempt ${attempts}/${maxAttempts}`);
@@ -39,15 +40,16 @@ async function globalSetup(config: FullConfig) {
 
   while (attempts < maxAttempts) {
     try {
-      const browser = await chromium.launch();
-      const context = await browser.newContext();
-      const response = await context.request.get(baseURL);
+      const webClient = await request.newContext();
+      const response = await webClient.get(baseURL);
 
       if (response.status() === 200) {
         console.log('✅ Frontend is healthy and ready');
-        await browser.close();
+        await webClient.dispose();
         break;
       }
+
+      await webClient.dispose();
     } catch (error) {
       attempts++;
       console.log(`⏳ Waiting for frontend... attempt ${attempts}/${maxAttempts}`);

@@ -1,13 +1,8 @@
 /** Theme Cluster Map Component */
 
 import React, { useState, useEffect } from 'react';
-import {
-  insightsApi,
-  getApiErrorCode,
-  getApiErrorMessage,
-  getApiErrorStatus,
-  type ThemePerformanceResponse,
-} from '../services/api';
+import { insightsApi, type ThemePerformanceResponse } from '../services/apiInsights';
+import { getApiErrorCode, getApiErrorMessage, getApiErrorStatus } from '../services/apiErrors';
 import { withRetry } from '../utils/apiUtils';
 
 interface ThemeClusterMapProps {

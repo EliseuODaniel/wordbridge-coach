@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-alpine as build
+FROM node:20-bookworm AS deps
 
 WORKDIR /app
 
@@ -7,7 +7,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci
+
+FROM deps AS build
+
+WORKDIR /app
+
+# Reuse installed dependencies from the deps stage
+COPY --from=deps /app/node_modules ./node_modules
 
 # Copy source code
 COPY . .

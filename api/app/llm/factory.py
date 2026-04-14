@@ -68,7 +68,7 @@ def get_llm_provider_from_env() -> LLMProvider:
             logger.warning(f"{msg}, falling back to MockLLMProvider")
             return MockLLMProvider()
 
-        model = os.getenv("CHAT_LLM_MODEL", "qwen2.5-7b-instruct")
+        model = os.getenv("CHAT_LLM_MODEL", "gemma-4-e4b-it")
         timeout = int(os.getenv("CHAT_OPENAI_TIMEOUT_S", "60"))
 
         logger.info(
@@ -196,4 +196,3 @@ def get_llm_provider_for_profile(profile_id: str) -> LLMProvider:
         timeout=timeout,
         strict=strict
     )
-

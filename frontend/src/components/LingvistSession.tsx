@@ -1,16 +1,10 @@
 /** Lingvist Mode Study Session Component */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  cardsApi,
-  getApiErrorMessage,
-  getApiErrorStatus,
-  type LingvistCardResponse,
-  type AnswerResponse,
-} from '../services/api';
-import { audioService } from '../services/audio';
+import React from 'react';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
+import { isTranslationAvailable } from './lingvistSessionHelpers';
+import { useLingvistSession } from './useLingvistSession';
 
 type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
@@ -20,247 +14,23 @@ interface LingvistSessionProps {
   onModeChange?: (mode: TrainingMode) => void;
 }
 
-// Helper: Normalize text for comparison (case-insensitive, trim, collapse spaces)
-const normalizeText = (text: string): string => {
-  return text.toLowerCase().trim().replace(/\s+/g, ' ');
-};
-
-// Helper: Check if translation is available (defensive - treats "", null, undefined as unavailable)
-const isTranslationAvailable = (translation: string | null | undefined): boolean => {
-  return translation != null && typeof translation === 'string' && translation.trim().length > 0;
-};
-
 const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onModeChange }) => {
-  // State management
-  const [currentCard, setCurrentCard] = useState<LingvistCardResponse | null>(null);
-  const [feedback, setFeedback] = useState<AnswerResponse | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [startTime, setStartTime] = useState<number>(Date.now());
-  const [hintLevel, setHintLevel] = useState(0); // 0-5 based on mistakes
-  const [isInputLocked, setIsInputLocked] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Track if audio is playing after correct
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-
-  // Track manual audio playback errors
-  const [audioError, setAudioError] = useState<string | null>(null);
-
-  const resetRoundState = useCallback(() => {
-    setCurrentCard(null);
-    setFeedback(null);
-    setErrorMessage(null);
-    setAttempts(0);
-    setHintLevel(0);
-    setIsInputLocked(false);
-    setIsPlayingAudio(false);
-    setAudioError(null);
-    setStartTime(Date.now());
-  }, []);
-
-  const preloadCardAudio = useCallback((card: LingvistCardResponse) => {
-    if (card.audio_word_url) {
-      audioService.preloadFromUrl(card.audio_word_url).catch((error) => {
-        console.warn('Failed to preload word audio:', error);
-      });
-    }
-
-    if (card.audio_sentence_url) {
-      audioService.preloadFromUrl(card.audio_sentence_url).catch((error) => {
-        console.warn('Failed to preload sentence audio:', error);
-      });
-    }
-  }, []);
-
-  const playAudioUrl = useCallback(
-    async (
-      audioUrl: string | undefined,
-      unavailableMessage: string,
-      failedMessage: string
-    ) => {
-      if (!audioUrl) {
-        setAudioError(unavailableMessage);
-        return;
-      }
-
-      setAudioError(null);
-
-      try {
-        await audioService.playFromUrl(audioUrl);
-      } catch (error) {
-        console.error(failedMessage, error);
-        setAudioError(failedMessage);
-      }
-    },
-    []
-  );
-
-  // Load next card
-  const loadNextCard = useCallback(async (excludeCardId?: string) => {
-    try {
-      console.log('🔍 Loading Lingvist card...', { userId, excludeCardId });
-
-      resetRoundState();
-
-      const card = await cardsApi.getNextLingvistCard(userId, excludeCardId);
-
-      // Validate card
-      if (!card || !card.card_id || !card.sentence) {
-        console.error('❌ Invalid Lingvist card response:', card);
-        throw new Error('Invalid card response');
-      }
-
-      console.log('✅ Lingvist card loaded:', {
-        word: card.word,
-        is_new: card.is_new,
-        micro_progress: card.micro_progress,
-        correct_answer: card.correct_answer
-      });
-
-      setCurrentCard(card);
-      preloadCardAudio(card);
-
-    } catch (error) {
-      console.error('❌ Error loading Lingvist card:', error);
-
-      const status = getApiErrorStatus(error);
-      const message = getApiErrorMessage(error, 'Failed to load card. Please try again.');
-
-      setErrorMessage(status ? `Error ${status}: ${message}` : message);
-      setCurrentCard(null);
-    }
-  }, [preloadCardAudio, resetRoundState, userId]);
-
-  // Handle user editing after incorrect answer
-  const handleUserEdit = useCallback(() => {
-    setFeedback(null);
-    setErrorMessage(null);
-  }, []);
-
-  // Handle manual word audio playback
-  const handlePlayWordAudio = useCallback(async () => {
-    await playAudioUrl(
-      currentCard?.audio_word_url,
-      'Word audio not available',
-      'Failed to play word audio'
-    );
-  }, [currentCard?.audio_word_url, playAudioUrl]);
-
-  // Handle manual sentence audio playback
-  const handlePlaySentenceAudio = useCallback(async () => {
-    await playAudioUrl(
-      currentCard?.audio_sentence_url,
-      'Sentence audio not available',
-      'Failed to play sentence audio'
-    );
-  }, [currentCard?.audio_sentence_url, playAudioUrl]);
-
-  // Handle answer submission
-  const handleSubmit = useCallback(async (answer: string) => {
-    if (!currentCard || isSubmitting || isInputLocked) {
-      return;
-    }
-
-    console.log('🔝 Submitting answer:', {
-      answer,
-      correct_answer: currentCard.correct_answer
-    });
-
-    // Step 1: Check correctness LOCALLY before any await (preserves user gesture)
-    const isCorrectLocal = normalizeText(answer) === normalizeText(currentCard.correct_answer);
-    console.log('🎯 Local validation:', { isCorrectLocal, answer, correct: currentCard.correct_answer });
-
-    // Step 2: Trigger audio IMMEDIATELY if correct (before await, preserves user gesture)
-    let audioPromise: Promise<void> | null = null;
-    if (isCorrectLocal && currentCard.audio_sentence_url) {
-      console.log('🔊 Starting audio playback...');
-      setIsInputLocked(true);
-      setIsPlayingAudio(true);
-
-      // Start audio playback immediately (in same event as user gesture)
-      // Use default timeout (60s) to allow full audio playback
-      audioPromise = audioService.playFromUrlAndWaitEnded(currentCard.audio_sentence_url)
-        .then(() => {
-          console.log('✅ Audio finished (full playback)');
-        })
-        .catch((error) => {
-          console.error('❌ Audio error:', error);
-          // Don't block the flow on audio errors
-        });
-    }
-
-    try {
-      setIsSubmitting(true);
-      const responseTime = Date.now() - startTime;
-
-      // Step 3: Always make the API call to record the attempt
-      const response = await cardsApi.submitAnswer(
-        currentCard.card_id,
-        {
-          answer,
-          response_time_ms: responseTime,
-        },
-        userId
-      );
-
-      setFeedback(response);
-      const newAttemptCount = attempts + 1;
-      setAttempts(newAttemptCount);
-
-      console.log('✅ Answer submitted:', {
-        answer,
-        correct: response.correct,
-        quality: response.quality,
-        attempt: newAttemptCount
-      });
-
-      if (isCorrectLocal) {
-        // CORRECT ANSWER (local check)
-        console.log('✅ Correct! Waiting for audio to finish...');
-
-        // Wait for audio to finish (full playback, not timeout)
-        if (audioPromise) {
-          await audioPromise;
-        }
-
-        // Now advance to next card
-        console.log('🔄 Advancing to next card...');
-        loadNextCard(currentCard.card_id);
-
-      } else {
-        // INCORRECT ANSWER - increase hint level, don't advance
-        console.log('❌ Incorrect! Showing more hints...');
-
-        // Increase hint level based on attempts (max 6 - will show complete answer)
-        const MAX_HINT_LEVEL = 6;
-        const newHintLevel = Math.min(newAttemptCount, MAX_HINT_LEVEL);
-        setHintLevel(newHintLevel);
-
-        // Stay on same card - user can try again with more hints
-      }
-
-    } catch (error) {
-      console.error('❌ Error submitting answer:', error);
-      setErrorMessage('Failed to submit answer. Please try again.');
-
-      // On error, still wait for audio if it was playing
-      if (audioPromise) {
-        await audioPromise;
-      }
-    } finally {
-      setIsSubmitting(false);
-      if (!isCorrectLocal) {
-        // Only reset these if incorrect (correct case will advance card)
-        setIsPlayingAudio(false);
-      }
-    }
-  }, [currentCard, isSubmitting, isInputLocked, attempts, startTime, userId, loadNextCard]);
-
-  // Initialize session
-  useEffect(() => {
-    loadNextCard();
-  }, [loadNextCard]);
+  const {
+    attempts,
+    audioError,
+    currentCard,
+    errorMessage,
+    feedback,
+    hintLevel,
+    isInputLocked,
+    isPlayingAudio,
+    isSubmitting,
+    handlePlaySentenceAudio,
+    handlePlayWordAudio,
+    handleRetryLoad,
+    handleSubmit,
+    handleUserEdit,
+  } = useLingvistSession(userId);
 
   return (
     <div className="min-h-screen bg-gray-900 py-8">
@@ -517,8 +287,7 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onMod
                 </p>
                 <button
                   onClick={() => {
-                    setErrorMessage(null);
-                    loadNextCard();
+                    handleRetryLoad();
                   }}
                   className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition font-semibold"
                 >

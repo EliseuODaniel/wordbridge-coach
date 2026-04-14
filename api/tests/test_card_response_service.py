@@ -94,4 +94,6 @@ def test_format_card_response_serializes_expected_payload(db_session, sample_lan
     assert response.memory_stage == "NEW"
     assert response.is_new is True
     assert response.audio_word_url.endswith(f"/api/tts/word/{card.id}?text=book&lang=en")
-    assert "The book is on the table." in response.audio_sentence_url
+    assert response.audio_sentence_url.endswith(
+        f"/api/tts/sentence/{card.id}?text=The%20book%20is%20on%20the%20table.&lang=en"
+    )

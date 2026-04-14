@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import type { DraftIssue } from '../services/api';
+import type { DraftIssue } from '../services/apiChat';
 
 interface Correction {
   mistake: string;

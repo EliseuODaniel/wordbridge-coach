@@ -9,8 +9,13 @@ from datetime import datetime, date, timedelta
 
 from app.core.database import get_db
 from app.models import (
-    Word, WordFrequency, WordTheme, WordThemeMapping,
-    UserThemeStats, UserDailyStats, User, ReviewEvent, Card, Sentence, Language
+    WordTheme, WordThemeMapping,
+    UserThemeStats, UserDailyStats, User, ReviewEvent
+)
+from app.services.insights_service import (
+    get_word_insight_by_card_id,
+    get_word_insight_by_word_id,
+    get_word_theme_names,
 )
 
 router = APIRouter()
@@ -62,73 +67,9 @@ async def get_word_insights(
     word_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    Get frequency and grammar information for a word
-    """
+    """Get frequency and grammar information for a word."""
     try:
-        # Parse UUID
-        try:
-            word_uuid = uuid.UUID(word_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": "Invalid word ID format", "message": "Word ID must be a valid UUID"}
-            )
-
-        # Get word information
-        word = db.query(Word).filter(Word.id == word_uuid).first()
-        if not word:
-            raise HTTPException(
-                status_code=404,
-                detail={"error": "Word not found", "message": f"Word with ID {word_id} not found"}
-            )
-
-        # Get language code for filtering
-        language = db.query(Language).filter(Language.id == word.language_id).first()
-        language_code = language.code if language else 'en'
-
-        # Get frequency information - filter by both word and language_code (no fallback)
-        word_freq = db.query(WordFrequency).filter(
-            WordFrequency.word == word.lemma.lower(),
-            WordFrequency.language_code == language_code
-        ).first()
-
-        # Build grammar information
-        grammar_info = {
-            "part_of_speech": word.part_of_speech,
-            "classification": _get_grammar_classification(word),
-            "grammar_hint": "Use the correct word"
-        }
-
-        # Build descriptions - use only language-specific frequency data
-        if word_freq:
-            rank = word_freq.rank
-            coverage_pct = word_freq.coverage_pct or 0.0
-            frequency_score = word_freq.frequency_score or 0.0
-            band = word_freq.band
-
-            frequency_description = _get_frequency_description(rank, language_code)
-            coverage_description = f"Coverage up to here: {coverage_pct:.1f}% of word usage"
-        else:
-            rank = None
-            coverage_pct = None
-            frequency_score = None
-            band = None
-            frequency_description = "This word is not in the frequency database."
-            coverage_description = "Coverage information not available."
-
-        return {
-            "word_id": word_id,
-            "word": word.text,
-            "rank": rank,
-            "coverage_pct": coverage_pct,
-            "frequency_score": frequency_score,
-            "band": band,
-            "grammar_info": grammar_info,
-            "frequency_description": frequency_description,
-            "coverage_description": coverage_description
-        }
-
+        return WordInsightResponse(**get_word_insight_by_word_id(db, word_id))
     except HTTPException:
         raise
     except Exception as e:
@@ -143,31 +84,9 @@ async def get_word_themes(
     word_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    Get all theme names for a word
-    """
+    """Get all theme names for a word."""
     try:
-        # Parse UUID
-        try:
-            word_uuid = uuid.UUID(word_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": "Invalid word ID format", "message": "Word ID must be a valid UUID"}
-            )
-
-        # Get themes for this word through mappings
-        word_themes = db.query(WordTheme).join(
-            WordThemeMapping, WordTheme.id == WordThemeMapping.theme_id
-        ).filter(
-            WordThemeMapping.word_id == word_uuid,
-            WordTheme.is_active == True
-        ).all()
-
-        # Return just the theme names
-        theme_names = [theme.name for theme in word_themes]
-        return theme_names
-
+        return get_word_theme_names(db, word_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -182,84 +101,9 @@ async def get_word_insights_by_card(
     card_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    Get frequency and grammar information for the word in a card
-    """
+    """Get frequency and grammar information for the word in a card."""
     try:
-        # Parse UUID
-        try:
-            card_uuid = uuid.UUID(card_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": "Invalid card ID format", "message": "Card ID must be a valid UUID"}
-            )
-
-        # Get card with sentence and word
-        card = db.query(Card).filter(Card.id == card_uuid).first()
-        if not card:
-            raise HTTPException(
-                status_code=404,
-                detail={"error": "Card not found", "message": f"Card with ID {card_id} not found"}
-            )
-
-        if not card.sentence or not card.sentence.word:
-            raise HTTPException(
-                status_code=404,
-                detail={"error": "Word not found", "message": f"Word for card {card_id} not found"}
-            )
-
-        word = card.sentence.word
-        word_id = str(word.id)
-
-        # Get language code for filtering
-        language = db.query(Language).filter(Language.id == word.language_id).first()
-        language_code = language.code if language else 'en'
-
-        # Get frequency information - filter by both word and language_code (no fallback)
-        word_freq = db.query(WordFrequency).filter(
-            WordFrequency.word == word.lemma.lower(),
-            WordFrequency.language_code == language_code
-        ).first()
-
-        # Build grammar information
-        grammar_info = {
-            "part_of_speech": word.part_of_speech,
-            "classification": _get_grammar_classification(word),
-            "grammar_hint": "Use the correct word"
-        }
-
-        # Build descriptions - use only language-specific frequency data
-        if word_freq:
-            # Found in WordFrequency for the correct language
-            rank = word_freq.rank
-            coverage_pct = word_freq.coverage_pct or 0.0
-            frequency_score = word_freq.frequency_score or 0.0
-            band = word_freq.band
-
-            frequency_description = _get_frequency_description(rank, language_code)
-            coverage_description = f"Coverage up to here: {coverage_pct:.1f}% of word usage"
-        else:
-            # No frequency data available for this language - no fallback
-            rank = None
-            coverage_pct = None
-            frequency_score = None
-            band = None
-            frequency_description = "This word is not in the frequency database."
-            coverage_description = "Coverage information not available."
-
-        return WordInsightResponse(
-            word_id=word_id,
-            word=word.text,
-            rank=rank,
-            coverage_pct=coverage_pct,
-            frequency_score=frequency_score,
-            band=band,
-            grammar_info=grammar_info,
-            frequency_description=frequency_description,
-            coverage_description=coverage_description
-        )
-
+        return WordInsightResponse(**get_word_insight_by_card_id(db, card_id))
     except HTTPException:
         raise
     except Exception as e:
@@ -504,80 +348,6 @@ async def get_recent_performance(
         )
 
 
-def _get_grammar_classification(word: Word) -> str:
-    """Get detailed grammar classification from word features"""
-    if not word.features:
-        return word.part_of_speech
-
-    # This would be enhanced with more detailed grammar analysis
-    return word.part_of_speech
-
-
-def _get_frequency_description(rank: int, language_code: str = 'en') -> str:
-    """Get human-readable frequency description"""
-    language_name = "English" if language_code == 'en' else "French" if language_code == 'fr' else "this language"
-
-    if rank <= 100:
-        return f"This word is among the 100 most frequent words in {language_name}."
-    elif rank <= 500:
-        return f"This word is among the 500 most frequent words in {language_name}."
-    elif rank <= 1000:
-        return f"This word is among the 1,000 most frequent words in {language_name}."
-    elif rank <= 2000:
-        return f"This word is among the 2,000 most frequent words in {language_name}."
-    elif rank <= 5000:
-        return f"This word is in the top half of the 10,000 most frequent words."
-    else:
-        return f"This word is in the less frequent half of your 10,000-word deck."
-
-
 def _get_difficulty_words_for_theme(db: Session, user_id: str, theme_id: str, limit: int = 3) -> List[str]:
-    """Get words that user struggles with most in a specific theme"""
-    # This is a simplified implementation
-    # In a full implementation, this would query ReviewEvent data
-    # and identify words with low accuracy for the user in this theme
-
-    # For now, return empty list as placeholder
+    """Return placeholder difficult words until theme difficulty ranking is extracted to a service."""
     return []
-
-
-def _calculate_coverage_pct(rank: int) -> float:
-    """Calculate cumulative coverage percentage for a given rank"""
-    # Simplified coverage calculation based on rank
-    # Based on Zipf's law approximation
-    if rank <= 1:
-        return 5.0
-    elif rank <= 10:
-        return 15.0
-    elif rank <= 100:
-        return 35.0
-    elif rank <= 1000:
-        return 65.0
-    elif rank <= 5000:
-        return 85.0
-    else:
-        return 95.0
-
-
-def _calculate_frequency_score(rank: int) -> float:
-    """Calculate normalized frequency score (0-1)"""
-    # Logarithmic scaling: higher score for more frequent words
-    import math
-    if rank <= 1:
-        return 1.0
-    else:
-        return max(0.1, 1.0 - (math.log(rank) / math.log(10000)))
-
-
-def _get_band_from_rank(rank: int) -> int:
-    """Convert rank to frequency band according to spec2.md"""
-    if rank <= 1000:
-        return 1
-    elif rank <= 3000:
-        return 2
-    elif rank <= 6000:
-        return 3
-    elif rank <= 10000:
-        return 4
-    else:
-        return 5  # Beyond top 10k

@@ -1,346 +1,20 @@
 """Card endpoints for FillTheWord API"""
 
 from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, select
-import uuid
-import os
-import logging
 
 from app.core.database import get_db
-from app.core.time import utc_now, utc_today
 from app.schemas.card import CardResponse, AnswerRequest, AnswerResponse
 from app.schemas.lingvist import LingvistCardResponse
-from app.services.card_selection import CardSelectionService
+from app.services.card_next_service import get_next_card_response
 from app.services.card_submission_service import submit_card_answer as _submit_card_answer_service
-from app.services.card_spec4_service import get_next_spec4_card_response as _get_next_spec4_card_response_service
-from app.services.card_lingvist_service import get_next_lingvist_card_response as _get_next_lingvist_card_response_service
-from app.services.card_response_service import (
-    format_card_response as _format_card_response_service,
-    resolve_request_user_id as _resolve_request_user_id_service,
-)
-from app.models import Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
-from app.models.user_card_state import MemoryStage
+from app.services.card_spec4_service import get_next_spec4_card_response
+from app.services.card_lingvist_service import get_next_lingvist_card_response
+from app.services.lingvist_autofill_service import autofill_translations
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-
-# Global cache for TSV translations (override priority over MT)
-_tsv_translations_cache: Optional[dict[str, str]] = None
-
-
-def _load_tsv_translations() -> dict[str, str]:
-    """Load EN-PT translations from TSV file (priority over MT).
-
-    Returns:
-        Dict mapping lowercase word -> pt_translation
-    """
-    global _tsv_translations_cache
-
-    if _tsv_translations_cache is not None:
-        return _tsv_translations_cache
-
-    _tsv_translations_cache = {}
-    tsv_path = "/app/data/en_pt_word_translations_sample.tsv"
-
-    if not os.path.exists(tsv_path):
-        logger.info(f"TSV file not found: {tsv_path}")
-        return _tsv_translations_cache
-
-    try:
-        logger.info(f"Loading TSV translations from {tsv_path}...")
-        with open(tsv_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-
-                # Skip comments and empty lines
-                if not line or line.startswith('#'):
-                    continue
-
-                parts = line.split('\t')
-                if len(parts) < 2:
-                    continue
-
-                word = parts[0].strip()
-                pt_translation = parts[1].strip()
-
-                # Skip empty translations
-                if not pt_translation:
-                    continue
-
-                # Store with lowercase key for matching
-                _tsv_translations_cache[word.lower()] = pt_translation
-
-        logger.info(f"✅ Loaded {len(_tsv_translations_cache)} TSV translations")
-    except Exception as e:
-        logger.error(f"Failed to load TSV translations: {e}")
-
-    return _tsv_translations_cache
-
-
-def _autofill_translations(db: Session, word: 'Word', sentence: 'Sentence', card: 'Card'):
-    """Auto-generate translations if missing (on-demand with DB cache).
-
-    Priority:
-    1. Existing translation in DB (do nothing)
-    2. TSV override (curated translations)
-    3. MT (Argos Translate or Google Translate) if LINGVIST_TRANSLATIONS_AUTOFILL=true
-
-    Args:
-        db: Database session
-        word: Word object
-        sentence: Sentence object
-        card: Card object (for sentence reconstruction)
-    """
-    from app.services.translation_service import get_translation_service
-
-    # Load TSV cache (priority override)
-    tsv_override = _load_tsv_translations()
-
-    # --- Word translation ---
-    word_needs_translation = (
-        not word.features or
-        not isinstance(word.features, dict) or
-        not word.features.get("pt_translation") or
-        not word.features["pt_translation"].strip()
-    )
-
-    if word_needs_translation:
-        word_translation = None
-
-        # Try TSV override first
-        word_lower = word.lemma.lower() if word.lemma else ""
-        if word_lower in tsv_override:
-            word_translation = tsv_override[word_lower]
-            logger.info(f"✅ Word translation from TSV: {word.lemma} → {word_translation}")
-
-        # Fallback to MT if enabled
-        else:
-            translation_service = get_translation_service()
-            if translation_service.is_enabled():
-                word_translation = translation_service.translate(word.lemma or word.text)
-                if word_translation:
-                    logger.info(f"🤖 Word translation from {translation_service.get_provider()}: {word.lemma} → {word_translation}")
-
-        # Save to DB if translation found
-        if word_translation:
-            if not word.features:
-                word.features = {}
-            word.features['pt_translation'] = word_translation
-            db.flush()  # Flush without commit (caller commits)
-            logger.debug(f"💾 Saved word translation to DB: {word.lemma}")
-
-    # --- Sentence translation ---
-    sentence_needs_translation = (
-        not sentence.translation or
-        not sentence.translation.strip()
-    )
-
-    if sentence_needs_translation:
-        # Reconstruct sentence with word filled in
-        sentence_with_gap = sentence.text or ""
-        sentence_with_word = sentence_with_gap.replace("___", word.text or "", 1)
-
-        # Try MT if enabled (no TSV for sentences)
-        translation_service = get_translation_service()
-        if translation_service.is_enabled():
-            sentence_translation = translation_service.translate(sentence_with_word)
-            if sentence_translation:
-                logger.info(f"🤖 Sentence translation from {translation_service.get_provider()}: '{sentence_with_word[:50]}...' → '{sentence_translation[:50]}...'")
-                sentence.translation = sentence_translation
-                db.flush()  # Flush without commit (caller commits)
-                logger.debug(f"💾 Saved sentence translation to DB")
-        else:
-            logger.debug(f"⚠️ Translation service disabled, skipping sentence translation")
-
-def create_sample_data_if_needed(db: Session):
-    """Create minimal sample data for testing"""
-    try:
-        # Always ensure demo user and UserCardState exist
-        demo_user = db.query(User).filter(User.username == "demo").first()
-        has_demo_user_state = False
-        if demo_user:
-            has_demo_user_state = db.query(UserCardState).filter(
-                UserCardState.user_id == demo_user.id
-            ).first() is not None
-
-        # If we have demo user with card states, return
-        if demo_user and has_demo_user_state:
-            return
-
-        print("Creating/updating sample data...")
-
-        # Get or create English language
-        en_lang = db.query(Language).filter(Language.code == "en").first()
-        if not en_lang:
-            en_lang = Language(
-                id=str(uuid.uuid4()),
-                code="en",
-                name="English",
-                voice_model="lessac-glow_tts",
-                voice_type="female",
-                is_active=True
-            )
-            db.add(en_lang)
-            db.flush()  # Get the ID
-
-        # Get or create Portuguese language
-        pt_lang = db.query(Language).filter(Language.code == "pt").first()
-        if not pt_lang:
-            pt_lang = Language(
-                id=str(uuid.uuid4()),
-                code="pt",
-                name="Portuguese",
-                voice_model="lessac-glow_tts",
-                voice_type="female",
-                is_active=True
-            )
-            db.add(pt_lang)
-            db.flush()  # Get the ID
-
-        # Get or create demo user
-        demo_user = db.query(User).filter(User.username == "demo").first()
-        if not demo_user:
-            demo_user = User(
-                id=str(uuid.uuid4()),
-                username="demo",
-                email="demo@filltheword.com",
-                native_language_id=pt_lang.id,  # Portuguese: native language
-                target_language_id=en_lang.id,   # English: learning target
-                language_preference="pt",        # UI in Portuguese
-                daily_new_limit=10,
-                easiness_factor=2.5
-            )
-            db.add(demo_user)
-            db.flush()  # Get the ID
-
-        # Check if we have any cards, if not create minimal data
-        card_count = db.query(Card).count()
-        if card_count == 0:
-            print("Creating minimal card data...")
-
-            # Create deck
-            deck = Deck(
-                id=str(uuid.uuid4()),
-                name="Daily English",
-                language_id=en_lang.id,
-                difficulty_level=1,
-                description="Common everyday vocabulary",
-                is_active=True
-            )
-            db.add(deck)
-            db.flush()
-
-            # Create word
-            word = Word(
-                id=str(uuid.uuid4()),
-                lemma="book",
-                text="book",
-                part_of_speech="noun",
-                language_id=en_lang.id,
-                pronunciation="/bʊk/",
-                frequency_rank=1,
-                difficulty=1
-            )
-            db.add(word)
-            db.flush()
-
-            # Create sentence
-            sentence = Sentence(
-                id=str(uuid.uuid4()),
-                text="The ___ is on the table.",
-                translation="O livro está na mesa.",
-                word_id=word.id,
-                language_id=en_lang.id,
-                type="example",
-                difficulty=1,
-                gap_start=4,
-                gap_end=7  # end exclusive: "___" = positions 4,5,6
-            )
-            db.add(sentence)
-            db.flush()
-
-            # Create card
-            card = Card(
-                id=str(uuid.uuid4()),
-                sentence_id=sentence.id,
-                deck_id=deck.id,
-                grammar_hint="Use the word for the object you read",
-                difficulty=1,
-                gap_start=4,
-                gap_end=6,
-                is_active=True
-            )
-            db.add(card)
-            db.flush()
-        else:
-            # Get existing card for UserCardState creation
-            card = db.query(Card).first()
-
-        # Ensure UserCardState exists for the demo user and card
-        existing_state = db.query(UserCardState).filter(
-            and_(
-                UserCardState.user_id == demo_user.id,
-                UserCardState.card_id == card.id
-            )
-        ).first()
-
-        if not existing_state:
-            user_card_state = UserCardState(
-                id=str(uuid.uuid4()),
-                user_id=demo_user.id,
-                card_id=card.id,
-                repetitions=0,
-                easiness_factor=2.5,
-                interval_days=1,
-                next_review_at=utc_now(),
-                status=MemoryStage.NEW,
-                total_reviews=0,
-                correct_reviews=0
-            )
-            db.add(user_card_state)
-
-        db.commit()
-        print("Sample data created successfully")
-
-    except Exception as e:
-        db.rollback()
-        print(f"Error creating sample data: {e}")
-
-
-def _resolve_request_user_id(db: Session, user_id: Optional[str]) -> str:
-    """Resolve omitted user_id to the local demo user."""
-    return _resolve_request_user_id_service(db, user_id)
-
-
-def _get_next_spec4_card_response(
-    db: Session,
-    *,
-    user_id: Optional[str] = None,
-    exclude_card_id: Optional[str] = None
-) -> CardResponse:
-    """Run the Spec4 selection flow and build the API response."""
-    return _get_next_spec4_card_response_service(
-        db,
-        user_id=user_id,
-        exclude_card_id=exclude_card_id,
-    )
-
-
-def _get_next_lingvist_card_response(
-    db: Session,
-    *,
-    user_id: Optional[str] = None,
-    exclude_card_id: Optional[str] = None
-) -> LingvistCardResponse:
-    """Run Lingvist selection, build the enriched payload, and commit side effects."""
-    return _get_next_lingvist_card_response_service(
-        db,
-        user_id=user_id,
-        exclude_card_id=exclude_card_id,
-        autofill_translations=_autofill_translations,
-    )
 
 
 @router.get("/next", response_model=CardResponse)
@@ -359,98 +33,9 @@ async def get_next_card(
     Returns exact payload specification from API.md
     """
     try:
-        # Ensure we have sample data
-        create_sample_data_if_needed(db)
-
-        user_id = _resolve_request_user_id(db, user_id)
-
-        # Get user's daily new limit
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"error": "User not found", "message": "User setup required"}
-            )
-
-        daily_new_limit = user.daily_new_limit
-
-        # Calculate new cards today
-        # Same logic as in stats endpoint
-        cards_seen_today = db.query(
-            func.distinct(ReviewEvent.card_id)
-        ).filter(
-            and_(
-                ReviewEvent.user_id == user_id,
-                func.date(ReviewEvent.created_at) == func.current_date()
-            )
-        ).subquery()
-
-        cards_seen_before_today = db.query(
-            func.distinct(ReviewEvent.card_id)
-        ).filter(
-            and_(
-                ReviewEvent.user_id == user_id,
-                func.date(ReviewEvent.created_at) < func.current_date()
-            )
-        ).subquery()
-
-        # Cards seen today but never before today
-        new_cards_today = db.query(Card.id).filter(
-            and_(
-                Card.id.in_(select(cards_seen_today.c[0])),
-                ~Card.id.in_(select(cards_seen_before_today.c[0]))
-            )
-        ).count() or 0
-
-        # Find next card using SM-2 priority logic with daily limit
-        # Priority 1: Due cards for review
-        now = utc_now()
-        due_card = db.query(UserCardState).join(Card).filter(
-            and_(
-                UserCardState.user_id == user_id,
-                UserCardState.next_review_at <= now,
-                Card.is_active == True
-            )
-        ).order_by(UserCardState.next_review_at).first()
-
-        if due_card:
-            return format_card_response(due_card.card, due_card.status)
-
-        # Check if we can still give new cards today
-        can_give_new_cards = new_cards_today < daily_new_limit
-
-        if can_give_new_cards:
-            # Priority 2: New cards
-            new_card_state = db.query(UserCardState).join(Card).filter(
-                and_(
-                    UserCardState.user_id == user_id,
-                    UserCardState.status == MemoryStage.NEW,
-                    Card.is_active == True
-                )
-            ).first()
-
-            if new_card_state:
-                return format_card_response(new_card_state.card, new_card_state.status)
-
-        # Priority 3: Learning cards (if new cards limit reached or no new cards)
-        learning_card_state = db.query(UserCardState).join(Card).filter(
-            and_(
-                UserCardState.user_id == user_id,
-                UserCardState.status == MemoryStage.LEARNING,
-                Card.is_active == True
-            )
-        ).first()
-
-        if learning_card_state:
-            return format_card_response(learning_card_state.card, learning_card_state.status)
-
-        # No cards available
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "No cards available",
-                "message": "Todos os cartões foram revisados hoje!"
-            }
+        return get_next_card_response(
+            db,
+            user_id=user_id,
         )
 
     except HTTPException:
@@ -461,13 +46,6 @@ async def get_next_card(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}
         )
-
-
-def format_card_response(card: Card, memory_stage) -> CardResponse:
-    """Format card data for API response"""
-    return _format_card_response_service(card, memory_stage)
-
-
 @router.post("/{card_id}/answer", response_model=AnswerResponse)
 async def submit_answer(
     card_id: str,
@@ -517,7 +95,7 @@ async def get_next_card_spec4(
     Get next card for study using Spec4 intelligent selection algorithm
     """
     try:
-        return _get_next_spec4_card_response(
+        return get_next_spec4_card_response(
             db,
             user_id=user_id,
             exclude_card_id=exclude_card_id,
@@ -552,10 +130,11 @@ async def get_next_card_lingvist(
     translations are missing, generates them on-demand using Argos Translate.
     """
     try:
-        return _get_next_lingvist_card_response(
+        return get_next_lingvist_card_response(
             db,
             user_id=user_id,
             exclude_card_id=exclude_card_id,
+            autofill_translations=autofill_translations,
         )
 
     except HTTPException:

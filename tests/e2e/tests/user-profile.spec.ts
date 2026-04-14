@@ -22,7 +22,7 @@ test.describe('User Profile Management', () => {
     await page.fill('[data-testid="profile-create-name"]', uniqueName);
 
     // Set vocabulary goal to 100
-    await page.fill('[data-testid="profile-goal-slider"]', '100');
+    await page.click('[data-testid="profile-goal-100"]');
 
     // Ensure target language is English (default)
     await expect(page.locator('text=I want to learn:')).toBeVisible();
@@ -89,18 +89,22 @@ test.describe('User Profile Management', () => {
     await expect(createButton).toBeEnabled();
   });
 
-  test('vocabulary goal slider updates display', async ({ page }) => {
-    const slider = page.locator('[data-testid="profile-goal-slider"]');
+  test('vocabulary goal options update selection and description', async ({ page }) => {
+    const goal100 = page.locator('[data-testid="profile-goal-100"]');
+    const goal500 = page.locator('[data-testid="profile-goal-500"]');
+    const goal1500 = page.locator('[data-testid="profile-goal-1500"]');
+    const description = page.locator('[data-testid="profile-goal-description"]');
 
-    // Test that slider accepts different values
-    await slider.fill('100');
-    await expect(slider).toHaveValue('100');
+    await expect(goal100).toHaveAttribute('aria-pressed', 'true');
+    await expect(description).toContainText('Basic conversations');
 
-    await slider.fill('500');
-    await expect(slider).toHaveValue('500');
+    await goal500.click();
+    await expect(goal500).toHaveAttribute('aria-pressed', 'true');
+    await expect(description).toContainText('Elementary level');
 
-    await slider.fill('1000');
-    await expect(slider).toHaveValue('1000');
+    await goal1500.click();
+    await expect(goal1500).toHaveAttribute('aria-pressed', 'true');
+    await expect(description).toContainText('Intermediate level');
   });
 
   test('native language dropdown works', async ({ page }) => {
@@ -214,17 +218,14 @@ test.describe('User Profile Management', () => {
   });
 
   test('displays helpful descriptions for vocabulary goals', async ({ page }) => {
-    // Check that the vocabulary goal slider exists
-    await expect(page.locator('[data-testid="profile-goal-slider"]')).toBeVisible();
+    await expect(page.locator('[data-testid="profile-goal-options"]')).toBeVisible();
 
     // Check that form elements are properly structured
     await expect(page.locator('[data-testid="profile-create-name"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-create-start"]')).toBeVisible();
 
-    // Verify the slider has a default value
-    const slider = page.locator('[data-testid="profile-goal-slider"]');
-    const value = await slider.inputValue();
-    expect(value).toBeTruthy();
-    expect(parseInt(value)).toBeGreaterThan(0);
+    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Basic conversations');
+    await page.click('[data-testid="profile-goal-5000"]');
+    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Fluent conversations');
   });
 });

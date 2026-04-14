@@ -23,7 +23,7 @@ def test_factory_llamacpp_provider():
     env_vars = {
         "CHAT_LLM_PROVIDER": "llamacpp",
         "CHAT_LLM_BASE_URL": "http://llm:8080/v1",
-        "CHAT_LLM_MODEL": "qwen2.5-7b-instruct",
+        "CHAT_LLM_MODEL": "gemma-4-e4b-it",
         "CHAT_LLM_STRICT": "true"
     }
 
@@ -35,7 +35,7 @@ def test_factory_llamacpp_provider():
 
         # Verify config
         assert provider.base_url == "http://llm:8080/v1"
-        assert provider.model == "qwen2.5-7b-instruct"
+        assert provider.model == "gemma-4-e4b-it"
         assert provider.strict is True
 
 
@@ -83,7 +83,7 @@ def test_factory_llamacpp_default_model():
 
         # Should use default model
         assert isinstance(provider, LlamaCppLLMProvider)
-        assert provider.model == "qwen2.5-7b-instruct"
+        assert provider.model == "gemma-4-e4b-it"
 
 
 def test_factory_llamacpp_strict_false():

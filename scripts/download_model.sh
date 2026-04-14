@@ -2,12 +2,12 @@
 # Download GGUF model for Chat Coach LLM with multi-file support
 #
 # Usage: ./scripts/download_model.sh [model_id]
-#   model_id: Optional. Defaults to Qwen/Qwen2.5-7B-Instruct-GGUF
+#   model_id: Optional. Defaults to ggml-org/gemma-4-E4B-it-GGUF
 
 set -euo pipefail
 
 # Configuration
-MODEL_ID="${1:-Qwen/Qwen2.5-7B-Instruct-GGUF}"
+MODEL_ID="${1:-ggml-org/gemma-4-E4B-it-GGUF}"
 MODEL_DIR="llm_models"
 MODEL_LINK="${MODEL_DIR}/model.gguf"
 PREFERRED_QUANT="q4_k_m"
@@ -130,7 +130,7 @@ echo "======================================================================="
 echo ""
 echo "Model: $MODEL_ID"
 echo "Files: $PART_COUNT file(s)"
-echo "Total size: Expected 4-6 GB"
+echo "Total size: Expected 5-6 GB"
 echo ""
 echo "Press Ctrl+C to cancel"
 echo "======================================================================="

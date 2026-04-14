@@ -5,7 +5,7 @@ import StudySession from './components/StudySession';
 import LingvistSession from './components/LingvistSession';
 import ChatCoachSession from './components/ChatCoachSession';
 import UserSelection from './components/UserSelection';
-import { healthApi } from './services/api';
+import { healthApi } from './services/apiHealth';
 import './App.css';
 
 type TrainingMode = 'spec4' | 'lingvist' | 'chat';
