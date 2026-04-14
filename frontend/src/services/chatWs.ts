@@ -20,7 +20,8 @@ import type {
   TeacherAnalysisEvent,
   PongEvent,
   ErrorEvent,
-} from './api';
+} from './apiChat';
+import { buildChatWebSocketUrl } from './transportUrls';
 
 export type { WebSocketServerEvent };
 
@@ -115,9 +116,7 @@ export class ChatWS {
    * Get WebSocket URL for the conversation
    */
   private getWebSocketUrl(): string {
-    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    const wsUrl = apiBase.replace('http://', 'ws://').replace('https://', 'wss://');
-    return `${wsUrl}/api/v1/chat/ws/${this.conversationId}`;
+    return buildChatWebSocketUrl(this.conversationId);
   }
 
   /**

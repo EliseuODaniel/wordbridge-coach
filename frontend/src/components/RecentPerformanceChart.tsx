@@ -1,12 +1,8 @@
 /** Recent Performance Chart Component */
 
 import React, { useState, useEffect } from 'react';
-import {
-  insightsApi,
-  getApiErrorCode,
-  getApiErrorStatus,
-  type RecentPerformanceResponse,
-} from '../services/api';
+import { insightsApi, type RecentPerformanceResponse } from '../services/apiInsights';
+import { getApiErrorCode, getApiErrorStatus } from '../services/apiErrors';
 import { withRetry } from '../utils/apiUtils';
 
 interface RecentPerformanceChartProps {

@@ -24,7 +24,7 @@ services:
       POSTGRES_PASSWORD: ftw_password
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "5432:5432"
+      - "${FTW_DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -47,7 +47,7 @@ services:
       POSTGRES_PASSWORD: ftw_password
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "5433:5432"  # Different port to avoid conflict
+      - "${FTW_TEST_DB_PORT:-5433}:5432"  # Different port to avoid conflict
     tmpfs:
       - /var/lib/postgresql/data  # In-memory for test isolation
     networks:
@@ -78,7 +78,7 @@ services:
       # Chat Coach LLM Configuration
       CHAT_LLM_PROVIDER: llamacpp
       CHAT_LLM_BASE_URL: http://llm:8080/v1
-      CHAT_LLM_MODEL: qwen2.5-7b-instruct
+      CHAT_LLM_MODEL: gemma-4-e4b-it
       CHAT_LLM_STRICT: "true"
       # Chat Coach Draft Grammar Configuration
       CHAT_DRAFT_GRAMMAR_PROVIDER: languagetool
@@ -94,8 +94,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      llm:
-        condition: service_started
     networks:
       - filltheword-net
     restart: unless-stopped
@@ -124,6 +122,8 @@ services:
     networks:
       - filltheword-net
     restart: unless-stopped
+    profiles:
+      - audio
     command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -144,13 +144,15 @@ services:
       --port 8080
       --n-gpu-layers 999
       --parallel 2
+    profiles:
+      - ai
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # LLM Chat Service (Phi-3 Mini 4K - Fast Chat)
+  # Optional fast chat profile (Phi-3 Mini 4K)
   llm_chat:
     <<: *llama-cuda-service
     container_name: filltheword-llm-chat
@@ -164,14 +166,16 @@ services:
       --n-gpu-layers 999
       --parallel 2
     profiles:
+      - ai
       - fastchat
+      - optional-llm
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # LLM Teacher Service (Qwen 2.5 3B - Fast Teacher Analysis)
+  # Optional fast teacher-analysis profile (Qwen 2.5 3B)
   llm_teacher:
     <<: *llama-cuda-service
     container_name: filltheword-llm-teacher
@@ -184,6 +188,9 @@ services:
       --port 8082
       --n-gpu-layers 999
       --parallel 2
+    profiles:
+      - ai
+      - optional-llm
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 30s
@@ -201,6 +208,8 @@ services:
       - LANGUAGETOOL_PORT=8010
       - LANGUAGETOOL_LANGUAGE_TOOL__ANONYMIZED__TEXT__MIN_LENGTH=0
       - LANGUAGETOOL_LANGUAGE_TOOL__ANONYMIZED__TEXT__MIN_LENGTH__FOR__CHECKING=0
+    profiles:
+      - ai
     networks:
       - filltheword-net
     healthcheck:
@@ -216,15 +225,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: ftw-frontend
-    environment:
-      VITE_API_URL: http://api:8000
-      VITE_TTS_URL: http://api:8001
     ports:
       - "3007:3000"
     depends_on:
       api:
-        condition: service_healthy
-      tts:
         condition: service_healthy
     networks:
       - filltheword-net

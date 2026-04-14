@@ -1,6 +1,6 @@
 # Architecture
 
-Data de referência: 2026-03-23
+Data de referência: 2026-04-14
 
 ## Visão geral
 
@@ -85,8 +85,28 @@ Dependências observadas:
 - PostgreSQL para dados
 - volume de áudio para cache
 - modelos locais em `llm_models/`
-- LanguageTool para apoio de escrita
-- `llama.cpp` para inferência local
+- perfil opcional `ai` para LanguageTool e `llama.cpp`
+
+Topologia local atual de LLM:
+
+- `llm`: perfil principal recomendado, usando Gemma 4 E4B quantizado em GGUF
+- `llm_chat`: perfil opcional de baixa latência com Phi-3 Mini
+- `llm_teacher`: perfil opcional de teacher analysis rápida com Qwen2.5 3B
+
+Topologia operacional padrão:
+
+- stack default: `db`, `api`, `frontend`
+- stack com áudio local: `docker compose --profile audio up -d --build`
+- stack com IA local: `docker compose --profile ai up -d --build`
+- `Chat Coach` completo depende do perfil `ai`; áudio local depende do perfil `audio`; Study Session e Lingvist seguem funcionais no stack padrão
+
+## Fronteiras operacionais atuais
+
+- a API usa configuração de engine dependente do backend: `StaticPool` fica restrito a SQLite em memória; PostgreSQL usa pool padrão com `pool_pre_ping`
+- o frontend gera bundle de produção apontando para rotas relativas (`/api` e `/api/tts`), enquanto o Vite usa proxy explícito para `localhost:8000` e `localhost:8001` no desenvolvimento
+- `stats` e `settings` exigem `user_id` explícito e não criam mais usuário demo como efeito colateral de endpoints de leitura
+- payloads de áudio e TTS usam URLs relativas, reduzindo acoplamento com host fixo
+- o lookup e a serialização de insights por palavra/card vivem em um service dedicado, reduzindo duplicação na borda HTTP
 
 ## Fluxos principais
 
@@ -108,7 +128,7 @@ Dependências observadas:
 
 1. frontend abre sessão de chat
 2. API combina contexto da conversa, perfil do aluno e provider de LLM
-3. serviços locais de LLM e LanguageTool participam da resposta
+3. quando o perfil `ai` está ativo, serviços locais de LLM e LanguageTool participam da resposta
 4. frontend exibe feedback, análise e sugestões
 
 ## Pontos de acoplamento
@@ -117,6 +137,8 @@ Dependências observadas:
 - Chat Coach depende de múltiplos serviços e configurações
 - frontend acumula três experiências diferentes no mesmo app
 - parte das features de analytics e progressão atravessa vários modelos e serviços
+- o ambiente local de 8 GB de VRAM não deve manter múltiplos modelos médios sempre ativos sem necessidade
+- ambiente híbrido Windows/WSL não deve compartilhar o mesmo `frontend/node_modules` entre installs Linux e execução via `node.exe`
 
 ## Direção arquitetural desejada
 

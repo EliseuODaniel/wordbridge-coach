@@ -1,12 +1,8 @@
 /** Word Frequency Insight Component - Refactored with Coverage Curve */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  insightsApi,
-  getApiErrorCode,
-  getApiErrorStatus,
-  type WordInsightResponse,
-} from '../services/api';
+import { insightsApi, type WordInsightResponse } from '../services/apiInsights';
+import { getApiErrorCode, getApiErrorStatus } from '../services/apiErrors';
 import { withRetry } from '../utils/apiUtils';
 
 interface CoveragePoint {
@@ -29,7 +25,7 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
 
   useEffect(() => {
     const fetchInsight = async () => {
-      // Prioritize wordId over cardId since wordId endpoint works
+      // Prioritize wordId when available to avoid an extra card lookup
       const id = wordId || cardId;
       if (!id) return;
 
@@ -39,13 +35,13 @@ const WordFrequencyInsight: React.FC<WordFrequencyInsightProps> = ({ cardId, wor
       try {
         let data;
         if (wordId) {
-          // Use wordId endpoint (works correctly)
+          // Use wordId endpoint directly when available
           data = await withRetry(
             () => insightsApi.getWordInsights(wordId),
             { maxRetries: 2, baseDelay: 1000 }
           );
         } else {
-          // Fallback to cardId endpoint (may not work)
+          // Fall back to the card-backed endpoint when only cardId is available
           data = await withRetry(
             () => insightsApi.getWordInsightsByCard(id),
             { maxRetries: 2, baseDelay: 1000 }

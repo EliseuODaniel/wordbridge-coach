@@ -55,9 +55,7 @@ Se o ambiente usar MCPs adicionais no futuro, documente aqui:
 Frontend:
 
 ```bash
-cd frontend
-npm run lint
-npm run build
+./scripts/frontend_tooling.sh check
 ```
 
 Backend:
@@ -74,6 +72,18 @@ Compose:
 
 ```bash
 docker compose config --quiet
+```
+
+Compose com áudio local opcional:
+
+```bash
+docker compose --profile audio up -d --build
+```
+
+Compose com IA local opcional:
+
+```bash
+docker compose --profile ai up -d --build
 ```
 
 ## Regras práticas

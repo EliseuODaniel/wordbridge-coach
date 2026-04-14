@@ -1,6 +1,6 @@
 # Project Status
 
-Data de referência: 2026-03-23
+Data de referência: 2026-04-14
 
 ## Resumo executivo
 
@@ -19,9 +19,8 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 ### Baseline tecnico validado nesta fase
 
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
-- `cd frontend && npm ci`: OK
-- `cd frontend && npm run build`: OK
-- `cd frontend && npm run lint`: OK apos a limpeza de hooks, contratos de erro e tipagem de APIs no frontend
+- `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
+- `docker build -t ftw-frontend-localcheck -f frontend/Dockerfile frontend`: OK
 - `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_spec4_card_selection.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_answer_service.py -q`: OK
@@ -49,8 +48,8 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - API principal em FastAPI com rotas de cards, stats, settings, users, insights, chat e perfis de LLM
 - frontend React com seleção de usuário e três modos de treino
 - serviço TTS separado
-- compose local com banco, API, frontend, TTS, LLM principal, LLM teacher, LLM chat opcional e LanguageTool
-- suíte de testes backend e uma base de testes E2E com Playwright
+- compose local com stack padrão reduzida para banco, API e frontend; perfil `audio` habilita TTS local e perfil `ai` habilita Gemma 4 E4B, LanguageTool e perfis opcionais de LLM secundária
+- suíte de testes backend e uma suíte E2E Playwright Chromium validada contra o stack padrão `db/api/frontend`
 
 ### Áreas que precisam de atenção
 
@@ -69,9 +68,19 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - a trilha principal de chat backend ficou sem warnings visíveis nas validações direcionadas; o maior volume residual agora está concentrado fora desse miolo
 - a trilha Spec4 também ficou sem warnings visíveis nas validações direcionadas, então o debt residual de warnings saiu do fluxo principal de cards
 - as suítes que compartilham o mesmo banco de teste devem rodar em série; em paralelo elas brigam pelo ciclo `create_all/drop_all`
-- o `StudySession` já teve uma primeira simplificação estrutural no frontend, com helpers dedicados para audio e limpeza explícita dos timers de avancar e retry
+- o `StudySession` agora concentra principalmente composição visual e delega coordenação de sessão para `useStudySession.ts`
 - o `ChatCoachSession` agora também centraliza melhor cleanup local de autocomplete, foco do composer e desconexão do WebSocket, reduzindo coordenação espalhada no componente
-- o `LingvistSession` agora reaproveita melhor reset de rodada, preload de audio e playback manual, reduzindo duplicação sem alterar o fluxo de treino
+- o `ChatCoachSession` agora também isola helpers locais de mensagens, scroll e limpeza do composer em `chatCoachSessionHelpers.ts` e callbacks mais focados, reduzindo repetição dentro do componente
+- o `ChatCoachSession` agora também delega o bootstrap da conversa e a criação do `ChatWS` para `chatCoachSessionTransport.ts`, enquanto `chatWs.ts` já consome tipos direto de `apiChat`, reduzindo mais um pedaço de coordenação local e de acoplamento com a fachada antiga
+- o `ChatCoachSession` agora também concentra os sinais de draft em um state object com helpers locais em `chatCoachSessionFeedback.ts`, reduzindo o espalhamento de `setState` de feedback/autocomplete no componente
+- o bloco visual do composer do `ChatCoachSession` agora também vive em `ChatCoachComposer.tsx`, deixando o componente principal mais focado em estado e callbacks da sessão
+- a área de mensagens, streaming e botão `jump to latest` do `ChatCoachSession` agora também vive em `ChatCoachMessagePane.tsx`, reduzindo mais um bloco de UI densa do componente principal
+- o header e a tela de carregamento do `ChatCoachSession` agora também vivem em `ChatCoachHeader.tsx` e `ChatCoachLoading.tsx`, reduzindo o ruído visual restante do container
+- a coordenação de estado, timers, bootstrap, scroll e lifecycle do `ChatCoachSession` agora também vive em `useChatCoachSession.ts`, deixando `ChatCoachSession.tsx` como composição fina da tela
+- o `LingvistSession` agora concentra principalmente o shell visual do modo e delega reset, preload, playback e coordenação de rodada para `useLingvistSession.ts`
+- o `frontend/src/services/api.ts` agora também delega o cliente Axios, os helpers de erro e as APIs por domínio para `apiClient.ts`, `apiErrors.ts`, `apiCards.ts`, `apiUsers.ts`, `apiInsights.ts`, `apiChat.ts`, `apiLlmProfiles.ts` e `apiHealth.ts`, reduzindo o hotspot sem mudar os imports externos
+- os consumidores principais do frontend já passaram a importar APIs e tipos direto dos módulos de domínio, então `frontend/src/services/api.ts` ficou de fato como fachada compatível e não mais como ponto central de acoplamento
+- o restante do `frontend/src` já não importa mais de `services/api`, então a fachada compatível ficou como camada de transição e não mais como dependência real dos fluxos principais
 - a troca entre `Spec4` e `Lingvist` agora passa pelo shell React em vez de recarregar a página, o que reduz acoplamento com URL e deixa a navegação entre modos mais consistente
 - o repositório agora tem `AGENTS.md` por área em `api/`, `frontend/`, `tts/` e `tests/e2e/`, além de um guia oficial de setup em `docs/CODEX_SETUP.md`
 - as skills repo-locais agora cobrem também readiness de Codex, fatias de endpoint backend e fatias de sessão frontend
@@ -86,9 +95,20 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - a construção de contexto de geração e de teacher analysis do Chat Coach agora também vive em `api/app/services/chat_context_service.py`, mantendo `chat.py` mais focado em adaptação de borda
 - a persistência de mensagens e os payloads/eventos finais do Chat Coach agora também vivem em `api/app/services/chat_delivery_service.py`, deixando `chat.py` com menos efeito colateral direto
 - os helpers puros de prompt, configuração de geração, fallback e sanitização do Chat Coach agora também vivem em `api/app/services/chat_text_service.py`, deixando `chat.py` quase todo como camada adaptadora
+- o streaming do assistente e a geração com fallback de `teacher_analysis` do Chat Coach agora também vivem em `api/app/services/chat_generation_service.py`, reduzindo mais uma camada operacional de `chat.py`
+- o estado em memória de throttle/cache de draft do Chat Coach agora também vive em `api/app/services/chat_draft_state_service.py`, reduzindo mais um detalhe operacional de `chat.py`
+- o lifecycle do endpoint WebSocket do Chat Coach agora também vive em `api/app/services/chat_websocket_service.py`, deixando `chat.py` mais próximo de uma borda fina
+- os handlers de evento do WebSocket do Chat Coach agora também vivem em `api/app/services/chat_handler_service.py`, tirando de `chat.py` a montagem repetida de state/helpers por evento
+- os adapters configurados por ambiente do Chat Coach agora também vivem em `api/app/services/chat_endpoint_adapter_service.py`, deixando `chat.py` com menos closures e menos wiring local
+- o bundle `ChatHandlerDeps` do Chat Coach agora também é montado por `api/app/services/chat_handler_service.py`, removendo mais um bloco de configuração direta de `chat.py`
+- o bundle `ChatWebSocketSessionDeps` do Chat Coach agora também é montado por `api/app/services/chat_websocket_service.py`, deixando `chat.py` quase só com a superfície FastAPI
 - o lookup e a serialização do bloco REST do Chat Coach agora também vivem em `api/app/services/chat_rest_service.py`, reduzindo o miolo restante de `chat.py`
+- a criação, listagem, listagem de mensagens e remoção de conversas do Chat Coach agora também vivem em `api/app/services/chat_conversation_service.py`, reduzindo mais um bloco REST de `chat.py`
 - `chat.py` também deixou de manter wrappers REST locais redundantes para lookup e serialização, passando a chamar `chat_rest_service` diretamente nos endpoints HTTP
 - o enriquecimento do payload Lingvist agora também vive em `api/app/services/lingvist_payload_service.py`, reduzindo o peso de `cards.py` sem mexer na regra de seleção
+- o bootstrap local de dados demo e o autofill de traduções Lingvist agora também vivem em services dedicados, reduzindo mais uma camada operacional de `cards.py`
+- o fluxo legado de `/cards/next` agora também vive em `api/app/services/card_next_service.py`, deixando `cards.py` mais próximo de uma borda HTTP
+- `cards.py` também deixou de manter wrappers locais redundantes para os fluxos legado, Spec4 e Lingvist, passando a chamar os services diretamente nos endpoints
 - a resolução de `user_id` padrão e a serialização comum de `CardResponse` agora também vivem em `api/app/services/card_response_service.py`, deixando `cards.py` com menos regra incidental de borda
 - o fluxo de `submit_answer` agora também delega criação de `UserCardState`, `ReviewEvent`, aplicação do resultado SM-2 e serialização de `AnswerResponse` para `api/app/services/card_answer_service.py`
 - a orquestração agregada pós-resposta de `submit_answer` agora também delega stats diárias, rolling accuracy, relearn, theme stats e progressão Spec4 para `api/app/services/card_progress_service.py`
@@ -103,24 +123,21 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `CardSelectionService` agora também centraliza o fechamento comum de seleção em um helper interno, reduzindo duplicação entre os caminhos `new`, `review`, `relearn` e `fallback`
 - `VocabularyProgressionService` deixou de depender de idioma hardcoded para partes centrais da progressão, e agora respeita melhor a lingua alvo do usuário
 - existe agora cobertura focal para progressão em `api/tests/test_vocabulary_progression.py`
-- o `UserSelection` deixou de usar stats aleatórias e agora consome idioma alvo, meta de vocabulário e stats reais disponíveis por perfil
+- o `UserSelection` agora concentra principalmente composição da tela e delega criação/edição/remoção/atalhos para `useUserSelection.ts`, `UserProfileCreateForm.tsx` e `UserProfileEditModal.tsx`
+- o frontend ganhou um runner oficial em Docker (`./scripts/frontend_tooling.sh`) para estabilizar `lint`, `typecheck` e `build` em ambiente híbrido Windows/WSL
+- o quality gate agora cobre explicitamente `typecheck`, `docker compose config --quiet`, novos testes focais de plataforma/insights/request-user/card-selection-mode e a suíte E2E Chromium completa em `tests/e2e/playwright.ci.config.ts`
+- o stack padrão deixou de exigir LLM local, LanguageTool e TTS para subir; os perfis `ai` e `audio` passaram a ser opcionais conforme o fluxo
+- o runtime principal da API agora usa configuração de pool coerente com o banco: `StaticPool` fica restrito a SQLite em memória, enquanto PostgreSQL usa pool padrão com `pool_pre_ping`
+- o frontend passou a consumir URLs relativas (`/api` e `/api/tts`) no bundle de produção, com proxy explícito no Vite para desenvolvimento local
+- `stats` e `settings` deixaram de depender de bootstrap implícito do usuário demo; os endpoints agora exigem `user_id` explícito na borda de leitura
+- o lookup e a serialização de insights por palavra/card agora vivem em `api/app/services/insights_service.py`, reduzindo drift entre backend e frontend
+- `CardSelectionService` agora delega a orquestração por modo para `api/app/services/card_selection_mode_service.py`, reduzindo o miolo residual mais acoplado
+- `CardSelectionService` agora também delega montagem de payload, novo/review/fallback/relearn para `api/app/services/card_selection_resolution_service.py`, encerrando o hotspot residual de resolução dentro do service principal
+- o `MockLLMProvider` agora ficou como adaptador fino e delega análise, respostas conversacionais e payloads pedagógicos para `mock_text_analysis.py`, `mock_chat_responses.py` e `mock_feedback_payloads.py`
 
-### Hotspots confirmados para refatoracao
+### Hotspots residuais
 
-Frontend:
-
-- `frontend/src/components/ChatCoachSession.tsx`
-- `frontend/src/components/LingvistSession.tsx`
-- `frontend/src/components/UserSelection.tsx`
-- `frontend/src/components/StudySession.tsx`
-- `frontend/src/services/api.ts`
-
-Backend:
-
-- `api/app/api/api_v1/endpoints/cards.py`
-- `api/app/api/api_v1/endpoints/chat.py`
-- `api/app/llm/mock_provider.py`
-- `api/app/services/card_selection.py`
+Nesta fase, os hotspots estruturais principais de backend foram fechados. O que sobra agora é otimização incremental de heurísticas e cobertura, não mais refatoração obrigatória de arquivos monolíticos centrais.
 
 ## Componentes ativos
 
@@ -178,7 +195,7 @@ Serviços hoje definidos:
 
 1. O produto prometido em docs antigas não batia mais com o código.
 2. Há acoplamento considerável entre modos de estudo, analytics e integrações de IA local.
-3. A superfície do `docker-compose.yml` cresceu e precisa ser revisada com foco em simplicidade.
+3. A superfície do `docker-compose.yml` cresceu e precisa ser revisada com foco em simplicidade, embora a porta do Postgres local agora possa ser parametrizada por `FTW_DB_PORT`.
 4. Parte da documentação operacional ainda precisa ser validada durante a próxima rodada de refatoração.
 
 ## Objetivo desta nova fase
@@ -192,7 +209,7 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 
 ## Próximos passos imediatos
 
-1. Continuar a simplificação do `docker-compose.yml`, agora focando em perfis opcionais e surface area do Chat Coach local.
-2. Continuar a refatoração do backend, agora avaliando se o próximo corte em cards deve atacar `submit_answer` ou mover mais lookup/serialização comum para services.
-3. Expandir a cobertura do backend para regras de progressão e idioma além da trilha recém-adicionada.
-4. Consolidar o quality gate novo em CI e decidir se a próxima etapa adiciona E2E automatizado no mesmo pipeline.
+1. Observar a estabilidade da suíte E2E Chromium completa no CI e decidir se vale separar smoke e regressão por custo/tempo.
+2. Confirmar se `alembic upgrade head` e `seed_data.py` devem permanecer explícitos em todos os fluxos operacionais documentados.
+3. Continuar reduzindo a superfície operacional do stack local, principalmente nas dependências opcionais de IA e áudio.
+4. Voltar a investir em evolução de produto e analytics com a base estrutural já saneada.

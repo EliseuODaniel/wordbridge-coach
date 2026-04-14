@@ -2,30 +2,33 @@
 
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
-import random
 
 from app.models import (
-    User, Word, Sentence, Card, UserFrequencyProgress, UserCardState, WordFrequency, Language
+    User, Word, Sentence, Card, UserFrequencyProgress, UserCardState, Language
 )
 from app.services.card_selection_payload_service import (
     build_card_context_payload as _build_card_context_payload_service,
 )
 from app.services.card_selection_policy_service import (
     calculate_adaptive_new_share as _calculate_adaptive_new_share_service,
-    calculate_session_new_share as _calculate_session_new_share_service,
     should_try_new_card_lingvist as _should_try_new_card_lingvist_service,
     should_try_new_card_spec4 as _should_try_new_card_spec4_service,
 )
 from app.services.card_selection_query_service import (
     count_reviews_due as _count_reviews_due_service,
-    get_due_relearn_candidate as _get_due_relearn_candidate_service,
     get_due_review_candidates as _get_due_review_candidates_service,
     get_recent_correct_word_ids as _get_recent_correct_word_ids_service,
 )
-from app.services.card_selection_fallback_service import (
-    find_any_eligible_card as _find_any_eligible_card_service,
-    get_card_review_state as _get_card_review_state_service,
+from app.services.card_selection_mode_service import (
+    select_next_card_lingvist as _select_next_card_lingvist_service,
+    select_next_card_spec4 as _select_next_card_spec4_service,
+)
+from app.services.card_selection_resolution_service import (
+    build_selected_card as _build_selected_card_service,
+    get_any_eligible_card as _get_any_eligible_card_service,
+    get_due_relearn_card as _get_due_relearn_card_service,
+    get_random_new_card as _get_random_new_card_service,
+    get_review_card as _get_review_card_service,
 )
 from app.services.vocabulary_progression import VocabularyProgressionService
 
@@ -36,6 +39,7 @@ class CardSelectionService:
     def __init__(self, db: Session):
         self.db = db
         self.progression_service = VocabularyProgressionService(db)
+        self.user_model = User
 
     def _get_user_and_target_language(self, user_id: str) -> Tuple[Optional[User], Optional[Language]]:
         """Load user and target language together for card selection decisions."""
@@ -65,15 +69,14 @@ class CardSelectionService:
         is_new: bool,
         exclude_card_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Resolve sentence, build payload, and record the card in session stats."""
-        sentence = self.progression_service.get_sentence_for_word(
+        """Proxy card payload assembly for extracted resolution services."""
+        return _build_selected_card_service(
+            self,
             user_id,
-            word.id,
-            exclude_card_id,
+            word,
+            is_new=is_new,
+            exclude_card_id=exclude_card_id,
         )
-        card_context = self._build_card_context(user_id, word, sentence, is_new=is_new)
-        self.progression_service.record_card_shown(user_id, is_new_card=is_new)
-        return card_context
 
     def get_next_card_for_user(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -95,173 +98,21 @@ class CardSelectionService:
             return self._get_next_card_spec4(user_id, exclude_card_id)
 
     def _get_next_card_spec4(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """
-        Spec4 mode: Fixed 25% new / 75% review mix (original behavior)
-        """
-        # Get user progress and session stats
-        progress = self.progression_service.get_or_create_user_progress(user_id)
-        session_stats = self.progression_service.get_session_stats_for_today(user_id)
-
-        # Calculate new share for today
-        new_share = _calculate_session_new_share_service(
-            session_stats.cards_shown,
-            session_stats.new_cards_shown,
-        )
-
-        # Get review candidates (only from unlocked prefix)
-        review_candidates = self.get_due_review_words(
-            self.db, user_id, max_count=50, exclude_card_id=exclude_card_id
-        )
-
-        # Check if we can introduce a new word
-        can_introduce_new = _should_try_new_card_spec4_service(new_share)
-
-        if can_introduce_new:
-            # T1: Try new card (random selection)
-            new_card = self._get_random_new_card(user_id, progress, exclude_card_id)
-            if new_card:
-                return new_card
-
-        # T2: Try review card
-        if review_candidates:
-            review_card = self._get_review_card(user_id, review_candidates, exclude_card_id)
-            if review_card:
-                return review_card
-
-        # T3: Fallback - try ANY eligible card (even if not "due" yet)
-        fallback_card = self._get_any_eligible_card(user_id, progress, exclude_card_id)
-        if fallback_card:
-            return fallback_card
-
-        # T4: Only return None if DB is truly empty
-        print(f"DEBUG: No cards available for user {user_id} - DB may be empty")
-        return None
+        """Run the Spec4 mode orchestration."""
+        return _select_next_card_spec4_service(self, user_id, exclude_card_id)
 
     def _get_next_card_lingvist(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """
-        Lingvist mode: Prioritize relearn queue, use adaptive new_share
-        """
-        # T1: Check relearn queue (highest priority)
-        relearn_card = self._get_due_relearn_card(user_id, exclude_card_id)
-        if relearn_card:
-            return relearn_card
+        """Run the Lingvist mode orchestration."""
+        return _select_next_card_lingvist_service(self, user_id, exclude_card_id)
 
-        # T2: Calculate adaptive new_share based on accuracy
-        user = self.db.query(User).filter(User.id == user_id).first()
-        if not user:
-            return None
-
-        new_share = self._calculate_adaptive_new_share(user)
-
-        # Get review count for backlog check
-        reviews_due_count = self._count_reviews_due(user_id)
-
-        # T3: Try new card if below adaptive share and below threshold
-        can_introduce_new = reviews_due_count < 50 and new_share > 0
-
-        if can_introduce_new:
-            progress = self.progression_service.get_or_create_user_progress(user_id)
-
-            # Check current new share
-            session_stats = self.progression_service.get_session_stats_for_today(user_id)
-            current_new_share = _calculate_session_new_share_service(
-                session_stats.cards_shown,
-                session_stats.new_cards_shown,
-            )
-
-            if _should_try_new_card_lingvist_service(
-                current_new_share=current_new_share,
-                adaptive_new_share=new_share,
-                reviews_due_count=reviews_due_count,
-            ):
-                new_card = self._get_random_new_card(user_id, progress, exclude_card_id)
-                if new_card:
-                    return new_card
-
-        # T4: Try review card
-        review_candidates = self.get_due_review_words(self.db, user_id, max_count=50, exclude_card_id=exclude_card_id)
-        if review_candidates:
-            review_card = self._get_review_card(user_id, review_candidates, exclude_card_id)
-            if review_card:
-                return review_card
-
-        # T5: Fallback
-        progress = self.progression_service.get_or_create_user_progress(user_id)
-        fallback_card = self._get_any_eligible_card(user_id, progress, exclude_card_id)
-        if fallback_card:
-            return fallback_card
-
-        # T6: Only return None if DB is truly empty
-        print(f"DEBUG: No cards available for user {user_id} - DB may be empty")
-        return None
-
-    def _get_random_new_card(self, user_id: str, progress: UserFrequencyProgress,
-                             exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Get a random new card within the user's goal/window
-
-        Args:
-            user_id: User identifier
-            progress: User's frequency progress
-            exclude_card_id: Optional card ID to exclude (soft preference)
-        """
-        user, target_lang = self._get_user_and_target_language(user_id)
-        if not target_lang:
-            return None
-
-        max_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
-
-        # Build query for eligible words
-        query = self.db.query(Word).join(WordFrequency,
-            and_(
-                func.lower(Word.lemma) == func.lower(WordFrequency.word),
-                WordFrequency.language_code == target_lang.code,
-                WordFrequency.rank <= max_rank
-            )
-        )
-
-        # Soft exclusion: prefer other words if possible
-        excluded_word_id = self._get_excluded_word_id(exclude_card_id)
-
-        # Anti-repetition: get recently seen words answered CORRECTLY (last 7 days, max 50)
-        recent_word_ids = self._get_recent_correct_word_ids(user_id, days=7, limit=50)
-
-        # Build exclusions: current card + recent words
-        exclusions = set()
-        if excluded_word_id:
-            exclusions.add(excluded_word_id)
-
-        # Try without excluded/recent words first
-        words_without_recent = query.filter(
-            ~Word.id.in_(exclusions | recent_word_ids)
-        ).all()
-
-        # Use words without recent if we have enough alternatives (threshold: 10)
-        if len(words_without_recent) >= 10:
-            word = random.choice(words_without_recent)
-        else:
-            # Fallback: include recent words (but still exclude current card)
-            if excluded_word_id:
-                words_without_current = query.filter(Word.id != excluded_word_id).all()
-                if words_without_current:
-                    word = random.choice(words_without_current)
-                else:
-                    # Last resort: include current card (will show different sentence)
-                    words = query.all()
-                    if not words:
-                        return None
-                    word = random.choice(words)
-            else:
-                words = query.all()
-                if not words:
-                    return None
-                word = random.choice(words)
-
-        return self._build_selected_card(
-            user_id,
-            word,
-            is_new=True,
-            exclude_card_id=exclude_card_id,
-        )
+    def _get_random_new_card(
+        self,
+        user_id: str,
+        progress: UserFrequencyProgress,
+        exclude_card_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Proxy new-card selection for extracted resolution services."""
+        return _get_random_new_card_service(self, user_id, progress, exclude_card_id)
 
     def get_due_review_words(self, db: Session, user_id: str, max_count: int = 50,
                             exclude_card_id: Optional[str] = None) -> List[Tuple[Word, UserCardState]]:
@@ -287,67 +138,23 @@ class CardSelectionService:
             exclude_card_id=exclude_card_id,
         )
 
-    def _get_review_card(self, user_id: str, review_candidates, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Get a review card from candidates
+    def _get_review_card(
+        self,
+        user_id: str,
+        review_candidates,
+        exclude_card_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Proxy review-card selection for extracted resolution services."""
+        return _get_review_card_service(self, user_id, review_candidates, exclude_card_id)
 
-        Args:
-            user_id: User identifier
-            review_candidates: Available review candidates (tuples of Word, UserCardState)
-            exclude_card_id: Optional card ID to exclude (already filtered in get_due_review_words)
-        """
-        if not review_candidates:
-            return None
-
-        # Pick best review word (favoring problematic words)
-        review_words = [candidate[0] for candidate in review_candidates]
-
-        word = self.progression_service.pick_best_review_word(user_id, review_words)
-        return self._build_selected_card(user_id, word, is_new=False)
-
-    def _get_any_eligible_card(self, user_id: str, progress: UserFrequencyProgress,
-                               exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Fallback: Get ANY eligible card (even if not "due" yet)
-
-        This is the final fallback to prevent 404 errors in seeded environments.
-
-        Args:
-            user_id: User identifier
-            progress: User's frequency progress
-            exclude_card_id: Optional card ID to exclude
-        """
-        user, target_lang = self._get_user_and_target_language(user_id)
-        if not target_lang:
-            return None
-
-        max_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
-        card = _find_any_eligible_card_service(
-            self.db,
-            target_language_id=user.target_language_id,
-            target_language_code=target_lang.code,
-            max_rank=max_rank,
-            user_id=user_id,
-            exclude_card_id=exclude_card_id,
-        )
-
-        if not card:
-            return None
-
-        word = card.sentence.word
-
-        # Determine if this is new or review based on UserCardState
-        ucs = _get_card_review_state_service(
-            self.db,
-            user_id=user_id,
-            card_id=card.id,
-        )
-
-        is_new = (ucs is None or ucs.status.value == 'NEW')
-        return self._build_selected_card(
-            user_id,
-            word,
-            is_new=is_new,
-            exclude_card_id=exclude_card_id,
-        )
+    def _get_any_eligible_card(
+        self,
+        user_id: str,
+        progress: UserFrequencyProgress,
+        exclude_card_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Proxy fallback-card selection for extracted resolution services."""
+        return _get_any_eligible_card_service(self, user_id, progress, exclude_card_id)
 
     def _build_card_context(
         self,
@@ -401,23 +208,35 @@ class CardSelectionService:
             limit=limit,
         )
 
-    def _get_due_relearn_card(self, user_id: str, exclude_card_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Get next due relearn card (highest priority in Lingvist mode)"""
-        result = _get_due_relearn_candidate_service(
-            self.db,
-            user_id=user_id,
-            exclude_card_id=exclude_card_id,
-        )
-
-        if not result:
-            return None
-
-        _, word = result
-        return self._build_selected_card(user_id, word, is_new=False)
+    def _get_due_relearn_card(
+        self,
+        user_id: str,
+        exclude_card_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Proxy relearn-card lookup for extracted resolution services."""
+        return _get_due_relearn_card_service(self, user_id, exclude_card_id)
 
     def _count_reviews_due(self, user_id: str) -> int:
         """Count cards due for review (excluding new cards)"""
         return _count_reviews_due_service(self.db, user_id)
+
+    def _should_try_new_card_spec4(self, new_share: float) -> bool:
+        """Proxy Spec4 new-card policy for extracted mode services."""
+        return _should_try_new_card_spec4_service(new_share)
+
+    def _should_try_new_card_lingvist(
+        self,
+        *,
+        current_new_share: float,
+        adaptive_new_share: float,
+        reviews_due_count: int,
+    ) -> bool:
+        """Proxy Lingvist adaptive new-card policy for extracted mode services."""
+        return _should_try_new_card_lingvist_service(
+            current_new_share=current_new_share,
+            adaptive_new_share=adaptive_new_share,
+            reviews_due_count=reviews_due_count,
+        )
 
     def _calculate_adaptive_new_share(self, user: User) -> float:
         """Calculate adaptive new card share based on user accuracy"""

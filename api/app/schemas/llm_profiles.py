@@ -14,22 +14,22 @@ class LLMProfileResponse(BaseModel):
     """Response schema for a single LLM profile"""
     model_config = ConfigDict(json_schema_extra={
         "example": {
-            "id": "qwen2.5-7b-instruct",
-            "name": "Qwen2.5 7B Instruct",
+            "id": "gemma-4-e4b-it",
+            "name": "Gemma 4 E4B Instruct",
             "provider": "llamacpp",
-            "model": "qwen2.5-7b-instruct",
+            "model": "gemma-4-e4b-it",
             "service_url": "http://llm:8080",
             "context_window": 4096,
             "supports_streaming": True,
             "supports_json": True,
-            "estimated_vram": "5.4GB",
+            "estimated_vram": "5.3GB",
             "quality_tier": "high",
             "speed_tier": "medium",
-            "description": "High-quality bilingual model"
+            "description": "Gemma 4 E4B quantized for llama.cpp"
         }
     })
 
-    id: str = Field(..., description="Profile ID (e.g., 'qwen2.5-7b-instruct')")
+    id: str = Field(..., description="Profile ID (e.g., 'gemma-4-e4b-it')")
     name: str = Field(..., description="Human-readable name")
     provider: str = Field(..., description="Provider type (llamacpp, openai_http, mock)")
     model: str = Field(..., description="Model identifier")
@@ -57,8 +57,8 @@ class UserLLMPreferencesResponse(BaseModel):
         "example": {
             "id": "660e8400-e29b-41d4-a716-446655440000",
             "user_id": "550e8400-e29b-41d4-a716-446655440000",
-            "chat_model_profile": "qwen2.5-7b-instruct",
-            "teacher_model_profile": "qwen2.5-7b-instruct",
+            "chat_model_profile": "gemma-4-e4b-it",
+            "teacher_model_profile": "gemma-4-e4b-it",
             "created_at": "2025-12-26T15:00:00Z",
             "updated_at": "2025-12-26T15:00:00Z"
         }
@@ -75,8 +75,8 @@ class UserLLMPreferencesUpdate(BaseModel):
     """Request schema for PUT /api/v1/users/me/llm-preferences"""
     model_config = ConfigDict(json_schema_extra={
         "example": {
-            "chat_model_profile": "qwen2.5-3b-instruct",
-            "teacher_model_profile": "llama-3.1-8b-instruct"
+            "chat_model_profile": "gemma-4-e4b-it",
+            "teacher_model_profile": "qwen2.5-3b-instruct"
         }
     })
 

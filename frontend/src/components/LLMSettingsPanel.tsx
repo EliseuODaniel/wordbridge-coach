@@ -6,7 +6,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getApiErrorMessage, llmProfilesApi, type LLMProfile } from '../services/api';
+import { getApiErrorMessage } from '../services/apiErrors';
+import { llmProfilesApi, type LLMProfile } from '../services/apiLlmProfiles';
 
 interface LLMSettingsPanelProps {
   userId?: string;

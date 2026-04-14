@@ -13,6 +13,25 @@ from app.models.user_llm_preferences import UserLLMPreferences
 from app.llm.profiles import get_default_chat_profile, get_default_teacher_profile, validate_profile_id
 
 
+def _normalize_preferences(db: Session, preferences: UserLLMPreferences) -> UserLLMPreferences:
+    """Coerce stale or removed profile ids back to supported defaults."""
+    changed = False
+
+    if not validate_profile_id(preferences.chat_model_profile):
+        preferences.chat_model_profile = get_default_chat_profile()
+        changed = True
+
+    if not validate_profile_id(preferences.teacher_model_profile):
+        preferences.teacher_model_profile = get_default_teacher_profile()
+        changed = True
+
+    if changed:
+        db.commit()
+        db.refresh(preferences)
+
+    return preferences
+
+
 def get_user_llm_preferences(db: Session, user_id: uuid.UUID) -> UserLLMPreferences:
     """
     Get user's LLM preferences, creating defaults if not exist.
@@ -40,7 +59,7 @@ def get_user_llm_preferences(db: Session, user_id: uuid.UUID) -> UserLLMPreferen
         db.refresh(preferences)
         return preferences
 
-    return result
+    return _normalize_preferences(db, result)
 
 
 def update_user_llm_preferences(

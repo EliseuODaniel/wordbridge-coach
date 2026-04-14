@@ -1,6 +1,7 @@
 """Helpers for card endpoint request/user resolution and response serialization."""
 
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -77,10 +78,9 @@ def _get_audio_content(card: Card, sentence_text: str) -> tuple[str, str]:
 
 
 def _build_tts_urls(card_id: str, word_text: str, sentence_text: str) -> tuple[str, str]:
-    """Build localhost TTS URLs preserved by the existing card response contract."""
-    tts_base_url = "http://localhost:8001"
-    audio_word_url = f"{tts_base_url}/api/tts/word/{card_id}?text={word_text}&lang=en"
-    audio_sentence_url = (
-        f"{tts_base_url}/api/tts/sentence/{card_id}?text={sentence_text}&lang=en"
-    )
+    """Build relative TTS URLs that work behind the frontend proxy."""
+    word_text_encoded = quote(word_text or '')
+    sentence_text_encoded = quote(sentence_text or '')
+    audio_word_url = f"/api/tts/word/{card_id}?text={word_text_encoded}&lang=en"
+    audio_sentence_url = f"/api/tts/sentence/{card_id}?text={sentence_text_encoded}&lang=en"
     return audio_word_url, audio_sentence_url

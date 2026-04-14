@@ -1092,3 +1092,627 @@ Depois de estabilizar o Chat Coach, o próximo hotspot confirmado voltou a ser `
 
 - `cards.py` perde uma faixa relevante de montagem de payload e enrichment
 - a próxima fatia pode focar no fluxo de `submit_answer` ou em serialização comum dos cards com menos ruído estrutural
+
+## 2026-04-11 - Tirar bootstrap demo e autofill Lingvist do endpoint de cards
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações principais de Spec4, Lingvist e submit answer, `cards.py` ainda mantinha duas responsabilidades operacionais que não pertenciam à borda HTTP: criação do bootstrap demo local e autofill de traduções do Lingvist com cache TSV e fallback de MT.
+
+### Decisão
+
+- criar `api/app/services/card_bootstrap_service.py` para concentrar a garantia de dados mínimos locais do usuário demo
+- criar `api/app/services/lingvist_autofill_service.py` para concentrar cache TSV e autofill on-demand de traduções do Lingvist
+- manter wrappers finos em `cards.py` para preservar compatibilidade com chamadores e testes locais
+- adicionar cobertura dedicada de autofill e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `cards.py` fica mais próximo de um adaptador fino e perde mais uma camada operacional
+- bootstrap demo e tradução Lingvist passam a ter fronteiras explícitas para manutenção futura
+- a próxima fatia em `cards.py` pode focar mais em fluxo de endpoint e menos em detalhes auxiliares de infraestrutura local
+
+## 2026-04-11 - Mover o fluxo legado de /cards/next para service próprio
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das extrações anteriores, `cards.py` ainda mantinha a orquestração inteira do endpoint legado `/cards/next`: bootstrap demo, resolução do usuário, contagem de cards novos do dia e priorização `due -> new -> learning`.
+
+### Decisão
+
+- criar `api/app/services/card_next_service.py` para concentrar esse fluxo legado
+- manter o endpoint `/cards/next` como adaptador fino para preservar contrato HTTP
+- adicionar cobertura unitária própria para a ordem de seleção e incluir a suíte no quality gate
+
+### Impacto
+
+- `cards.py` perde o maior bloco residual de seleção legado fora de Spec4/Lingvist
+- o fluxo `/cards/next` fica mais fácil de revisar, evoluir ou eventualmente descontinuar
+- a próxima fatia em `cards.py` pode focar em wrappers residuais ou em simplificação adicional da borda
+
+## 2026-04-11 - Remover wrappers locais redundantes de cards.py
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações para services próprios, `cards.py` ainda mantinha wrappers locais só para repassar chamadas aos serviços de legado, Spec4 e Lingvist. Eles já não carregavam regra de negócio nem ajudavam os chamadores.
+
+### Decisão
+
+- remover esses wrappers locais redundantes em `cards.py`
+- fazer os endpoints chamarem diretamente `card_next_service`, `card_spec4_service` e `card_lingvist_service`
+- manter o contrato HTTP inalterado
+
+### Impacto
+
+- `cards.py` fica mais curto e mais próximo de uma camada de borda de verdade
+- a próxima rodada pode sair de `cards.py` com pouco risco, já que o endpoint perdeu boa parte da indireção restante
+
+## 2026-04-11 - Mover a gestão REST de conversas do Chat Coach para service próprio
+
+Status: aceito
+
+### Contexto
+
+Mesmo após as extrações de runtime, draft, feedback, contexto, delivery e rest serialization, `chat.py` ainda mantinha a criação, listagem, listagem de mensagens e remoção de conversas. Esse bloco REST já não dependia do loop WebSocket, mas ainda aumentava o peso do endpoint.
+
+### Decisão
+
+- criar `api/app/services/chat_conversation_service.py` para concentrar:
+  - defaults de conversa nova
+  - criação de conversa e mensagem inicial de sistema
+  - listagem de conversas
+  - listagem de mensagens
+  - remoção de conversa
+- manter `chat.py` como adaptador fino dos endpoints REST e do WebSocket
+- adicionar cobertura unitária própria e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais um bloco REST e fica mais concentrado no runtime de chat
+- a gestão de conversas passa a ter fronteira explícita para futuras mudanças de onboarding ou setup pedagógico
+- a próxima fatia em `chat.py` pode focar melhor no estado local de draft/WebSocket ou nos wrappers utilitários restantes
+
+## 2026-04-11 - Mover geração e streaming do Chat Coach para service próprio
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do bloco REST de conversas, `chat.py` ainda mantinha duas responsabilidades operacionais ligadas à geração: streaming do assistente token a token e geração da `teacher_analysis` com fallback seguro. Ambas já eram reutilizáveis e não dependiam da borda HTTP em si.
+
+### Decisão
+
+- criar `api/app/services/chat_generation_service.py` para concentrar:
+  - streaming do assistente via websocket
+  - geração da `teacher_analysis`
+  - fallback seguro para falhas do provider
+- manter wrappers compatíveis em `chat.py` para preservar os testes utilitários existentes
+- adicionar cobertura unitária própria e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais uma faixa operacional do fluxo de geração
+- a fronteira entre endpoint e comportamento de geração do Chat Coach fica mais explícita
+- a próxima fatia pode focar no estado local de draft/websocket ou em remover wrappers utilitários restantes com menos risco
+
+## 2026-04-11 - Mover o estado local de draft/throttle do Chat Coach para service próprio
+
+Status: aceito
+
+### Contexto
+
+Depois das extrações de conversa e geração, `chat.py` ainda mantinha três dicts globais e helpers simples para throttle/cache de draft: timestamps de micro-eval, último feedback e último texto digitado por conversa. Isso era estado operacional de websocket, não detalhe da borda HTTP.
+
+### Decisão
+
+- criar `api/app/services/chat_draft_state_service.py` para concentrar:
+  - store em memória do estado de draft
+  - inicialização do throttle por conversa
+  - cache do último feedback
+  - montagem do payload throttled
+- manter wrappers compatíveis em `chat.py` para preservar os testes utilitários existentes
+- adicionar cobertura unitária própria e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais um detalhe de estado operacional do websocket
+- o estado local de draft fica explícito e mais fácil de trocar ou encapsular no futuro
+- a próxima fatia pode focar em wrappers utilitários restantes ou em reduzir ainda mais o tamanho do endpoint WebSocket
+
+## 2026-04-11 - Mover o lifecycle do endpoint WebSocket do Chat Coach para service próprio
+
+Status: aceito
+
+### Contexto
+
+Mesmo após as extrações de conversa, geração e estado de draft, `chat.py` ainda mantinha o lifecycle inteiro do endpoint WebSocket: `accept`, abertura da sessão de banco, carregamento de runtime, loop de receive/dispatch, tratamento de erro e fechamento.
+
+### Decisão
+
+- criar `api/app/services/chat_websocket_service.py` para concentrar o lifecycle do endpoint WebSocket
+- manter `chat.py` responsável apenas por montar as dependências do session runner e expor o endpoint FastAPI
+- adicionar cobertura unitária própria para o session runner e manter o teste integrado de fluxo WebSocket existente
+
+### Impacto
+
+- `chat.py` perde mais um bloco estrutural importante e fica mais próximo de uma camada adaptadora
+- o lifecycle do WebSocket ganha uma fronteira testável fora do endpoint
+- a próxima fatia pode focar nos wrappers utilitários restantes ou em reduzir ainda mais o acoplamento do arquivo de borda
+
+## 2026-04-11 - Mover os handlers de evento do WebSocket do Chat Coach para service próprio
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do lifecycle da sessão WebSocket, `chat.py` ainda montava localmente `ChatDraftFeedbackState`, `ChatDraftFeedbackHelpers` e `ChatUserMessageTurnHelpers` dentro dos handlers de evento. O fluxo já estava quebrado em services menores, mas o endpoint ainda concentrava wiring operacional repetido.
+
+### Decisão
+
+- criar `api/app/services/chat_handler_service.py` para concentrar:
+  - a montagem dos handlers de `draft_update`, `request_autocomplete` e `user_message`
+  - a construção dos bundles de state/helpers usados nesses eventos
+  - a injeção do timestamp do endpoint no fluxo de autocomplete
+- manter `chat.py` responsável apenas por expor wrappers utilitários compatíveis e montar as dependências de alto nível do endpoint
+- adicionar cobertura unitária própria e incluir a nova suíte no quality gate
+
+### Impacto
+
+- `chat.py` perde mais um bloco de wiring operacional e fica mais próximo de uma borda fina
+- a montagem de handlers do WebSocket passa a ter fronteira explícita e testável
+- a próxima fatia pode focar nos wrappers utilitários restantes sem reabrir a orquestração do fluxo de eventos
+
+## 2026-04-12 - Mover os adapters configurados por ambiente de `chat.py` para service próprio
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do lifecycle e dos handlers de evento, `chat.py` ainda mantinha várias closures locais só para bindar configuração de ambiente e helpers já existentes: provider de LLM, URL/estratégia de grammar check, sanitizer, sender de `teacher_analysis` e builders de contexto.
+
+### Decisão
+
+- criar `api/app/services/chat_endpoint_adapter_service.py` para concentrar factories de adapters do endpoint
+- manter `chat.py` exportando os mesmos símbolos utilitários compatíveis para os testes existentes
+- adicionar cobertura unitária própria para garantir o bind correto de stores, providers, helpers e callbacks
+
+### Impacto
+
+- `chat.py` perde mais uma faixa de closures locais e fica ainda mais próximo de uma borda fina
+- o bind de configuração e callbacks do Chat Coach passa a ser testado fora do endpoint
+- a próxima fatia pode focar no frontend ou no pouco wiring utilitário restante do backend
+
+## 2026-04-12 - Mover a montagem de `ChatHandlerDeps` de `chat.py` para o service de handlers
+
+Status: aceito
+
+### Contexto
+
+Depois da extração dos handlers WebSocket e dos adapters configurados por ambiente, `chat.py` ainda mantinha um bloco relativamente grande só para montar o bundle `ChatHandlerDeps` com todas as dependências do fluxo de eventos.
+
+### Decisão
+
+- adicionar em `api/app/services/chat_handler_service.py` um builder explícito para `ChatHandlerDeps`
+- deixar `chat.py` apenas chamar esse builder com as dependências já resolvidas
+- ampliar a cobertura focal do service de handlers para garantir que o builder preserve os campos injetados
+
+### Impacto
+
+- `chat.py` perde mais um bloco de configuração de alto nível e fica ainda mais enxuto
+- a montagem do bundle principal do WebSocket fica centralizada no mesmo service que já constrói os handlers
+- a próxima fatia pode sair do backend ou atacar só o resíduo compatível de wrappers do endpoint
+
+## 2026-04-12 - Mover a montagem de `ChatWebSocketSessionDeps` de `chat.py` para o service de websocket
+
+Status: aceito
+
+### Contexto
+
+Depois da extração dos handlers, adapters e do bundle `ChatHandlerDeps`, o endpoint `chat.py` ainda montava localmente o bundle `ChatWebSocketSessionDeps` e mantinha wrappers triviais para contexto de chat e teacher context.
+
+### Decisão
+
+- adicionar em `api/app/services/chat_websocket_service.py` um builder explícito para `ChatWebSocketSessionDeps`
+- centralizar também um helper `default_now_ms` no mesmo service para evitar mais uma closure local do endpoint
+- trocar os wrappers triviais de `_build_context_messages` e `_build_teacher_context` por aliases diretos
+
+### Impacto
+
+- `chat.py` fica ainda mais próximo de uma borda fina e declarativa
+- a configuração da sessão WebSocket passa a viver junto do runner que a consome
+- o próximo corte pode encerrar o resíduo do backend ou mover o foco para os hotspots do frontend
+
+## 2026-04-12 - Extrair cliente Axios e helpers de erro de `frontend/src/services/api.ts`
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das simplificações nas sessões do frontend, `frontend/src/services/api.ts` ainda era um hotspot grande e misturava três responsabilidades diferentes no mesmo arquivo: cliente HTTP, helpers de erro e contratos/APIs por domínio.
+
+### Decisão
+
+- criar `frontend/src/services/apiClient.ts` para concentrar a criação do cliente Axios e seus interceptors
+- criar `frontend/src/services/apiErrors.ts` para concentrar parsing de erro, status, code e regra de retry
+- manter `frontend/src/services/api.ts` como fachada compatível, reexportando os mesmos helpers e contratos já consumidos pelos componentes
+
+### Impacto
+
+- `api.ts` perde parte do ruído estrutural sem exigir mudanças de import nos componentes
+- cliente HTTP e tratamento de erro passam a ter fronteiras próprias para futuras extrações por domínio
+- a próxima fatia do frontend pode separar APIs por área sem misturar novamente esse miolo comum
+
+## 2026-04-12 - Separar `frontend/src/services/api.ts` por domínio mantendo uma fachada compatível
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do cliente Axios e dos helpers de erro, `frontend/src/services/api.ts` ainda concentrava contratos e chamadas HTTP de cards, usuários, insights, chat, perfis de LLM e healthcheck no mesmo arquivo.
+
+### Decisão
+
+- criar módulos por domínio em `frontend/src/services/`:
+  - `apiCards.ts`
+  - `apiUsers.ts`
+  - `apiInsights.ts`
+  - `apiChat.ts`
+  - `apiLlmProfiles.ts`
+  - `apiHealth.ts`
+- manter `frontend/src/services/api.ts` como fachada de reexports para preservar os imports existentes no restante do app
+- validar a fatia com `eslint` e `tsc -b`, registrando separadamente o bloqueio já conhecido do `vite build` no ambiente híbrido
+
+### Impacto
+
+- `api.ts` deixa de ser um hotspot operacional e vira uma fachada curta
+- futuras fatias podem mover consumidores para imports por domínio sem precisar reabrir a estrutura interna
+- o risco da refatoração cai porque a divisão interna melhora sem exigir churn imediato nos componentes
+
+## 2026-04-12 - Migrar consumidores do frontend para imports diretos por domínio
+
+Status: aceito
+
+### Contexto
+
+Depois da divisão de `frontend/src/services/api.ts`, a maior parte do app ainda importava tudo da fachada antiga. Isso preservava compatibilidade, mas mantinha um acoplamento desnecessário com um arquivo que já não era mais a melhor fronteira para evolução.
+
+### Decisão
+
+- migrar os consumidores principais para imports diretos de:
+  - `apiCards`
+  - `apiUsers`
+  - `apiInsights`
+  - `apiChat`
+  - `apiLlmProfiles`
+  - `apiHealth`
+  - `apiErrors`
+- manter `frontend/src/services/api.ts` apenas como camada de compatibilidade para evitar churn total de uma vez
+- validar a fatia com `eslint` e `tsc -b`
+
+### Impacto
+
+- a divisão por domínio deixa de ser só interna e passa a ser usada pelo app real
+- `api.ts` deixa de ser o ponto central de dependência do frontend
+- a próxima fatia pode focar em componentes grandes como `ChatCoachSession.tsx` com menos ruído de transporte
+
+## 2026-04-12 - Extrair helpers locais de mensagem e scroll de `ChatCoachSession.tsx`
+
+Status: aceito
+
+### Contexto
+
+Depois da limpeza do transporte em `services/`, o próximo hotspot visível do frontend continuava sendo `ChatCoachSession.tsx`, ainda concentrando helpers puros de mensagem, título, scroll e algumas operações repetidas de limpeza do composer.
+
+### Decisão
+
+- criar `frontend/src/components/chatCoachSessionHelpers.ts` para concentrar:
+  - montagem de `MessageDisplay`
+  - mapeamento das mensagens carregadas da conversa
+  - título padrão da conversa
+  - helpers puros de scroll
+- encapsular em callbacks locais do componente as operações repetidas de:
+  - append de mensagens
+  - limpeza do composer
+  - limpeza do snapshot do último feedback
+
+### Impacto
+
+- `ChatCoachSession.tsx` perde parte da repetição local sem alterar o fluxo do WebSocket
+- a próxima fatia no componente pode focar em transporte/estado de feedback sem carregar utilitários puros no mesmo arquivo
+- o hotspot do frontend segue sendo reduzido em slices pequenas e verificáveis
+
+## 2026-04-14 - Extrair o bootstrap de transporte de `ChatCoachSession.tsx` e encerrar o uso real da fachada `services/api`
+
+Status: aceito
+
+### Contexto
+
+Depois da divisão por domínio de `services/`, o `ChatCoachSession.tsx` ainda fazia localmente o bootstrap da conversa e a criação do `ChatWS`, e parte do frontend ainda podia teoricamente depender da fachada `services/api` mesmo ela já não sendo a melhor fronteira.
+
+### Decisão
+
+- criar `frontend/src/components/chatCoachSessionTransport.ts` para concentrar:
+  - bootstrap de conversa inicial
+  - carregamento das mensagens persistidas
+  - criação do `ChatWS` com `conversationId`
+- trocar `frontend/src/services/chatWs.ts` para consumir tipos direto de `apiChat`
+- concluir a migração dos imports do `frontend/src` para módulos por domínio, deixando `services/api` apenas como camada de compatibilidade
+
+### Impacto
+
+- `ChatCoachSession.tsx` perde mais um bloco de transporte e fica mais focado em estado visual e callbacks da tela
+- o frontend deixa de depender operacionalmente da fachada `services/api`
+- a próxima fatia pode focar no estado de feedback/autocomplete do `ChatCoachSession` sem reabrir a base de transporte
+
+## 2026-04-14 - Consolidar o estado de feedback/autocomplete de `ChatCoachSession.tsx`
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do transporte, `ChatCoachSession.tsx` ainda mantinha muitos `useState` e updates coordenados manualmente para os sinais de draft: score, issues, ghost suggestion, micro tip, suggested words, topic, intent e rewrite.
+
+### Decisão
+
+- criar `frontend/src/components/chatCoachSessionFeedback.ts` para concentrar:
+  - shape do estado de feedback
+  - estado inicial
+  - mapeamento de `DraftFeedbackEvent` para state local
+  - limpeza da ghost suggestion
+  - snapshot mínimo do feedback enviado
+- trocar o componente para usar um state object de feedback em vez de múltiplos setters independentes
+
+### Impacto
+
+- o componente perde parte da coordenação manual de `setState` ligada ao draft
+- a próxima fatia pode separar melhor autocomplete/composer ou teacher analysis em cima de uma base de estado mais coesa
+- o fluxo visual permanece o mesmo, mas a manutenção fica menos frágil
+
+## 2026-04-14 - Extrair o bloco visual do composer de `ChatCoachSession.tsx`
+
+Status: aceito
+
+### Contexto
+
+Depois da extração de transporte e da consolidação do estado de feedback, `ChatCoachSession.tsx` ainda carregava o JSX completo do composer, incluindo score bar, textarea, ghost suggestion, botão de envio e hint textual.
+
+### Decisão
+
+- criar `frontend/src/components/ChatCoachComposer.tsx` como componente visual dedicado para o bloco de entrada
+- manter no componente pai apenas os callbacks e o estado necessários para envio, autocomplete e foco
+- validar a fatia com `eslint` e `tsc -b`
+
+### Impacto
+
+- `ChatCoachSession.tsx` perde mais um bloco de UI repetitiva e fica mais legível
+- a próxima fatia pode focar no restante da coordenação do componente, especialmente teacher analysis ou message list, sem misturar o composer no mesmo arquivo
+- a UX permanece idêntica, mas a manutenção do bloco de entrada fica isolada
+
+## 2026-04-14 - Extrair a área de mensagens e streaming de `ChatCoachSession.tsx`
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do composer, `ChatCoachSession.tsx` ainda carregava um bloco grande de JSX para a lista de mensagens, a resposta em streaming e o botão `jump to latest`. Era um pedaço visual denso, mas com pouca lógica própria do container.
+
+### Decisão
+
+- criar `frontend/src/components/ChatCoachMessagePane.tsx` para concentrar:
+  - lista de mensagens
+  - estado visual da resposta em streaming
+  - botão `jump to latest`
+- manter no componente pai apenas os estados e callbacks necessários para scroll e streaming
+- validar a fatia com `eslint` e `tsc -b`
+
+### Impacto
+
+- `ChatCoachSession.tsx` perde mais um bloco relevante de UI e fica bem mais fácil de percorrer
+- a próxima fatia pode focar no header/settings/teacher analysis ou em reduzir ainda mais a coordenação do container
+- o comportamento visível permanece o mesmo, com menor custo cognitivo para manutenção
+
+
+## 2026-04-14 - Extrair o header e a tela de loading de `ChatCoachSession.tsx`
+
+Status: aceito
+
+### Contexto
+
+Depois da extração do composer e da área de mensagens, `ChatCoachSession.tsx` ainda mantinha no mesmo arquivo o header da tela e o estado visual de loading. Eram blocos puramente visuais, mas ainda poluíam a leitura do container principal.
+
+### Decisão
+
+- criar `frontend/src/components/ChatCoachHeader.tsx` para concentrar o cabeçalho da sessão
+- criar `frontend/src/components/ChatCoachLoading.tsx` para concentrar o estado de carregamento inicial
+- manter no container apenas a composição desses blocos e seus callbacks de alto nível
+- validar a fatia com `eslint` e `tsc -b`
+
+### Impacto
+
+- `ChatCoachSession.tsx` perde o restante do JSX incidental de chrome da tela
+- a próxima fatia pode atacar só a coordenação de estado/lifecycle sem carregar ruído visual no mesmo arquivo
+- a UX permanece idêntica, com menor custo cognitivo para manutenção
+
+## 2026-04-14 - Extrair a coordenação de sessão de `ChatCoachSession.tsx` para um hook dedicado
+
+Status: aceito
+
+### Contexto
+
+Mesmo depois das extrações visuais, `ChatCoachSession.tsx` ainda concentrava bootstrap da conversa, lifecycle do WebSocket, timers de autocomplete, scroll pinning, envio de mensagens e handlers de feedback. O componente já não era um hotspot de JSX, mas ainda era um hotspot de coordenação.
+
+### Decisão
+
+- criar `frontend/src/components/useChatCoachSession.ts` para concentrar:
+  - bootstrap da conversa
+  - lifecycle do `ChatWS`
+  - coordenação de draft, feedback, streaming e envio
+  - scroll pinning, foco do composer e timers de autocomplete
+  - estado do painel de settings
+- deixar `frontend/src/components/ChatCoachSession.tsx` como composição fina de UI sobre o hook
+- validar a fatia com `eslint` e `tsc -b`
+
+### Impacto
+
+- `ChatCoachSession.tsx` deixa de ser hotspot estrutural e vira principalmente um container declarativo
+- o estado operacional da sessão fica isolado em uma fronteira mais fácil de testar e evoluir
+- o próximo foco do frontend pode sair do Chat Coach e ir para os hotspots restantes, principalmente `LingvistSession.tsx` e o residual de `StudySession.tsx`
+
+## 2026-04-14 - Adotar Gemma 4 E4B como modelo local principal
+
+Status: aceito
+
+### Contexto
+
+O stack local já usava `llama.cpp`, mas o perfil principal ainda estava ancorado em Qwen 2.5 7B. Depois da análise do repositório, da GPU disponível localmente e da documentação oficial atual de Gemma, o melhor encaixe para o ambiente local de 8 GB de VRAM deixou de ser manter o modelo anterior como default.
+
+### Decisão
+
+- adotar `gemma-4-e4b-it` como perfil padrão de chat e teacher
+- manter Phi-3 Mini e Qwen 2.5 3B como perfis opcionais para latência ou experimentação
+- normalizar preferências persistidas antigas para evitar que perfis removidos continuem presos no banco
+- alinhar compose, docs operacionais e script oficial de download ao novo default
+
+### Impacto
+
+- o modelo local principal fica mais coerente com o hardware atual e com a família recomendada no estado atual da stack
+- o repositório passa a ter um default único e explícito para Chat Coach local
+- a evolução futura de perfis continua possível sem reabrir a configuração base
+
+## 2026-04-14 - Tornar o frontend reproduzível em ambiente híbrido Windows/WSL
+
+Status: aceito
+
+### Contexto
+
+O `vite build` local falhava porque o mesmo `frontend/node_modules` estava sendo materializado de um lado e executado do outro: install Linux e execução via `node.exe` do Windows. Isso quebrava a resolução do binário nativo do Rollup e deixava o build dependente de limpeza manual do diretório de dependências.
+
+### Decisão
+
+- separar `typecheck` de `build` no `frontend/package.json`
+- criar `scripts/frontend_tooling.sh` como caminho oficial para `install`, `lint`, `typecheck`, `build` e `check` em um container Node fixo
+- mover cache npm e `node_modules` desse fluxo para `.cache/frontend-tooling`
+- ajustar `frontend/Dockerfile` para instalar dependências de build reais e validar o bundle no mesmo contrato do CI
+
+### Impacto
+
+- o frontend volta a ter `lint`, `typecheck` e `build` reproduzíveis no mesmo ambiente local
+- o repositório deixa de depender de `frontend/node_modules` híbrido para validar mudanças
+- a superfície de troubleshooting local fica menor e mais previsível
+
+## 2026-04-14 - Reduzir o compose padrão e introduzir um smoke E2E curto no CI
+
+Status: aceito
+
+### Contexto
+
+O compose padrão ainda subia IA local por default, o que aumentava custo de setup e impedia aproveitar o stack mínimo em validações automáticas. Ao mesmo tempo, o quality gate ainda não exercitava nenhum fluxo real de frontend a ponta a ponta.
+
+### Decisão
+
+- mover `llm`, `llm_chat`, `llm_teacher` e `languagetool` para o perfil opcional `ai`
+- deixar `db`, `api` e `frontend` como stack padrão mínima
+- mover `tts` para perfil opcional `audio`
+- ajustar `quick_start.sh` para expor `--with-ai` e `--with-audio`
+- adicionar ao quality gate: `npm run typecheck`, `docker compose config --quiet` e um smoke E2E Chromium curto para onboarding/entrada no estudo
+- usar `global-setup.ts` baseado em requests HTTP, não em browser lançado só para healthcheck
+
+### Impacto
+
+- o stack local padrão sobe mais rápido e com menos dependências pesadas
+- o Chat Coach completo continua disponível, mas agora como escolha explícita de perfil operacional
+- a confiança do pipeline aumenta porque existe uma verificação E2E curta e barata antes de expandir para uma suíte maior
+
+
+## 2026-04-14 - Estabilizar fronteiras de plataforma entre banco, transporte frontend e endpoints de leitura
+
+Status: aceito
+
+### Contexto
+
+A revisão arquitetural mostrou três fragilidades de plataforma: o runtime principal usava `StaticPool` mesmo fora de SQLite em memória, o bundle do frontend ainda podia embutir `localhost` para API/TTS e os endpoints de `stats`/`settings` ainda criavam usuário demo como efeito colateral de leitura.
+
+### Decisão
+
+- restringir `StaticPool` a SQLite em memória e usar `pool_pre_ping` no caminho normal de PostgreSQL
+- padronizar o frontend para consumir rotas relativas (`/api` e `/api/tts`) no build de produção, mantendo proxy explícito do Vite no desenvolvimento
+- remover bootstrap implícito de usuário demo de `stats` e `settings`, exigindo `user_id` explícito na borda
+- mover lookup/serialização de insights por palavra/card para `api/app/services/insights_service.py`
+- mover a orquestração por modo de `CardSelectionService` para `api/app/services/card_selection_mode_service.py`
+
+### Impacto
+
+- o runtime principal fica coerente com PostgreSQL sem perder o caso especial de testes com SQLite em memória
+- o frontend passa a gerar artefato portátil atrás do proxy local sem embutir host fixo
+- leitura de stats/settings deixa de causar seed implícito e fica mais previsível para teste, cache e operação
+- analytics de palavra/card e seleção por modo ficam mais fáceis de evoluir sem inflar endpoints e services centrais
+
+## 2026-04-14 - Expandir o quality gate de E2E para a suíte Chromium completa
+
+Status: aceito
+
+### Contexto
+
+O CI já tinha um smoke curto de frontend, mas o repositório mantinha uma suíte Playwright bem maior sem execução oficial. Ao mesmo tempo, os testes ainda estavam parcialmente presos à UI antiga de meta de vocabulário por slider, embora a tela real já tivesse migrado para botões.
+
+### Decisão
+
+- promover a suíte Chromium completa (`tests/e2e/playwright.ci.config.ts`) ao quality gate oficial
+- manter `global-setup.ts` com healthchecks HTTP para reduzir ruído no bootstrap da suíte
+- alinhar os testes de criação de perfil à UI atual baseada em botões de meta de vocabulário
+- adicionar `data-testid` e `aria-pressed` explícitos para as metas no formulário de criação de perfil
+
+### Impacto
+
+- o CI passa a exercer o comportamento real de onboarding, estudo, Lingvist, insights e seleção de perfil
+- a suíte E2E fica alinhada com a UI atual e mais resiliente a mudanças superficiais de layout
+- o projeto reduz dependência de validação manual para fluxos críticos do frontend
+
+
+## 2026-04-14 - Fechar o hotspot residual de resolução em `CardSelectionService`
+
+Status: aceito
+
+### Contexto
+
+Depois da extração da orquestração por modo, `CardSelectionService` ainda mantinha internamente a resolução de card novo, review, fallback elegível e relearn. O arquivo já tinha melhorado, mas ainda concentrava mais detalhe operacional do que precisava.
+
+### Decisão
+
+- criar `api/app/services/card_selection_resolution_service.py`
+- mover para esse módulo a montagem do payload selecionado e os fluxos de `new`, `review`, `fallback` e `relearn`
+- manter `CardSelectionService` como orquestrador fino e compatível com os testes/integrações atuais
+
+### Impacto
+
+- `CardSelectionService` deixa de ser hotspot estrutural principal
+- a lógica de resolução de candidatos fica isolada para futuras mudanças de regra
+- a trilha Spec4/Lingvist continua validada sem mudança de contrato externo
+
+## 2026-04-14 - Dividir o `MockLLMProvider` em módulos por responsabilidade
+
+Status: aceito
+
+### Contexto
+
+Mesmo funcionando, `api/app/llm/mock_provider.py` continuava como um arquivo grande demais, misturando análise textual, geração de resposta conversacional, payloads de micro-eval/autocomplete e teacher analysis. Isso mantinha um hotspot técnico desnecessário no caminho de desenvolvimento local e testes.
+
+### Decisão
+
+- mover análise textual para `api/app/llm/mock_text_analysis.py`
+- mover geração de resposta conversacional e streaming para `api/app/llm/mock_chat_responses.py`
+- mover micro-eval, autocomplete e teacher analysis para `api/app/llm/mock_feedback_payloads.py`
+- deixar `api/app/llm/mock_provider.py` como adaptador fino para a interface de provider
+- incluir `tests/test_chat_coach_mock_provider.py` no quality gate principal
+
+### Impacto
+
+- o provider local fica muito mais fácil de percorrer e manter
+- a heurística mock continua disponível para desenvolvimento sem GPU, mas agora organizada por responsabilidade
+- a regressão de comportamento fica protegida pela suíte existente do mock provider e pela fábrica de LLM

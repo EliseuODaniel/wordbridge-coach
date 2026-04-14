@@ -1,12 +1,8 @@
 /** Progress Over Time Chart Component */
 
 import React, { useState, useEffect } from 'react';
-import {
-  insightsApi,
-  getApiErrorCode,
-  getApiErrorStatus,
-  type DailyStatsResponse,
-} from '../services/api';
+import { insightsApi, type DailyStatsResponse } from '../services/apiInsights';
+import { getApiErrorCode, getApiErrorStatus } from '../services/apiErrors';
 import { withRetry } from '../utils/apiUtils';
 
 interface ProgressOverTimeChartProps {

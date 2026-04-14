@@ -87,6 +87,39 @@ Notas do baseline:
 - quadragesima oitava microfatia aplicada: extração da atualização de progressão Spec4 pós-resposta para `api/app/services/card_selection_progress_service.py`, com limpeza do legado residual de `CardSelectionService` e cobertura própria no quality gate
 - quadragesima nona microfatia aplicada: consolidação do fechamento comum de seleção dentro de `CardSelectionService`, reduzindo duplicação entre os fluxos `new`, `review`, `relearn` e `fallback`
 - quinquagesima microfatia aplicada: remoção dos wrappers REST redundantes de `chat.py`, deixando os endpoints HTTP chamarem `chat_rest_service` diretamente
+- quinquagesima primeira microfatia aplicada: extração do bootstrap demo e do autofill de traduções Lingvist de `cards.py` para services dedicados, com cobertura focal própria e inclusão no quality gate
+- quinquagesima segunda microfatia aplicada: extração do fluxo legado de `/cards/next` para `api/app/services/card_next_service.py`, com cobertura focal própria e inclusão no quality gate
+- quinquagesima terceira microfatia aplicada: remoção dos wrappers locais redundantes de `cards.py`, deixando os endpoints chamarem diretamente os services de legado, Spec4 e Lingvist
+- quinquagesima quarta microfatia aplicada: extração da criação/listagem/remoção de conversas de `chat.py` para `api/app/services/chat_conversation_service.py`, com cobertura focal própria e inclusão no quality gate
+- quinquagesima quinta microfatia aplicada: extração do streaming do assistente e da geração com fallback de `teacher_analysis` de `chat.py` para `api/app/services/chat_generation_service.py`, com cobertura focal própria e wrappers compatíveis
+- quinquagesima sexta microfatia aplicada: extração do estado em memória de draft/throttle de `chat.py` para `api/app/services/chat_draft_state_service.py`, com cobertura focal própria e wrappers compatíveis
+- quinquagesima sétima microfatia aplicada: extração do lifecycle do endpoint WebSocket de `chat.py` para `api/app/services/chat_websocket_service.py`, com cobertura focal própria e manutenção do fluxo integrado
+- quinquagesima oitava microfatia aplicada: extração dos handlers de evento do WebSocket de `chat.py` para `api/app/services/chat_handler_service.py`, com cobertura focal própria e redução do wiring residual do endpoint
+- quinquagesima nona microfatia aplicada: extração dos adapters configurados por ambiente de `chat.py` para `api/app/services/chat_endpoint_adapter_service.py`, com cobertura focal própria e redução adicional das closures locais do endpoint
+- sexagesima microfatia aplicada: extração da montagem de `ChatHandlerDeps` de `chat.py` para `api/app/services/chat_handler_service.py`, reduzindo mais um bloco de wiring de alto nível do endpoint
+- sexagesima primeira microfatia aplicada: extração da montagem de `ChatWebSocketSessionDeps` de `chat.py` para `api/app/services/chat_websocket_service.py`, com limpeza adicional das aliases de contexto e redução final do wiring local do endpoint
+- sexagesima segunda microfatia aplicada: extração do cliente Axios e dos helpers de erro de `frontend/src/services/api.ts` para `frontend/src/services/apiClient.ts` e `frontend/src/services/apiErrors.ts`, mantendo `api.ts` como fachada compatível
+- sexagesima terceira microfatia aplicada: extração das APIs por domínio de `frontend/src/services/api.ts` para `apiCards.ts`, `apiUsers.ts`, `apiInsights.ts`, `apiChat.ts`, `apiLlmProfiles.ts` e `apiHealth.ts`, reduzindo `api.ts` a uma fachada curta de reexports
+- sexagesima quarta microfatia aplicada: migração dos consumidores do frontend para imports diretos por domínio (`apiCards`, `apiUsers`, `apiInsights`, `apiChat`, `apiLlmProfiles`, `apiHealth`, `apiErrors`), reduzindo o acoplamento remanescente com a fachada `api.ts`
+- sexagesima quinta microfatia aplicada: extração de helpers locais de mensagem/scroll em `frontend/src/components/chatCoachSessionHelpers.ts` e encapsulamento de callbacks repetidos do composer em `ChatCoachSession.tsx`
+- sexagesima sexta microfatia aplicada: extração do bootstrap da conversa e da criação do `ChatWS` para `frontend/src/components/chatCoachSessionTransport.ts`, além da remoção dos imports restantes de `services/api` no `frontend/src`
+- sexagesima sétima microfatia aplicada: consolidação do estado de feedback/autocomplete de `ChatCoachSession.tsx` em `chatCoachSessionFeedback.ts`, reduzindo a coordenação de sinais de draft espalhados no componente
+- sexagesima oitava microfatia aplicada: extração do bloco visual do composer de `ChatCoachSession.tsx` para `frontend/src/components/ChatCoachComposer.tsx`, reduzindo o peso do componente principal sem alterar a UX
+- sexagesima nona microfatia aplicada: extração da lista de mensagens, do streaming e do botão `jump to latest` de `ChatCoachSession.tsx` para `frontend/src/components/ChatCoachMessagePane.tsx`, reduzindo significativamente o peso do componente principal
+- septuagesima microfatia aplicada: extração do header e da tela de carregamento de `ChatCoachSession.tsx` para `frontend/src/components/ChatCoachHeader.tsx` e `frontend/src/components/ChatCoachLoading.tsx`, reduzindo o ruído visual residual do container
+- septuagesima primeira microfatia aplicada: extração da coordenação de sessão de `ChatCoachSession.tsx` para `frontend/src/components/useChatCoachSession.ts`, deixando o componente principal como composição fina de UI
+- septuagesima segunda microfatia aplicada: adoção do Gemma 4 E4B como perfil local principal, com normalização de defaults, docs e fallback seguro para preferências persistidas antigas
+- septuagesima terceira microfatia aplicada: extração da coordenação do `LingvistSession` para `frontend/src/components/useLingvistSession.ts` e `lingvistSessionHelpers.ts`, reduzindo o peso do container principal
+- septuagesima quarta microfatia aplicada: extração da coordenação do `StudySession` para `frontend/src/components/useStudySession.ts`, deixando a tela principal mais próxima de composição visual
+- septuagesima quinta microfatia aplicada: extração da coordenação do `UserSelection` para `frontend/src/components/useUserSelection.ts`, com formulários dedicados para criação e edição de perfil
+- septuagesima sexta microfatia aplicada: criação de `scripts/frontend_tooling.sh` e separação explícita de `typecheck`/`build`, estabilizando o fluxo local de frontend no ambiente híbrido Windows/WSL
+- septuagesima sétima microfatia aplicada: redução do stack padrão do compose para `db/api/frontend`, tornando TTS opcional via perfil `audio` e IA local opcional via perfil `ai`
+- septuagesima oitava microfatia aplicada: adição de smoke E2E Chromium ao quality gate e cobertura explícita de `typecheck`, `compose config` e `test_user_llm_preferences_service.py`
+- septuagesima nona microfatia aplicada: estabilização das fronteiras de plataforma com pool de banco dependente do backend, transporte frontend relativo (`/api` e `/api/tts`) e remoção do bootstrap implícito de usuário demo em `stats`/`settings`
+- octogesima microfatia aplicada: extração de insights por palavra/card para `api/app/services/insights_service.py` e extração da orquestração por modo para `api/app/services/card_selection_mode_service.py`
+- octogesima primeira microfatia aplicada: expansão do quality gate de E2E para a suíte Chromium completa e alinhamento dos testes de criação de perfil à nova UI de metas por botões
+- octogesima segunda microfatia aplicada: extração da resolução de novo/review/fallback/relearn de `CardSelectionService` para `api/app/services/card_selection_resolution_service.py`, fechando o hotspot residual do service principal
+- octogesima terceira microfatia aplicada: divisão do `MockLLMProvider` em `mock_text_analysis.py`, `mock_chat_responses.py` e `mock_feedback_payloads.py`, deixando o provider como adaptador fino e validado por suíte própria
 
 ## Fase 2: Limpeza estrutural
 
@@ -99,23 +132,23 @@ Notas do baseline:
 Prioridade alta:
 
 - [x] simplificar a entrada do frontend e a separação entre modos
-- [~] continuar reduzindo timers e coordenação local nas sessões de frontend, começando por `StudySession`
-- [~] continuar reduzindo coordenação espalhada no `ChatCoachSession`
-- [~] continuar reduzindo duplicação operacional no `LingvistSession`
-- [ ] revisar os serviços da API com maior acoplamento
+- [x] continuar reduzindo timers e coordenação local nas sessões de frontend, começando por `StudySession`
+- [x] continuar reduzindo coordenação espalhada no `ChatCoachSession`
+- [x] continuar reduzindo duplicação operacional no `LingvistSession`
+- [x] revisar os serviços da API com maior acoplamento
 - [~] continuar quebrando o fluxo WebSocket de `chat.py` em helpers menores e testáveis
 - [~] continuar removendo pressupostos de idioma do domínio de progressão
-- [ ] isolar melhor integrações de LLM local e LanguageTool
+- [~] isolar melhor integrações de LLM local e LanguageTool
 - [x] decidir e aplicar a extração do runtime/service próprio para o WebSocket
-- [~] continuar removendo pontos provisórios visíveis do frontend, começando pela seleção de perfil
+- [x] continuar removendo pontos provisórios visíveis do frontend, começando pela seleção de perfil
 
 ## Fase 4: Qualidade e confiança
 
-- [ ] alinhar testes ao comportamento realmente suportado
+- [x] alinhar testes ao comportamento realmente suportado
 - [~] manter suítes de backend com banco compartilhado em execução serial
-- [ ] revisar lacunas de cobertura nos fluxos críticos
+- [~] revisar lacunas de cobertura nos fluxos críticos
 - [ ] eliminar falsos positivos de documentação e scripts antigos
-- [~] consolidar quality gates locais e em CI para frontend e backend crítico
+- [x] consolidar quality gates locais e em CI para frontend, backend crítico e suíte Chromium de E2E
 - [~] ampliar cobertura focal de regras de domínio no backend, além de chat e Spec4
 
 ## Critérios de sucesso

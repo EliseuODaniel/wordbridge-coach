@@ -28,19 +28,19 @@ class LLMProfile(BaseModel):
 # Available LLM profiles
 # Each profile maps to a specific llama.cpp service (llm, llm_chat, llm_teacher)
 LLM_PROFILES: Dict[str, LLMProfile] = {
-    "qwen2.5-7b-instruct": LLMProfile(
-        id="qwen2.5-7b-instruct",
-        name="Qwen2.5 7B Instruct",
+    "gemma-4-e4b-it": LLMProfile(
+        id="gemma-4-e4b-it",
+        name="Gemma 4 E4B Instruct",
         provider="llamacpp",
-        model="qwen2.5-7b-instruct",
+        model="gemma-4-e4b-it",
         service_url="http://llm:8080",
         context_window=4096,
         supports_streaming=True,
         supports_json=True,
-        estimated_vram="5.4GB",
+        estimated_vram="5.3GB",
         quality_tier="high",
         speed_tier="medium",
-        description="High-quality Chinese/English bilingual model, good for teaching"
+        description="Gemma 4 E4B quantized for llama.cpp; best default balance for the local 8GB VRAM setup"
     ),
     "phi-3-mini-4k-instruct": LLMProfile(
         id="phi-3-mini-4k-instruct",
@@ -73,8 +73,8 @@ LLM_PROFILES: Dict[str, LLMProfile] = {
 }
 
 # Default profiles (used when user has no preference set)
-DEFAULT_CHAT_PROFILE = "qwen2.5-7b-instruct"
-DEFAULT_TEACHER_PROFILE = "qwen2.5-7b-instruct"
+DEFAULT_CHAT_PROFILE = "gemma-4-e4b-it"
+DEFAULT_TEACHER_PROFILE = "gemma-4-e4b-it"
 
 
 def get_profile(profile_id: str) -> LLMProfile:

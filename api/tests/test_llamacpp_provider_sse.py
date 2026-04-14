@@ -25,7 +25,7 @@ async def test_llamacpp_provider_chat_stream_sse():
 
         # Parse request body
         payload = json.loads(request.content)
-        assert payload["model"] == "qwen2.5-7b-instruct"
+        assert payload["model"] == "gemma-4-e4b-it"
         assert payload["stream"] is True
         assert "lesson_frame" not in payload  # Should be filtered
 
@@ -46,7 +46,7 @@ data: [DONE]
     transport = httpx.MockTransport(handler)
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
-        model="qwen2.5-7b-instruct",
+        model="gemma-4-e4b-it",
         timeout=60
     )
     provider.client = httpx.AsyncClient(transport=transport)
@@ -93,7 +93,7 @@ async def test_llamacpp_provider_filters_generation_config():
     transport = httpx.MockTransport(handler)
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
-        model="qwen2.5-7b-instruct"
+        model="gemma-4-e4b-it"
     )
     provider.client = httpx.AsyncClient(transport=transport)
 
@@ -129,7 +129,7 @@ async def test_llamacpp_provider_strict_mode_raises():
     transport = httpx.MockTransport(handler)
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
-        model="qwen2.5-7b-instruct",
+        model="gemma-4-e4b-it",
         strict=True  # STRICT MODE
     )
     provider.client = httpx.AsyncClient(transport=transport)
@@ -155,7 +155,7 @@ async def test_llamacpp_provider_non_strict_fallback():
     transport = httpx.MockTransport(handler)
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
-        model="qwen2.5-7b-instruct",
+        model="gemma-4-e4b-it",
         strict=False  # NON-STRICT
     )
     provider.client = httpx.AsyncClient(transport=transport)
@@ -178,7 +178,7 @@ async def test_llamacpp_provider_micro_eval_heuristic():
     """Test micro_eval uses heuristic (not MockLLMProvider directly)."""
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
-        model="qwen2.5-7b-instruct"
+        model="gemma-4-e4b-it"
     )
 
     result = await provider.micro_eval(
@@ -199,7 +199,7 @@ async def test_llamacpp_provider_autocomplete_heuristic():
     """Test autocomplete uses heuristic (not MockLLMProvider directly)."""
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
-        model="qwen2.5-7b-instruct"
+        model="gemma-4-e4b-it"
     )
 
     result = await provider.autocomplete(

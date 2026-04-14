@@ -1,7 +1,7 @@
 /** Word Theme Badge Component */
 
 import React, { useState, useEffect } from 'react';
-import { insightsApi } from '../services/api';
+import { insightsApi } from '../services/apiInsights';
 import { withRetry } from '../utils/apiUtils';
 
 interface WordThemeBadgeProps {

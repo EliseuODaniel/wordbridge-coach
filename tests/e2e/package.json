@@ -4,6 +4,8 @@
   "description": "E2E tests for FillTheWord using Playwright",
   "scripts": {
     "test": "playwright test",
+    "test:smoke": "playwright test --config=playwright.smoke.config.ts",
+    "test:ci": "playwright test --config=playwright.ci.config.ts",
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
     "test:ui": "playwright test --ui",

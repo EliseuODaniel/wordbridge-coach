@@ -8,7 +8,7 @@ test.describe('Word Insights and Statistics', () => {
     // Create profile with unique name
     const uniqueName = `InsightsTestUser${Date.now()}`;
     await page.fill('[data-testid="profile-create-name"]', uniqueName);
-    await page.fill('[data-testid="profile-goal-slider"]', '100');
+    await page.click('[data-testid="profile-goal-100"]');
     await page.click('[data-testid="profile-create-start"]');
 
     // Wait for navigation with faster approach
@@ -317,7 +317,7 @@ test.describe('Word Insights and Statistics', () => {
     // Create profile with unique name
     const uniqueName = `LoadingTestUser${Date.now()}`;
     await page.fill('[data-testid="profile-create-name"]', uniqueName);
-    await page.fill('[data-testid="profile-goal-slider"]', '100');
+    await page.click('[data-testid="profile-goal-100"]');
     await page.click('[data-testid="profile-create-start"]');
 
     // Wait for study session with faster approach

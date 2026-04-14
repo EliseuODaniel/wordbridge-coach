@@ -1,7 +1,7 @@
 /** Card Display Component */
 
 import React from 'react';
-import type { CardResponse } from '../services/api';
+import type { CardResponse } from '../services/apiCards';
 import GrammarBadge from './GrammarBadge';
 import WordThemeBadge from './WordThemeBadge';
 
