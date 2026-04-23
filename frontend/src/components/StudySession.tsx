@@ -6,6 +6,7 @@ import AnswerInput from './AnswerInput';
 import FeedbackMessage from './FeedbackMessage';
 import SessionCounter from './SessionCounter';
 import InsightsSection from './InsightsSection';
+import LearningContextPanel from './LearningContextPanel';
 import { useStudySession } from './useStudySession';
 
 type TrainingMode = 'spec4' | 'lingvist' | 'chat';
@@ -38,7 +39,7 @@ return (
         <div className="flex justify-between items-center mb-8">
           <div className="text-center flex-1">
             <h1 className="text-4xl font-extrabold text-gray-100 mb-2">
-              FillTheWord
+              WordBridge Coach
             </h1>
             <p className="text-gray-500 text-sm">
               Spec4 Mode • Multiple Choice Training
@@ -66,6 +67,8 @@ return (
         {/* Main Content */}
         {currentCard ? (
           <div className="space-y-8">
+            <LearningContextPanel context={currentCard.learning_context} />
+
             {/* Card Display */}
             <CardDisplay
               card={currentCard}

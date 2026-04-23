@@ -61,7 +61,7 @@ def create_sample_data_if_needed(db: Session) -> None:
             demo_user = User(
                 id=str(uuid.uuid4()),
                 username="demo",
-                email="demo@filltheword.com",
+                email="demo@wordbridge.coach",
                 native_language_id=pt_lang.id,
                 target_language_id=en_lang.id,
                 language_preference="pt",

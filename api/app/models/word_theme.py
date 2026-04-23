@@ -1,4 +1,4 @@
-"""Word theme model for FillTheWord analytics"""
+"""Word theme model for WordBridge Coach analytics."""
 
 from sqlalchemy import Column, String, Text, DateTime, Boolean, Index
 from sqlalchemy.dialects.postgresql import UUID

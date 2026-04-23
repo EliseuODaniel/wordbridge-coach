@@ -174,12 +174,53 @@ async def test_llamacpp_provider_non_strict_fallback():
 
 
 @pytest.mark.asyncio
-async def test_llamacpp_provider_micro_eval_heuristic():
-    """Test micro_eval uses heuristic (not MockLLMProvider directly)."""
+async def test_llamacpp_provider_micro_eval_uses_structured_output():
+    """Test micro_eval requests schema-constrained JSON and parses it."""
+    def handler(request):
+        payload = json.loads(request.content)
+        assert payload["response_format"]["type"] == "json_schema"
+        assert payload["response_format"]["schema"]["type"] == "object"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "grammar_score": 84,
+                                    "spelling_score": 96,
+                                    "naturalness_score": 78,
+                                    "lesson_alignment_score": 88,
+                                    "top_issues": [
+                                        {
+                                            "category": "grammar",
+                                            "title": "Verb tense",
+                                            "explanation": "Use the past form.",
+                                            "highlight_text": "go",
+                                            "suggestions": ["went"],
+                                        }
+                                    ],
+                                    "suggested_next_words": ["to"],
+                                    "micro_tip": "Check the verb after 'yesterday'.",
+                                    "self_check_prompt": "What should happen to the verb in a past-time sentence?",
+                                    "encouragement": "Your idea is clear; now refine the verb.",
+                                    "topic": "travel",
+                                    "intent": "past_experience",
+                                    "rewrite": "I went to market yesterday",
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
         model="gemma-4-e4b-it"
     )
+    provider.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
     result = await provider.micro_eval(
         context="",
@@ -188,19 +229,40 @@ async def test_llamacpp_provider_micro_eval_heuristic():
         student_profile={}
     )
 
-    # Should return heuristic result (with issues)
-    assert "grammar_score" in result
-    assert "spelling_score" in result
-    assert "top_issues" in result
+    assert result["grammar_score"] == 84
+    assert result["top_issues"][0]["highlight_text"] == "go"
+    assert result["self_check_prompt"] is not None
 
 
 @pytest.mark.asyncio
-async def test_llamacpp_provider_autocomplete_heuristic():
-    """Test autocomplete uses heuristic (not MockLLMProvider directly)."""
+async def test_llamacpp_provider_autocomplete_uses_structured_output():
+    """Test autocomplete requests schema-constrained JSON and parses it."""
+    def handler(request):
+        payload = json.loads(request.content)
+        assert payload["response_format"]["type"] == "json_schema"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "ghost_suggestion": "to the park",
+                                    "reason": "Keeps the learner moving without finishing the whole sentence.",
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
     provider = LlamaCppLLMProvider(
         base_url="http://test:8080/v1",
         model="gemma-4-e4b-it"
     )
+    provider.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
     result = await provider.autocomplete(
         context="",
@@ -209,8 +271,7 @@ async def test_llamacpp_provider_autocomplete_heuristic():
         student_profile={}
     )
 
-    # Should return heuristic result
-    assert "ghost_suggestion" in result
+    assert result["ghost_suggestion"] == "to the park"
     assert "reason" in result
 
 
@@ -234,11 +295,11 @@ if __name__ == "__main__":
     asyncio.run(test_llamacpp_provider_non_strict_fallback())
     print("✅ test_llamacpp_provider_non_strict_fallback PASSED")
 
-    asyncio.run(test_llamacpp_provider_micro_eval_heuristic())
-    print("✅ test_llamacpp_provider_micro_eval_heuristic PASSED")
+    asyncio.run(test_llamacpp_provider_micro_eval_uses_structured_output())
+    print("✅ test_llamacpp_provider_micro_eval_uses_structured_output PASSED")
 
-    asyncio.run(test_llamacpp_provider_autocomplete_heuristic())
-    print("✅ test_llamacpp_provider_autocomplete_heuristic PASSED")
+    asyncio.run(test_llamacpp_provider_autocomplete_uses_structured_output())
+    print("✅ test_llamacpp_provider_autocomplete_uses_structured_output PASSED")
 
     print("\n" + "=" * 60)
     print("✅ All tests passed!")

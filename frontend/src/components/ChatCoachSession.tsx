@@ -33,10 +33,14 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     messageListRef,
     messages,
     microTip,
+    selfCheckPrompt,
+    encouragement,
     openSettings,
     rewrite,
     showJumpToLatest,
     suggestedNextWords,
+    lessonFrame,
+    studentProfile,
     teacherAnalysis,
     textareaRef,
     title,
@@ -86,10 +90,14 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
             draftText={draftText}
             issues={issues}
             micro_tip={microTip}
+            self_check_prompt={selfCheckPrompt}
+            encouragement={encouragement}
             suggested_next_words={suggestedNextWords}
             topic={topic}
             intent={intent}
             rewrite={rewrite}
+            lessonFrame={lessonFrame}
+            studentProfile={studentProfile}
             teacherAnalysis={teacherAnalysis}
           />
         </div>

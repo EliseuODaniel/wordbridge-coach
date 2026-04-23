@@ -6,7 +6,7 @@ from app.api.api_v1.endpoints import chat as chat_endpoint
 from app.services import chat_runtime_service
 from app.core.database import SessionLocal
 from app.main import app
-from app.models import ChatConversation, ChatMessage, Language, User
+from app.models import ChatConversation, ChatLessonHistory, ChatMessage, Language, User
 
 
 class FakeChatProvider:
@@ -49,23 +49,30 @@ class FakeChatProvider:
 class FakeTeacherProvider:
     model = "fake-teacher"
 
-    async def generate_teacher_analysis(self, user_message, context, lesson_frame):
+    async def generate_teacher_analysis(self, user_message, context, lesson_frame, student_profile):
         assert user_message == "I go to school yesterday"
-        assert context == "I go to school yesterday"
+        assert "I go to school yesterday" in context
         assert lesson_frame["topic"] == "travel"
+        assert student_profile["feedback_language"] == "Portuguese"
         return {
             "teacher_summary": "Good attempt. Watch the past tense.",
             "rewrite": "I went to school yesterday.",
-            "corrections": [{"mistake": "go", "correction": "went"}],
+            "corrections": [{"mistake": "go", "fix": "went", "why": "Use the past form after 'yesterday'."}],
+            "strengths": ["The message is easy to understand."],
+            "focus_areas": ["Switch irregular verbs to past tense in past-time sentences."],
             "next_practice": ["past simple"],
+            "reflection_question": "Which word in your sentence signals that the action happened in the past?",
+            "encouragement": "You are very close. Try the same idea once more with the corrected verb.",
         }
 
 
 def test_chat_websocket_user_message_flow(db, monkeypatch):
     session = SessionLocal()
     code_seed = uuid.uuid4().hex
-    native_code = f"q{code_seed[0]}"
-    target_code = f"q{code_seed[1] if code_seed[1] != code_seed[0] else code_seed[2]}"
+    native_suffix = code_seed[0]
+    target_suffix = next(char for char in code_seed[1:] if char != native_suffix)
+    native_code = f"q{native_suffix}"
+    target_code = f"q{target_suffix}"
 
     native_language = Language(
         code=native_code,
@@ -94,7 +101,7 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
     conversation = ChatConversation(
         user=user,
         title="WebSocket Chat",
-        student_profile_json={"cefr_level": "A2"},
+        student_profile_json={"cefr_level": "A2", "feedback_language": "Portuguese"},
         lesson_frame_json={"cefr_target": "A2", "topic": "travel", "learning_goal": "past_simple"},
         session_summary="session-summary",
     )
@@ -159,6 +166,21 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
         assert draft_feedback["issues"][0]["suggestions"] == ["went"]
         assert assistant_done["full_content"] == "Nice! What happened next?"
         assert teacher_analysis["analysis"]["rewrite"] == "I went to school yesterday."
+        assert teacher_analysis["student_profile"]["feedback_language"] == "Portuguese"
+        assert teacher_analysis["student_profile"]["pedagogical_metrics"]["recommended_pace"] in {
+            "stabilize",
+            "balance",
+            "accelerate",
+        }
+        assert teacher_analysis["lesson_frame"]["primary_focus"] == (
+            "Switch irregular verbs to past tense in past-time sentences."
+        )
+        assert teacher_analysis["lesson_frame"]["diagnostics"]["difficulty_signal"] in {
+            "support_needed",
+            "on_target",
+            "ready_to_push",
+        }
+        assert "Longitudinal learner profile" in teacher_analysis["session_summary"]
 
         verify_session = SessionLocal()
         try:
@@ -175,6 +197,17 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
                 persisted_messages[0].metadata_json["teacher_analysis"]["teacher_summary"]
                 == "Good attempt. Watch the past tense."
             )
+            refreshed_conversation = verify_session.query(ChatConversation).filter(
+                ChatConversation.id == conversation_id
+            ).first()
+            assert refreshed_conversation.student_profile_json["recent_topics"][0] == "travel"
+            lesson_history = (
+                verify_session.query(ChatLessonHistory)
+                .filter(ChatLessonHistory.conversation_id == conversation_id)
+                .all()
+            )
+            assert len(lesson_history) == 1
+            assert lesson_history[0].lesson_frame_json["topic"] == "travel"
         finally:
             verify_session.close()
     finally:

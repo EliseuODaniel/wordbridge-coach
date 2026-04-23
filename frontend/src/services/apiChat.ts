@@ -81,6 +81,8 @@ export interface DraftFeedbackEvent {
   issues: DraftIssue[];
   ghost_suggestion: string | null;
   micro_tip?: string | null;
+  self_check_prompt?: string | null;
+  encouragement?: string | null;
   suggested_next_words: string[];
   topic?: string | null;
   intent?: string | null;
@@ -132,11 +134,18 @@ export interface TeacherAnalysisEvent {
   conversation_id: string;
   user_message_id: string;
   analysis: {
-    rewrite: string;
+    rewrite: string | null;
     corrections: Correction[];
     teacher_summary: string;
+    strengths: string[];
+    focus_areas: string[];
     next_practice: string[];
+    reflection_question: string | null;
+    encouragement: string | null;
   };
+  student_profile: JsonObject;
+  lesson_frame: JsonObject;
+  session_summary: string;
 }
 
 export type WebSocketServerEvent =

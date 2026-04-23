@@ -5,12 +5,14 @@ from fastapi import HTTPException, status
 from app.schemas.card import CardResponse
 from app.services.card_response_service import resolve_request_user_id
 from app.services.card_selection import CardSelectionService
+from app.services.chat_profile_service import load_cross_mode_learning_context
 from app.services.lingvist_payload_service import get_card_memory_stage
 
 
 def build_spec4_card_response(db, user_id: str, card_context: dict) -> CardResponse:
     """Serialize the selected Spec4 card context into the stable API payload."""
     memory_stage = get_card_memory_stage(db, user_id, card_context["card_id"])
+    learning_context = load_cross_mode_learning_context(db, user_id, mode="spec4")
     return CardResponse(
         card_id=card_context["card_id"],
         word_id=card_context["word_id"],
@@ -25,6 +27,7 @@ def build_spec4_card_response(db, user_id: str, card_context: dict) -> CardRespo
         audio_word_url=card_context["audio_word_url"],
         audio_sentence_url=card_context["audio_sentence_url"],
         sentence_source=card_context.get("sentence_source"),
+        learning_context=learning_context,
     )
 
 

@@ -11,12 +11,27 @@ def test_build_chat_system_prompt_uses_lesson_frame_defaults():
         "cefr_target": "B1",
         "topic": "travel",
         "learning_goal": "asking_for_directions",
-    })
+    }, {
+        "feedback_language": "Portuguese",
+        "strengths": ["Clear openings"],
+        "weaknesses": ["Past tense"],
+        "scaffolding_level": "guided_practice",
+        "pedagogical_metrics": {
+            "retention_band": "building",
+            "difficulty_signal": "on_target",
+            "review_pressure": "medium",
+            "recommended_pace": "balance",
+        },
+    }, "Longitudinal learner profile")
 
     assert "B1" in prompt
     assert "travel" in prompt
     assert "asking_for_directions" in prompt
     assert "Always ask a follow-up question" in prompt
+    assert "Portuguese" in prompt
+    assert "Longitudinal learner profile" in prompt
+    assert "Retention signal: building" in prompt
+    assert "Review pressure: medium" in prompt
     assert "No examples, quotes, or meta-commentary" in prompt
 
 
@@ -36,7 +51,11 @@ def test_build_teacher_analysis_fallback_truncates_error_reason():
 
     assert fallback["rewrite"] is None
     assert fallback["corrections"] == []
+    assert fallback["strengths"] == []
+    assert fallback["focus_areas"] == []
     assert fallback["next_practice"] == []
+    assert fallback["reflection_question"] is None
+    assert fallback["encouragement"] is None
     assert len(fallback["debug_reason"]) == 100
     assert fallback["teacher_summary"].startswith("Teacher analysis failed:")
 

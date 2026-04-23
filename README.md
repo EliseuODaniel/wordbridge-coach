@@ -1,6 +1,6 @@
-# FillTheWord
+# WordBridge Coach
 
-Aplicação local para treino de vocabulário com lacunas, repetição espaçada, áudio local e modos extras de estudo.
+Aplicação local para treino de vocabulário com cards, cloze, repetição espaçada, áudio local e coaching com LLM.
 
 ## O que existe hoje
 
@@ -21,6 +21,8 @@ Aplicação local para treino de vocabulário com lacunas, repetição espaçada
 - [`docs/TESTING.md`](docs/TESTING.md)
 - [`docs/LOCAL_LLM_SETUP.md`](docs/LOCAL_LLM_SETUP.md)
 - [`docs/CODEX_SETUP.md`](docs/CODEX_SETUP.md)
+
+O projeto se chamava `FillTheWord`, mas o escopo atual já é mais amplo do que treino de lacunas. O branding oficial passa a ser `WordBridge Coach`, enquanto alguns identificadores internos legados (`filltheword_*`) continuam por compatibilidade operacional.
 
 ## Quick start
 
@@ -104,7 +106,7 @@ O bundle de produção do frontend agora usa rotas relativas para API e TTS (`/a
 ## Estrutura principal
 
 ```text
-filltheword/
+wordbridge-coach/
 ├── api/
 ├── frontend/
 ├── tts/
@@ -117,4 +119,4 @@ filltheword/
 
 ## Situação atual
 
-O projeto está em fase de limpeza de governança e preparação para refatoração. A base funcional existe, mas a documentação antiga foi consolidada para reduzir drift e duplicação.
+O produto já funciona como um treinador local multimodal de vocabulário. A base funcional existe e a documentação oficial foi consolidada para reduzir drift e duplicação.

@@ -1,7 +1,7 @@
 import { request, FullConfig } from '@playwright/test';
 
 async function globalSetup(config: FullConfig) {
-  console.log('🚀 Setting up FillTheWord E2E test environment...');
+  console.log('🚀 Setting up WordBridge Coach E2E test environment...');
 
   // Wait for services to be ready
   const baseURL = config.webServer?.baseURL || process.env.BASE_URL || 'http://localhost:3007';

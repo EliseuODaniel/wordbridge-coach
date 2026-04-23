@@ -1,4 +1,4 @@
-"""Settings endpoints for FillTheWord."""
+"""Settings endpoints for WordBridge Coach."""
 
 from typing import Optional
 

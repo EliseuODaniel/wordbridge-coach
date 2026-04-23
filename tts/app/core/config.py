@@ -1,4 +1,4 @@
-"""Configuration settings for FillTheWord TTS Service"""
+"""Configuration settings for the WordBridge Coach TTS service."""
 
 from pydantic_settings import BaseSettings
 from typing import Dict, Any

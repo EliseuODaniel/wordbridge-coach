@@ -2,6 +2,14 @@
 
 Data de início desta nova fase: 2026-03-23
 
+## Status de retomada em 2026-04-22
+
+- branding público renomeado de `FillTheWord` para `WordBridge Coach`
+- repositório GitHub renomeado para `EliseuODaniel/wordbridge-coach`
+- workspace local movido para `/home/edann/projects/wordbridge-coach`
+- `api/test-runner.sh` e docs de teste foram ajustados para continuar funcionando após a mudança de pasta
+- a próxima sessão deve partir do worktree atual na branch `codex/refactor-local-platform-quality`, não de um estado limpo hipotético
+
 ## Objetivo
 
 Refatorar o projeto com segurança, reduzindo complexidade e melhorando legibilidade, testabilidade e onboarding.
@@ -33,8 +41,8 @@ Notas do baseline:
 - `frontend lint`: OK depois das fatias de hooks/efeitos e tipagem de erros/contratos
 - `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
 - `api/.venv` local criado para testes de backend
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_spec4_card_selection.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_utilities.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/integration/test_spec4_card_selection.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_utilities.py -q`: OK
 - `python3 -m py_compile api/app/api/api_v1/endpoints/chat.py api/tests/test_chat_utilities.py`: OK
 - `cd api && TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test ./test-runner.sh --spec4`: OK
 - primeira microfatia aplicada: alinhamento do setup operacional e simplificacao do shell inicial do frontend
@@ -120,6 +128,13 @@ Notas do baseline:
 - octogesima primeira microfatia aplicada: expansão do quality gate de E2E para a suíte Chromium completa e alinhamento dos testes de criação de perfil à nova UI de metas por botões
 - octogesima segunda microfatia aplicada: extração da resolução de novo/review/fallback/relearn de `CardSelectionService` para `api/app/services/card_selection_resolution_service.py`, fechando o hotspot residual do service principal
 - octogesima terceira microfatia aplicada: divisão do `MockLLMProvider` em `mock_text_analysis.py`, `mock_chat_responses.py` e `mock_feedback_payloads.py`, deixando o provider como adaptador fino e validado por suíte própria
+- octogesima quarta microfatia aplicada: adoção de structured outputs pedagógicos no Chat Coach para `micro_eval`, autocomplete e `teacher_analysis`, com fallback seguro para o mock e sidebar enriquecida com sinais cognitivos, metacognitivos e motivacionais
+- octogesima quinta microfatia aplicada: fechamento do lookahead real do Lingvist com ordenação explícita por frequência, escolha ponderada dentro do pool e cobertura focal para a nova variedade controlada
+- octogesima sexta microfatia aplicada: criação de `chat_profile_service.py` para derivar memória pedagógica longitudinal de `User` + histórico recente de `teacher_analysis`, sem nova tabela e com atualização a cada turno
+- octogesima sétima microfatia aplicada: alinhamento do Chat Coach ao idioma do aluno e ao perfil longitudinal em prompts, payloads WebSocket e sidebar de "coach memory", conectando analytics, scaffolding e feedback entre sessões
+- octogesima oitava microfatia aplicada: introdução de `pedagogical_state` explícito, `lesson_frame` adaptativo por turno e snapshots persistidos em `chat_lesson_history`, reaproveitando a tabela já existente em vez de abrir nova árvore de estado
+- octogesima nona microfatia aplicada: extensão do contrato WebSocket de `teacher_analysis` com `lesson_frame` atualizado e integração de `learning_context` compartilhado entre Chat Coach, Spec4 e Lingvist, com painéis visuais dedicados no frontend e cobertura focal nova
+- nonagesima microfatia aplicada: introdução de `pedagogical_metrics` explícitos derivados de progresso real (`UserCardState`, `ReviewEvent`, `UserSessionStats`), projeção desses sinais em `lesson_frame.diagnostics` e `learning_context`, calibração adaptativa do perfil Lingvist e estabilização do E2E com seletor dedicado para o input inline
 
 ## Fase 2: Limpeza estrutural
 
@@ -150,6 +165,8 @@ Prioridade alta:
 - [ ] eliminar falsos positivos de documentação e scripts antigos
 - [x] consolidar quality gates locais e em CI para frontend, backend crítico e suíte Chromium de E2E
 - [~] ampliar cobertura focal de regras de domínio no backend, além de chat e Spec4
+- [x] rerodar localmente os specs Playwright focais de `StudySession` e `LingvistSession` quando houver runtime Node/Playwright estável na thread
+- [x] validar novamente backend, frontend, test-runner e Playwright focal depois do rename público e da mudança do workspace
 
 ## Critérios de sucesso
 
@@ -157,3 +174,6 @@ Prioridade alta:
 - menos arquivos concorrendo como fonte de verdade
 - documentação compatível com o código atual
 - refatorações futuras divididas em fatias pequenas e verificáveis
+- estado pedagógico compartilhado entre modos sem depender de memória implícita ou heurística escondida no frontend
+- adaptação pedagógica guiada por sinais explícitos de retenção, pressão de review e pacing, e não só por heurísticas textuais implícitas
+- próxima retomada conseguir se orientar pelos docs oficiais sem depender da memória desta thread

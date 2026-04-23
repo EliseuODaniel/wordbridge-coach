@@ -1,4 +1,4 @@
-"""TTS endpoints for FillTheWord"""
+"""TTS endpoints for WordBridge Coach."""
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Response, Query, Path
@@ -252,7 +252,7 @@ async def health_check():
         tts_service = get_tts_service()
         return {
             "status": "healthy",
-            "service": "FillTheWord TTS Service",
+            "service": "WordBridge Coach TTS Service",
             "cache_path": settings.AUDIO_CACHE_PATH,
             "supported_languages": settings.SUPPORTED_LANGUAGES
         }

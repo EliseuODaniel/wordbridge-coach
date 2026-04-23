@@ -5,6 +5,8 @@ export interface ChatFeedbackState {
   issues: DraftIssue[];
   ghostSuggestion: string | null;
   microTip: string | null;
+  selfCheckPrompt: string | null;
+  encouragement: string | null;
   suggestedNextWords: string[];
   topic: string | null;
   intent: string | null;
@@ -21,6 +23,8 @@ export const initialChatFeedbackState: ChatFeedbackState = {
   issues: [],
   ghostSuggestion: null,
   microTip: null,
+  selfCheckPrompt: null,
+  encouragement: null,
   suggestedNextWords: [],
   topic: null,
   intent: null,
@@ -33,6 +37,8 @@ export const buildChatFeedbackState = (event: DraftFeedbackEvent): ChatFeedbackS
     issues: event.issues,
     ghostSuggestion: event.ghost_suggestion,
     microTip: event.micro_tip || null,
+    selfCheckPrompt: event.self_check_prompt || null,
+    encouragement: event.encouragement || null,
     suggestedNextWords: event.suggested_next_words || [],
     topic: event.topic || null,
     intent: event.intent || null,

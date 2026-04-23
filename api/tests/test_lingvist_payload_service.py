@@ -68,6 +68,20 @@ def test_build_lingvist_card_response_uses_enrichment_dependencies(monkeypatch):
         "get_user_target_language_code",
         lambda db, user_id, default="en": "fr",
     )
+    monkeypatch.setattr(
+        lingvist_payload_service,
+        "load_cross_mode_learning_context",
+        lambda db, user_id, mode: {
+            "mode": mode,
+            "cefr_level": "A2",
+            "support_level": "guided_practice",
+            "current_focus": "Use past simple after yesterday",
+            "session_goal": "stabilize past-time verbs in short personal sentences",
+            "topic": "travel",
+            "feedback_language": "Portuguese",
+            "why_this_now": "High-frequency cloze practice to stabilize the target pattern before freer use.",
+        },
+    )
 
     autofill_calls = []
 
@@ -92,3 +106,4 @@ def test_build_lingvist_card_response_uses_enrichment_dependencies(monkeypatch):
     assert payload.word_translation_pt == "livro"
     assert payload.audio_word_url.endswith("lang=fr")
     assert payload.micro_progress.current == 1
+    assert payload.learning_context.current_focus == "Use past simple after yesterday"

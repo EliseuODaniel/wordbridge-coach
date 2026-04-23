@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Seed data script for FillTheWord MVP
+Seed data script for WordBridge Coach
 Creates initial languages, words, sentences, cards, and demo user with proper UUIDs
 """
 
@@ -1115,7 +1115,7 @@ def create_demo_user(db: Session):
     demo_user = User(
         id=uuid.uuid4(),
         username="demo",
-        email="demo@filltheword.com",
+        email="demo@wordbridge.coach",
         native_language_id=pt_lang.id,  # Portuguese: native language
         target_language_id=en_lang.id,   # English: learning target
         language_preference="pt",        # UI in Portuguese
@@ -1780,12 +1780,12 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
 def main():
     """Main seed function"""
     import argparse
-    parser = argparse.ArgumentParser(description='Seed FillTheWord database')
+    parser = argparse.ArgumentParser(description='Seed WordBridge Coach database')
     parser.add_argument('--reset', action='store_true', help='Reset all data before seeding')
     parser.add_argument('--full', action='store_true', help='Full seed: create 10k vocabulary from WordFrequency')
     args = parser.parse_args()
 
-    print("Starting FillTheWord seed data creation...")
+    print("Starting WordBridge Coach seed data creation...")
     if args.reset:
         print("🔄 Reset mode: cleaning existing data...")
     if args.full:

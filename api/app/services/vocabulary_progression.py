@@ -10,6 +10,11 @@ from app.models import (
     UserFrequencyProgress, UserSessionStats, WordFrequency, Language
 )
 from app.models.sentence import SourceType
+from app.services.lingvist_difficulty_service import (
+    choose_sentence_for_lingvist,
+    get_lingvist_difficulty_profile,
+)
+from app.services.chat_profile_service import collect_pedagogical_metrics
 
 
 WINDOW_STEP = 100
@@ -61,27 +66,32 @@ class VocabularyProgressionService:
 
         return progress
 
-    def get_sentence_for_word(self, user_id: str, word_id: str, exclude_card_id: Optional[str] = None) -> Optional[Sentence]:
-        """
-        Get sentence for word, preferring unseen or least used sentences
-        Implements getSentenceForWord(userId, wordId) from Spec4 with K=10 variety
+    def get_lingvist_difficulty_profile(self, user_id: str):
+        """Return the current Lingvist difficulty profile for the user."""
+        progress = self.get_or_create_user_progress(user_id)
+        user = self.db.query(User).filter(User.id == user_id).first()
+        pedagogical_metrics = collect_pedagogical_metrics(self.db, user_id, user=user) if user else {}
+        return get_lingvist_difficulty_profile(
+            max_contiguous_mastered_rank=progress.max_contiguous_mastered_rank,
+            current_window_end_rank=progress.current_window_end_rank,
+            recent_accuracy=pedagogical_metrics.get("recent_accuracy"),
+            review_pressure=pedagogical_metrics.get("review_pressure"),
+            difficulty_signal=pedagogical_metrics.get("difficulty_signal"),
+        )
 
-        Args:
-            user_id: User identifier
-            word_id: Word identifier
-            exclude_card_id: Optional card ID to exclude (avoids repeating same card)
+    def get_sentence_for_word(
+        self,
+        user_id: str,
+        word_id: str,
+        exclude_card_id: Optional[str] = None,
+        use_lingvist_profile: bool = False,
+    ) -> Optional[Sentence]:
+        """Get a sentence for a word with Lingvist-specific variety and pacing.
 
-        Algorithm:
-        1. Get all sentence candidates for this word
-        2. Filter out exclude_card_id if provided
-        3. Query usage stats: count(*) and max(created_at) per sentence_id
-        4. "Unseen" = sentences with count == 0 for this user
-        5. Choose:
-           - If unseen sentences exist: random choice among them
-           - Else: least recently used (min max_created_at)
-        6. Fallback: create basic sentence + persist + create Card
+        Spec4 keeps the unseen/LRU backbone. Lingvist adds a difficulty-aware
+        sentence scorer so early ranks stay short and clear while later ranks can
+        surface richer sentences from real sources.
         """
-        # 1. Get all sentence candidates for this word (Sentence.word_id OR WordSentence)
         sentences_via_direct = self.db.query(Sentence).filter(
             Sentence.word_id == word_id
         ).all()
@@ -92,30 +102,20 @@ class VocabularyProgressionService:
             WordSentence.word_id == word_id
         ).all()
 
-        # Combine and deduplicate
         all_sentences = {s.id: s for s in sentences_via_direct + sentences_via_mapping}
         candidate_sentence_ids = list(all_sentences.keys())
 
         if not candidate_sentence_ids:
-            # Fallback: create a basic sentence if none exists
             return self._create_fallback_sentence(word_id)
 
-        # 2. Filter out exclude_card_id if provided
         if exclude_card_id:
-            # Get sentence_id from excluded card and filter it out
             from app.models import Card
             excluded_card = self.db.query(Card).filter(Card.id == exclude_card_id).first()
             if excluded_card and excluded_card.sentence_id in candidate_sentence_ids:
                 candidate_sentence_ids.remove(excluded_card.sentence_id)
-
-                # If no sentences left after exclusion, we have to use the excluded one
-                # (soft exclusion - variety will come from next card)
                 if not candidate_sentence_ids:
                     return all_sentences[excluded_card.sentence_id]
 
-        # 3. Query usage statistics for each candidate sentence
-        # Get count(*) and max(created_at) grouped by sentence_id
-        K = 10
         usage_stats = self.db.query(
             ReviewEvent.sentence_id,
             func.count(ReviewEvent.id).label('usage_count'),
@@ -128,37 +128,58 @@ class VocabularyProgressionService:
             )
         ).group_by(ReviewEvent.sentence_id).all()
 
-        # Build lookup dictionaries
         sentence_counts = {stat.sentence_id: stat.usage_count for stat in usage_stats}
         sentence_last_used = {stat.sentence_id: stat.last_used_at for stat in usage_stats}
 
-        # 4. Separate unseen (count == 0) from seen sentences
+        ordered_candidates = [all_sentences[sid] for sid in candidate_sentence_ids]
+
+        if use_lingvist_profile:
+            profile = self.get_lingvist_difficulty_profile(user_id)
+            unseen_candidates = [sentence for sentence in ordered_candidates if sentence_counts.get(sentence.id, 0) == 0]
+            if unseen_candidates:
+                chosen = choose_sentence_for_lingvist(
+                    unseen_candidates,
+                    profile=profile,
+                    usage_counts=sentence_counts,
+                    last_used_lookup=sentence_last_used,
+                )
+                if chosen is not None:
+                    return chosen
+
+            seen_candidates = sorted(
+                ordered_candidates,
+                key=lambda sentence: sentence_last_used.get(sentence.id) or datetime.min,
+            )
+            chosen_seen = choose_sentence_for_lingvist(
+                seen_candidates,
+                profile=profile,
+                usage_counts=sentence_counts,
+                last_used_lookup=sentence_last_used,
+            )
+            if chosen_seen is not None:
+                return chosen_seen
+
+            return ordered_candidates[0] if ordered_candidates else None
+
         unseen_sentence_ids = [
             sid for sid in candidate_sentence_ids
             if sentence_counts.get(sid, 0) == 0
         ]
-
         if unseen_sentence_ids:
-            # Randomly choose from unseen sentences
             import random
             chosen_id = random.choice(unseen_sentence_ids)
             return all_sentences[chosen_id]
 
-        # 5. If all sentences were seen, get the least recently used
-        # Sort candidate_sentence_ids by last_used_at (ascending)
         seen_sentences_with_last_used = [
             (sid, sentence_last_used.get(sid))
             for sid in candidate_sentence_ids
             if sid in sentence_last_used
         ]
-
         if seen_sentences_with_last_used:
-            # Sort by last_used_at ascending (oldest first)
             seen_sentences_with_last_used.sort(key=lambda x: x[1] or datetime.min)
             chosen_id = seen_sentences_with_last_used[0][0]
             return all_sentences[chosen_id]
 
-        # Fallback: random from all candidates (shouldn't reach here normally)
         import random
         return random.choice(list(all_sentences.values()))
 

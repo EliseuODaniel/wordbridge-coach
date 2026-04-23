@@ -1,4 +1,4 @@
-"""FillTheWord API - Main FastAPI Application"""
+"""WordBridge Coach API - Main FastAPI application."""
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +11,7 @@ from app.core.config import settings
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="FillTheWord - Vocabulary Learning with SRS SM-2",
+    description="WordBridge Coach - Local vocabulary training across cards, cloze and chat coaching",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 
@@ -31,14 +31,14 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "FillTheWord API"}
+    return {"status": "healthy", "service": "WordBridge Coach API"}
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "FillTheWord API",
+        "message": "WordBridge Coach API",
         "version": settings.VERSION,
         "docs": f"{settings.API_V1_STR}/docs"
     }

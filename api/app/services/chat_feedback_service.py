@@ -34,33 +34,60 @@ async def get_grammar_issues(
         return []
 
 
+def infer_highlight_spans(issue: dict, draft_text: str) -> list[dict]:
+    """Infer spans from highlight_text when the provider omits explicit offsets."""
+    existing_spans = issue.get("highlight_spans") or []
+    if existing_spans:
+        return existing_spans
+
+    highlight_text = (issue.get("highlight_text") or "").strip()
+    if not highlight_text or not draft_text:
+        return []
+
+    draft_lower = draft_text.lower()
+    highlight_lower = highlight_text.lower()
+    start = draft_lower.find(highlight_lower)
+    if start < 0:
+        return []
+
+    return [{"start": start, "end": start + len(highlight_text)}]
+
+
 def merge_issues(lt_issues: List[dict], heuristic_issues: List[dict]) -> List[dict]:
     """Merge LanguageTool and heuristic issues while deduplicating by span/category."""
+    def build_issue_signature(issue: dict):
+        spans = issue.get("highlight_spans") or []
+        if spans:
+            return (
+                issue.get("category"),
+                spans[0].get("start", 0),
+                spans[0].get("end", 0),
+            )
+
+        highlight_text = (issue.get("highlight_text") or "").strip().lower()
+        if highlight_text:
+            return (
+                issue.get("category"),
+                highlight_text,
+            )
+
+        return None
+
     seen = set()
     merged = []
 
     for issue in lt_issues:
-        signature = (
-            issue.get("category"),
-            issue.get("highlight_spans", [{}])[0].get("start", 0),
-            issue.get("highlight_spans", [{}])[0].get("end", 0),
-        )
-        if signature not in seen:
-            seen.add(signature)
+        signature = build_issue_signature(issue)
+        if signature is None or signature not in seen:
+            if signature is not None:
+                seen.add(signature)
             merged.append(issue)
 
     for issue in heuristic_issues:
-        if not issue.get("highlight_spans"):
-            merged.append(issue)
-            continue
-
-        signature = (
-            issue.get("category"),
-            issue.get("highlight_spans", [{}])[0].get("start", 0),
-            issue.get("highlight_spans", [{}])[0].get("end", 0),
-        )
-        if signature not in seen:
-            seen.add(signature)
+        signature = build_issue_signature(issue)
+        if signature is None or signature not in seen:
+            if signature is not None:
+                seen.add(signature)
             merged.append(issue)
 
     return merged
@@ -142,27 +169,47 @@ def build_draft_feedback(
     )
 
     issues = []
+    seen_issue_signatures = set()
     for issue in eval_result.get("top_issues", []):
+        highlight_spans = infer_highlight_spans(issue, draft or "")
+        if highlight_spans:
+            signature = (
+                issue["category"],
+                highlight_spans[0]["start"],
+                highlight_spans[0]["end"],
+            )
+        else:
+            signature = (
+                issue["category"],
+                issue.get("highlight_text", ""),
+            )
+        if signature in seen_issue_signatures:
+            continue
+        seen_issue_signatures.add(signature)
         issues.append(
             {
                 "category": issue["category"],
                 "title": issue["title"],
                 "explanation": issue["explanation"],
-                "highlight_spans": issue.get("highlight_spans", []),
+                "highlight_spans": highlight_spans,
                 "suggestions": issue.get("suggestions", []),
             }
         )
 
-    micro_tip = None
-    if not issues and draft:
+    micro_tip = eval_result.get("micro_tip")
+    if not micro_tip and not issues and draft:
         micro_tip = generate_micro_tip(draft, lesson_frame or {})
 
     suggested_next_words = eval_result.get("suggested_next_words", [])
     topic = eval_result.get("topic")
     intent = eval_result.get("intent")
+    self_check_prompt = eval_result.get("self_check_prompt")
+    encouragement = eval_result.get("encouragement")
 
     rewrite = None
-    if issues and issues[0].get("suggestions"):
+    if eval_result.get("rewrite"):
+        rewrite = eval_result["rewrite"]
+    elif issues and issues[0].get("suggestions"):
         rewrite = issues[0]["suggestions"][0] if issues[0]["suggestions"] else None
 
     return DraftFeedbackOut(
@@ -180,6 +227,8 @@ def build_draft_feedback(
         issues=issues,
         ghost_suggestion=ghost_suggestion,
         micro_tip=micro_tip,
+        self_check_prompt=self_check_prompt,
+        encouragement=encouragement,
         suggested_next_words=suggested_next_words,
         topic=topic,
         intent=intent,

@@ -261,42 +261,51 @@ def test_build_chat_system_prompt_uses_lesson_frame_defaults():
         "cefr_target": "B1",
         "topic": "travel",
         "learning_goal": "asking_for_directions",
-    })
+    }, {
+        "feedback_language": "Portuguese",
+        "strengths": ["Clear openings"],
+        "weaknesses": ["Past tense"],
+        "scaffolding_level": "guided_practice",
+    }, "Longitudinal learner profile")
 
     assert "B1" in prompt
     assert "travel" in prompt
     assert "asking_for_directions" in prompt
     assert "Always ask a follow-up question" in prompt
+    assert "Portuguese" in prompt
+    assert "Longitudinal learner profile" in prompt
     assert "No examples, quotes, or meta-commentary" in prompt
 
 
-def test_build_teacher_analysis_context_prefers_user_messages(monkeypatch):
+def test_build_teacher_analysis_context_prefers_user_messages():
     """Teacher analysis should prefer user-only message history over session summary."""
+    from app.services.chat_context_service import build_teacher_analysis_context
+
     conversation = SimpleNamespace(id="conv-1", session_summary="summary fallback")
 
-    monkeypatch.setattr(
-        "app.api.api_v1.endpoints.chat._build_teacher_context",
-        lambda conversation_id, db, limit=10: [
+    context = build_teacher_analysis_context(
+        conversation=conversation,
+        db=object(),
+        build_teacher_context_fn=lambda conversation_id, db, limit=10: [
             {"role": "user", "content": "First message"},
             {"role": "user", "content": "Second message"},
         ],
     )
 
-    context = _build_teacher_analysis_context(conversation, db=object())
-
-    assert context == "First message\nSecond message"
+    assert context == "summary fallback\n\nRecent student messages:\nFirst message\nSecond message"
 
 
-def test_build_teacher_analysis_context_falls_back_to_session_summary(monkeypatch):
+def test_build_teacher_analysis_context_falls_back_to_session_summary():
     """Teacher analysis should still work when no persisted user history exists."""
+    from app.services.chat_context_service import build_teacher_analysis_context
+
     conversation = SimpleNamespace(id="conv-1", session_summary="summary fallback")
 
-    monkeypatch.setattr(
-        "app.api.api_v1.endpoints.chat._build_teacher_context",
-        lambda conversation_id, db, limit=10: [],
+    context = build_teacher_analysis_context(
+        conversation=conversation,
+        db=object(),
+        build_teacher_context_fn=lambda conversation_id, db, limit=10: [],
     )
-
-    context = _build_teacher_analysis_context(conversation, db=object())
 
     assert context == "summary fallback"
 
@@ -331,7 +340,8 @@ def test_attach_teacher_analysis_metadata_initializes_payload():
 
     _attach_teacher_analysis_metadata(user_message, teacher_analysis)
 
-    assert user_message.metadata_json == {"teacher_analysis": teacher_analysis}
+    assert user_message.metadata_json["teacher_analysis"]["rewrite"] == "I went"
+    assert user_message.metadata_json["teacher_analysis"]["teacher_summary"] == "Analysis unavailable."
 
 
 def test_build_teacher_analysis_event_payload_uses_expected_schema():
@@ -340,12 +350,18 @@ def test_build_teacher_analysis_event_payload_uses_expected_schema():
         conversation_id="conv-1",
         user_message_id="msg-1",
         analysis={"teacher_summary": "Good job", "corrections": []},
+        student_profile={"feedback_language": "Portuguese"},
+        lesson_frame={"topic": "travel"},
+        session_summary="Longitudinal learner profile",
     )
 
     assert payload["type"] == "teacher_analysis"
     assert payload["conversation_id"] == "conv-1"
     assert payload["user_message_id"] == "msg-1"
     assert payload["analysis"]["teacher_summary"] == "Good job"
+    assert payload["student_profile"]["feedback_language"] == "Portuguese"
+    assert payload["lesson_frame"]["topic"] == "travel"
+    assert payload["session_summary"] == "Longitudinal learner profile"
 
 
 def test_build_assistant_done_payload_uses_sanitized_content():
@@ -369,16 +385,18 @@ def test_generate_teacher_analysis_with_fallback_returns_generated_payload():
     class FakeTeacherProvider:
         model = "fake-teacher"
 
-        async def generate_teacher_analysis(self, user_message, context, lesson_frame):
+        async def generate_teacher_analysis(self, user_message, context, lesson_frame, student_profile):
             assert user_message == "I go to school"
             assert context == "teacher-only context"
             assert lesson_frame["topic"] == "school"
+            assert student_profile["feedback_language"] == "Portuguese"
             return {"teacher_summary": "Nice work", "corrections": []}
 
     conversation = SimpleNamespace(
         id="conv-1",
         session_summary="session-summary",
         lesson_frame_json={"topic": "school"},
+        student_profile_json={"feedback_language": "Portuguese"},
     )
 
     analysis, used_fallback = asyncio.run(
@@ -400,13 +418,14 @@ def test_generate_teacher_analysis_with_fallback_uses_fallback_on_error():
     class FailingTeacherProvider:
         model = "fake-teacher"
 
-        async def generate_teacher_analysis(self, user_message, context, lesson_frame):
+        async def generate_teacher_analysis(self, user_message, context, lesson_frame, student_profile):
             raise RuntimeError("teacher offline")
 
     conversation = SimpleNamespace(
         id="conv-1",
         session_summary="session-summary",
         lesson_frame_json={"topic": "school"},
+        student_profile_json={"feedback_language": "Portuguese"},
     )
 
     analysis, used_fallback = asyncio.run(
@@ -521,7 +540,7 @@ def test_finalize_assistant_turn_sanitizes_and_emits_final_payload():
     assert websocket.payloads[0]["full_content"] == "Nice! What happened next?"
 
 
-def test_persist_and_emit_teacher_analysis_persists_metadata_when_not_fallback():
+def test_persist_and_emit_teacher_analysis_persists_metadata_when_not_fallback(monkeypatch):
     """Teacher analysis should persist metadata and emit the websocket event."""
 
     class FakeWebSocket:
@@ -540,9 +559,23 @@ def test_persist_and_emit_teacher_analysis_persists_metadata_when_not_fallback()
 
     websocket = FakeWebSocket()
     db = FakeDb()
-    conversation = SimpleNamespace(id="conv-1")
+    conversation = SimpleNamespace(
+        id="conv-1",
+        student_profile_json={"feedback_language": "Portuguese"},
+        lesson_frame_json={"topic": "travel"},
+        session_summary="old summary",
+    )
     user_message = SimpleNamespace(id="msg-1", metadata_json=None)
     analysis = {"teacher_summary": "Good job", "corrections": []}
+
+    monkeypatch.setattr(
+        "app.services.chat_delivery_service.refresh_conversation_learning_state",
+        lambda db, conversation, teacher_analysis: (
+            {"feedback_language": "Portuguese", "strengths": ["Clear meaning"]},
+            {"topic": "travel", "learning_goal": "stabilize past-time verbs"},
+            "Longitudinal learner profile",
+        ),
+    )
 
     asyncio.run(
         _persist_and_emit_teacher_analysis(
@@ -556,9 +589,12 @@ def test_persist_and_emit_teacher_analysis_persists_metadata_when_not_fallback()
     )
 
     assert db.commit_count == 1
-    assert user_message.metadata_json == {"teacher_analysis": analysis}
+    assert user_message.metadata_json["teacher_analysis"]["teacher_summary"] == "Good job"
     assert websocket.payloads[0]["type"] == "teacher_analysis"
     assert websocket.payloads[0]["analysis"]["teacher_summary"] == "Good job"
+    assert websocket.payloads[0]["student_profile"]["strengths"] == ["Clear meaning"]
+    assert websocket.payloads[0]["lesson_frame"]["learning_goal"] == "stabilize past-time verbs"
+    assert websocket.payloads[0]["session_summary"] == "Longitudinal learner profile"
 
 
 def test_persist_and_emit_teacher_analysis_skips_db_commit_for_fallback():
@@ -580,7 +616,12 @@ def test_persist_and_emit_teacher_analysis_skips_db_commit_for_fallback():
 
     websocket = FakeWebSocket()
     db = FakeDb()
-    conversation = SimpleNamespace(id="conv-1")
+    conversation = SimpleNamespace(
+        id="conv-1",
+        student_profile_json={"feedback_language": "Portuguese"},
+        lesson_frame_json={"topic": "travel"},
+        session_summary="existing summary",
+    )
     user_message = SimpleNamespace(id="msg-1", metadata_json=None)
     analysis = {
         "teacher_summary": "Teacher analysis failed: offline",
@@ -602,7 +643,10 @@ def test_persist_and_emit_teacher_analysis_skips_db_commit_for_fallback():
     assert db.commit_count == 0
     assert user_message.metadata_json is None
     assert websocket.payloads[0]["type"] == "teacher_analysis"
-    assert websocket.payloads[0]["analysis"]["debug_reason"] == "offline"
+    assert websocket.payloads[0]["analysis"]["teacher_summary"] == "Teacher analysis failed: offline"
+    assert websocket.payloads[0]["student_profile"]["feedback_language"] == "Portuguese"
+    assert websocket.payloads[0]["lesson_frame"]["topic"] == "travel"
+    assert websocket.payloads[0]["session_summary"] == "existing summary"
 
 
 if __name__ == "__main__":

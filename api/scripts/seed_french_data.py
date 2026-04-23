@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Seed data script for French language support
-Creates initial French words, sentences, and cards for FillTheWord
+Creates initial French words, sentences, and cards for WordBridge Coach
 """
 
 import sys

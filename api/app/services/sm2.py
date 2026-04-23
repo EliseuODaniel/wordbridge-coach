@@ -1,4 +1,4 @@
-"""SM-2 Algorithm implementation for FillTheWord"""
+"""SM-2 algorithm implementation for WordBridge Coach."""
 
 from datetime import timedelta
 from typing import Dict, Any, Tuple

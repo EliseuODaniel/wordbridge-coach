@@ -97,6 +97,7 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
       {/* Inline input */}
       <input
         ref={inputRef}
+        data-testid="lingvist-inline-input"
         type="text"
         value={value}
         onChange={handleChange}

@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
-from app.schemas.card import Gap
+from app.schemas.card import Gap, LearningContext
 
 
 class MicroProgress(BaseModel):
@@ -63,3 +63,7 @@ class LingvistCardResponse(BaseModel):
     micro_progress: MicroProgress = Field(..., description="Session progress")
     audio_word_url: str = Field(..., description="URL for word audio")
     audio_sentence_url: str = Field(..., description="URL for sentence audio (play after correct)")
+    learning_context: Optional[LearningContext] = Field(
+        None,
+        description="Shared pedagogical context that explains the current Lingvist focus",
+    )

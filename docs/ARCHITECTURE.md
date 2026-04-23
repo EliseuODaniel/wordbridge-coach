@@ -1,10 +1,10 @@
 # Architecture
 
-Data de referência: 2026-04-14
+Data de referência: 2026-04-21
 
 ## Visão geral
 
-FillTheWord é uma aplicação local composta por frontend web, API principal, serviço de TTS, banco PostgreSQL e serviços auxiliares para experiências de IA local.
+WordBridge Coach é uma aplicação local composta por frontend web, API principal, serviço de TTS, banco PostgreSQL e serviços auxiliares para experiências de IA local.
 
 ## Serviços
 
@@ -115,21 +115,35 @@ Topologia operacional padrão:
 1. frontend seleciona usuário
 2. frontend pede próximo card
 3. API aplica regras de seleção e progresso
-4. frontend envia resposta
-5. API registra review, feedback e estatísticas
+4. API injeta `learning_context` derivado da memória pedagógica mais recente quando existir contexto longitudinal de Chat Coach
+5. frontend mostra o foco atual, o objetivo da sessão e o racional pedagógico do modo
+6. frontend envia resposta
+7. API registra review, feedback e estatísticas
 
 ### Lingvist
 
 1. frontend entra no modo Lingvist
-2. API retorna conteúdo com apoio de tradução, hints e progressão
-3. frontend atualiza a sessão com feedback e métricas
+2. API retorna conteúdo com apoio de tradução, hints, progressão e `learning_context` compartilhado
+3. frontend mostra contexto pedagógico compacto acima do card
+4. frontend atualiza a sessão com feedback e métricas
 
 ### Chat Coach
 
 1. frontend abre sessão de chat
-2. API combina contexto da conversa, perfil do aluno e provider de LLM
+2. API combina contexto da conversa, perfil longitudinal do aluno, analytics recentes e provider de LLM
 3. quando o perfil `ai` está ativo, serviços locais de LLM e LanguageTool participam da resposta
-4. frontend exibe feedback, análise e sugestões
+4. `micro_eval`, autocomplete e `teacher_analysis` agora preferem structured outputs com schema explícito, mantendo fallback seguro para o mock
+5. `api/app/services/chat_profile_service.py` deriva o perfil pedagógico de `User` + histórico recente de `teacher_analysis`, agrega `pedagogical_metrics` reais de `UserCardState`, `ReviewEvent` e `UserSessionStats`, mantém um `pedagogical_state` explícito e recalcula `student_profile_json`, `lesson_frame_json` e `session_summary` a cada turno
+6. cada atualização de `teacher_analysis` persiste um snapshot do `lesson_frame` em `chat_lesson_history`
+7. frontend exibe feedback, análise, sugestões, o "coach memory" e o `lesson_frame` adaptativo atualizado, incluindo scaffolds cognitivos, metacognitivos e motivacionais
+8. `VocabularyProgressionService` reaproveita esses sinais para ajustar o perfil Lingvist antes de escolher dificuldade de sentença, faixa de comprimento e pool de lookahead
+
+## Estado pedagógico compartilhado
+
+- `student_profile_json` guarda sinais longitudinais, idioma de feedback, scaffolding, `pedagogical_state` e `pedagogical_metrics`
+- `lesson_frame_json` guarda o objetivo adaptativo do turno atual (`learning_goal`, `expected_intent`, `primary_focus`, `lesson_stage`, `success_criteria`) e um bloco `diagnostics`
+- `chat_lesson_history` guarda snapshots desse frame para analytics e replay pedagógico
+- `learning_context` é a projeção compacta desse estado para modos de card (`Spec4` e `Lingvist`), incluindo sinais de retenção, pressão de review, pacing e melhor próximo modo
 
 ## Pontos de acoplamento
 
@@ -139,6 +153,7 @@ Topologia operacional padrão:
 - parte das features de analytics e progressão atravessa vários modelos e serviços
 - o ambiente local de 8 GB de VRAM não deve manter múltiplos modelos médios sempre ativos sem necessidade
 - ambiente híbrido Windows/WSL não deve compartilhar o mesmo `frontend/node_modules` entre installs Linux e execução via `node.exe`
+- a efetividade pedagógica do Chat Coach agora já usa memória longitudinal entre sessões, métricas explícitas de estudo e projeção cross-mode para `Spec4`/`Lingvist`; o refinamento futuro passa mais por calibração de limiares do que por ausência de sinais
 
 ## Direção arquitetural desejada
 

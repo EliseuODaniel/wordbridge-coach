@@ -1,4 +1,4 @@
-"""Analytics and insights endpoints for FillTheWord"""
+"""Analytics and insights endpoints for WordBridge Coach."""
 
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query

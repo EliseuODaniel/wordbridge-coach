@@ -78,7 +78,16 @@ def test_create_chat_conversation_creates_conversation_and_system_message(monkey
     db = FakeDb()
     request = SimpleNamespace(user_id="user-1", title="Travel practice")
 
-    monkeypatch.setattr(chat_conversation_service, "get_user_or_404", lambda db, user_id: object())
+    monkeypatch.setattr(chat_conversation_service, "get_user_or_404", lambda db, user_id: SimpleNamespace(id=user_id))
+    monkeypatch.setattr(
+        chat_conversation_service,
+        "build_seed_chat_state",
+        lambda db, user, base_lesson_frame: (
+            {"cefr_level": "B1", "feedback_language": "Portuguese"},
+            {"cefr_target": "B1", "topic": "travel"},
+            "Longitudinal learner profile",
+        ),
+    )
     monkeypatch.setattr(
         chat_conversation_service,
         "serialize_conversation",
@@ -88,10 +97,14 @@ def test_create_chat_conversation_creates_conversation_and_system_message(monkey
     payload = chat_conversation_service.create_chat_conversation(db, request)
 
     assert payload == {"id": "conv-1", "title": "Travel practice"}
-    assert len(db.added) == 2
+    assert len(db.added) == 3
     assert db.added[0].title == "Travel practice"
-    assert db.added[1].role == "system"
-    assert "A2 level student" in db.added[1].content
+    assert db.added[0].student_profile_json["feedback_language"] == "Portuguese"
+    assert db.added[0].session_summary == "Longitudinal learner profile"
+    assert db.added[1].lesson_frame_json["topic"] == "travel"
+    assert db.added[2].role == "system"
+    assert "B1 level student" in db.added[2].content
+    assert "Portuguese" in db.added[2].content
     assert db.commit_count == 2
     assert db.refreshed == [db.added[0]]
 

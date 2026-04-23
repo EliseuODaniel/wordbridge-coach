@@ -51,6 +51,8 @@ def test_build_draft_feedback_generates_micro_tip_when_no_issues():
             "naturalness_score": 84,
             "top_issues": [],
             "suggested_next_words": [],
+            "self_check_prompt": "What extra detail can you add?",
+            "encouragement": "Clear start. Add one more detail.",
             "topic": "travel",
             "intent": "future_plan",
         },
@@ -61,6 +63,8 @@ def test_build_draft_feedback_generates_micro_tip_when_no_issues():
 
     assert payload["type"] == "draft_feedback"
     assert payload["micro_tip"] is not None
+    assert payload["self_check_prompt"] == "What extra detail can you add?"
+    assert payload["encouragement"] == "Clear start. Add one more detail."
     assert payload["topic"] == "travel"
 
 
@@ -85,7 +89,7 @@ def test_evaluate_draft_feedback_merges_language_tool_issues(monkeypatch):
                         "category": "grammar",
                         "title": "Verb tense",
                         "explanation": "Use past simple.",
-                        "highlight_spans": [{"start": 2, "end": 4}],
+                        "highlight_text": "go",
                         "suggestions": ["went"],
                     }
                 ],
@@ -131,6 +135,7 @@ def test_evaluate_draft_feedback_merges_language_tool_issues(monkeypatch):
     assert payload["type"] == "draft_feedback"
     assert len(payload["issues"]) == 2
     assert payload["issues"][0]["suggestions"] == ["went"]
+    assert payload["issues"][0]["highlight_spans"] == [{"start": 2, "end": 4}]
     assert payload["issues"][1]["category"] == "style"
 
 

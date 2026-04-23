@@ -1,4 +1,4 @@
-"""Word frequency model for FillTheWord"""
+"""Word frequency model for WordBridge Coach."""
 
 from sqlalchemy import Column, String, Integer, Float, Boolean, Index
 from sqlalchemy.dialects.postgresql import UUID

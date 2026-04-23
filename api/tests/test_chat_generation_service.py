@@ -58,15 +58,17 @@ def test_generate_teacher_analysis_with_fallback_returns_generated_payload():
     class FakeTeacherProvider:
         model = "fake-teacher"
 
-        async def generate_teacher_analysis(self, user_message, context, lesson_frame):
+        async def generate_teacher_analysis(self, user_message, context, lesson_frame, student_profile):
             assert user_message == "I go to school"
             assert context == "teacher-only context"
             assert lesson_frame["topic"] == "school"
+            assert student_profile["feedback_language"] == "Portuguese"
             return {"teacher_summary": "Nice work", "corrections": []}
 
     conversation = SimpleNamespace(
         id="conv-1",
         lesson_frame_json={"topic": "school"},
+        student_profile_json={"feedback_language": "Portuguese"},
     )
 
     analysis, used_fallback = asyncio.run(
@@ -87,12 +89,13 @@ def test_generate_teacher_analysis_with_fallback_uses_fallback_on_error():
     class FailingTeacherProvider:
         model = "fake-teacher"
 
-        async def generate_teacher_analysis(self, user_message, context, lesson_frame):
+        async def generate_teacher_analysis(self, user_message, context, lesson_frame, student_profile):
             raise RuntimeError("teacher offline")
 
     conversation = SimpleNamespace(
         id="conv-1",
         lesson_frame_json={"topic": "school"},
+        student_profile_json={"feedback_language": "Portuguese"},
     )
 
     analysis, used_fallback = asyncio.run(

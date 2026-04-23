@@ -1,4 +1,4 @@
-"""Configuration settings for FillTheWord API"""
+"""Configuration settings for WordBridge Coach API."""
 
 import os
 from typing import List, Union
@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     # Project info
-    PROJECT_NAME: str = "FillTheWord API"
+    PROJECT_NAME: str = "WordBridge Coach API"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     DEBUG: bool = True

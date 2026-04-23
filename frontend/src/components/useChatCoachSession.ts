@@ -32,10 +32,14 @@ interface Correction {
 }
 
 export interface TeacherAnalysis {
-  rewrite: string;
+  rewrite: string | null;
   corrections: Correction[];
   teacher_summary: string;
+  strengths: string[];
+  focus_areas: string[];
   next_practice: string[];
+  reflection_question: string | null;
+  encouragement: string | null;
 }
 
 interface UseChatCoachSessionResult {
@@ -51,9 +55,13 @@ interface UseChatCoachSessionResult {
   messageListRef: React.RefObject<HTMLDivElement | null>;
   messages: MessageDisplay[];
   microTip: string | null;
+  selfCheckPrompt: string | null;
+  encouragement: string | null;
   rewrite: string | null;
   showJumpToLatest: boolean;
   suggestedNextWords: string[];
+  lessonFrame: Record<string, unknown> | null;
+  studentProfile: Record<string, unknown> | null;
   teacherAnalysis: TeacherAnalysis | null;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   title: string;
@@ -94,6 +102,8 @@ export const useChatCoachSession = (
     issues,
     ghostSuggestion,
     microTip,
+    selfCheckPrompt,
+    encouragement,
     suggestedNextWords,
     topic,
     intent,
@@ -175,6 +185,15 @@ export const useChatCoachSession = (
   const handleAssistantDone = useCallback((event: AssistantDoneEvent) => {
     setIsStreaming(false);
     appendMessage('assistant', event.full_content);
+    setConversation((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        lesson_frame_json: event.lesson_frame,
+      };
+    });
     setCurrentAssistantResponse('');
     clearComposerState();
     focusTextarea();
@@ -190,8 +209,20 @@ export const useChatCoachSession = (
       conversation_id: event.conversation_id,
       analysis_keys: event.analysis ? Object.keys(event.analysis) : 'null',
       analysis: event.analysis,
+      student_profile: event.student_profile,
     });
     setTeacherAnalysis(event.analysis);
+    setConversation((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        student_profile_json: event.student_profile,
+        lesson_frame_json: event.lesson_frame,
+        session_summary: event.session_summary,
+      };
+    });
   }, []);
 
   useEffect(() => {
@@ -315,9 +346,13 @@ export const useChatCoachSession = (
     messageListRef,
     messages,
     microTip,
+    selfCheckPrompt,
+    encouragement,
     rewrite,
     showJumpToLatest,
     suggestedNextWords,
+    lessonFrame: conversation?.lesson_frame_json ?? null,
+    studentProfile: conversation?.student_profile_json ?? null,
     teacherAnalysis,
     textareaRef,
     title: conversation?.title || 'Conversation',

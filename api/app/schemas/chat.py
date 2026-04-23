@@ -170,6 +170,8 @@ class DraftFeedbackOut(BaseModel):
     issues: List[DraftIssue] = Field(default_factory=list, description="Detected issues")
     ghost_suggestion: Optional[str] = Field(None, description="Ghost text suggestion")
     micro_tip: Optional[str] = Field(None, description="Helpful tip shown when issues=[]")
+    self_check_prompt: Optional[str] = Field(None, description="Question that encourages self-correction")
+    encouragement: Optional[str] = Field(None, description="Short motivational message grounded in the attempt")
     suggested_next_words: List[str] = Field(default_factory=list, description="Suggested next words to complete the phrase")
     topic: Optional[str] = Field(None, description="Detected conversation topic")
     intent: Optional[str] = Field(None, description="Detected user intent")
@@ -213,9 +215,25 @@ class Correction(BaseModel):
     why: str = Field(..., description="Explanation of why this is correct")
 
 
+class TeacherAnalysisPayload(BaseModel):
+    """Typed schema for the teacher analysis block."""
+
+    rewrite: Optional[str] = Field(None, description="Helpful rewritten version of the learner message")
+    corrections: List[Correction] = Field(default_factory=list, description="Key corrections detected in the learner turn")
+    teacher_summary: str = Field(..., description="Main pedagogical feedback")
+    strengths: List[str] = Field(default_factory=list, description="What the learner already did well")
+    focus_areas: List[str] = Field(default_factory=list, description="Small set of next focus areas")
+    next_practice: List[str] = Field(default_factory=list, description="Targeted follow-up drills or prompts")
+    reflection_question: Optional[str] = Field(None, description="Metacognitive question for the learner")
+    encouragement: Optional[str] = Field(None, description="Motivational line grounded in the learner attempt")
+
+
 class TeacherAnalysisOut(BaseModel):
     """Server event: teacher_analysis (separate from chat messages)"""
     type: str = Field(default="teacher_analysis", description="Event type")
     conversation_id: str = Field(..., description="Conversation ID")
     user_message_id: str = Field(..., description="ID of user message being analyzed")
-    analysis: Dict[str, Any] = Field(..., description="Teacher analysis JSON with keys: rewrite, corrections, teacher_summary, next_practice")
+    analysis: TeacherAnalysisPayload = Field(..., description="Teacher analysis JSON with pedagogical scaffolds")
+    student_profile: Dict[str, Any] = Field(default_factory=dict, description="Updated pedagogical profile for the learner")
+    lesson_frame: Dict[str, Any] = Field(default_factory=dict, description="Updated adaptive lesson frame after analysis")
+    session_summary: str = Field(default="", description="Updated longitudinal learner summary")

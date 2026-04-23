@@ -83,5 +83,11 @@ class MockLLMProvider(LLMProvider):
         user_message: str,
         context: str,
         lesson_frame: Dict[str, Any],
+        student_profile: Dict[str, Any],
     ) -> Dict[str, Any]:
-        return await _generate_teacher_analysis_helper(user_message, context, lesson_frame)
+        return await _generate_teacher_analysis_helper(
+            user_message,
+            context,
+            lesson_frame,
+            student_profile,
+        )

@@ -10,6 +10,22 @@ export interface Gap {
   end: number;
 }
 
+export interface LearningContext {
+  mode: string;
+  cefr_level: string;
+  support_level: string;
+  current_focus: string;
+  session_goal: string;
+  topic: string;
+  feedback_language: string;
+  why_this_now: string;
+  retention_signal?: string | null;
+  review_pressure?: string | null;
+  difficulty_signal?: string | null;
+  recommended_pace?: string | null;
+  next_mode_hint?: string | null;
+}
+
 export interface CardResponse {
   card_id: string;
   word_id: string;
@@ -23,6 +39,7 @@ export interface CardResponse {
   audio_word_url: string;
   audio_sentence_url: string;
   sentence_source?: string | null;
+  learning_context?: LearningContext | null;
 }
 
 export interface MicroProgress {
@@ -47,6 +64,7 @@ export interface LingvistCardResponse {
   micro_progress: MicroProgress;
   audio_word_url: string;
   audio_sentence_url: string;
+  learning_context?: LearningContext | null;
 }
 
 export interface AnswerRequest {

@@ -7,8 +7,8 @@ test.describe('User Profile Management', () => {
 
   test('displays profile selection screen', async ({ page }) => {
     // Check main elements using data-testid when available
-    await expect(page.locator('h1')).toContainText('FillTheWord');
-    await expect(page.locator('text=Learn vocabulary with smart spaced repetition')).toBeVisible();
+    await expect(page.locator('h1')).toContainText('WordBridge Coach');
+    await expect(page.locator('text=Bridge cards, cloze practice and chat coaching in one local trainer')).toBeVisible();
     await expect(page.locator('h2')).toContainText('Choose Your Profile');
 
     // Check that profile creation form is visible
