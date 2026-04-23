@@ -1,4 +1,4 @@
-"""Card endpoints for FillTheWord API"""
+"""Card endpoints for WordBridge Coach API."""
 
 from typing import Optional
 

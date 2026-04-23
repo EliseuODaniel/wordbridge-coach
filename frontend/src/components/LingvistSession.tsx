@@ -3,6 +3,7 @@
 import React from 'react';
 import InlineGapInput from './InlineGapInput';
 import HintPanel from './HintPanel';
+import LearningContextPanel from './LearningContextPanel';
 import { isTranslationAvailable } from './lingvistSessionHelpers';
 import { useLingvistSession } from './useLingvistSession';
 
@@ -88,6 +89,8 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onMod
                 {currentCard.micro_progress.new_words} new words
               </div>
             </div>
+
+            <LearningContextPanel context={currentCard.learning_context} />
 
             {/* Grammar Tag & Badges */}
             <div className="flex gap-2 flex-wrap items-center">

@@ -67,7 +67,7 @@ def make_cache_draft_feedback(
 def make_build_chat_generation_inputs(
     build_generation_inputs: Callable[..., tuple[list[dict], str, dict]],
     build_context: Callable[[str, Session, int, bool], list[dict]],
-    build_system_prompt: Callable[[dict], str],
+    build_system_prompt: Callable[..., str],
     build_generation_config: Callable[[], dict],
 ) -> Callable[[ChatConversation, Session], tuple[list[dict], str, dict]]:
     """Bind endpoint-local helper callables to generation input building."""
@@ -178,8 +178,8 @@ def make_generate_teacher_analysis_with_fallback(
 
 
 def make_send_teacher_analysis_event(
-    send_event: Callable[[WebSocket, str, str, dict], Awaitable[None]],
-) -> Callable[[WebSocket, str, str, dict], Awaitable[None]]:
+    send_event: Callable[..., Awaitable[None]],
+) -> Callable[..., Awaitable[None]]:
     """Expose a stable endpoint-shaped callable for teacher-analysis delivery."""
 
     async def _send_teacher_analysis_event(
@@ -187,12 +187,18 @@ def make_send_teacher_analysis_event(
         conversation_id: str,
         user_message_id: str,
         analysis: dict,
+        student_profile: dict | None = None,
+        lesson_frame: dict | None = None,
+        session_summary: str = "",
     ) -> None:
         await send_event(
             websocket=websocket,
             conversation_id=conversation_id,
             user_message_id=user_message_id,
             analysis=analysis,
+            student_profile=student_profile,
+            lesson_frame=lesson_frame,
+            session_summary=session_summary,
         )
 
     return _send_teacher_analysis_event
@@ -223,7 +229,7 @@ def make_finalize_assistant_turn(
 
 def make_persist_and_emit_teacher_analysis(
     persist_and_emit: Callable[..., Awaitable[None]],
-    send_event: Callable[[WebSocket, str, str, dict], Awaitable[None]],
+    send_event: Callable[..., Awaitable[None]],
 ) -> Callable[[WebSocket, Session, ChatConversation, ChatMessage, dict, bool], Awaitable[None]]:
     """Bind the teacher-analysis event sender to the persistence helper."""
 

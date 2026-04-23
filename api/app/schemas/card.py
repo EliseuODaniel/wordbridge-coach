@@ -14,6 +14,52 @@ class Gap(BaseModel):
     end: int = Field(..., description="End position of gap")
 
 
+class LearningContext(BaseModel):
+    """Compact pedagogical context shared across study modes."""
+
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "mode": "spec4",
+            "cefr_level": "A2",
+            "support_level": "guided_practice",
+            "current_focus": "Use past simple after yesterday",
+            "session_goal": "stabilize past-time verbs in short personal sentences",
+            "topic": "travel",
+            "feedback_language": "Portuguese",
+            "why_this_now": "Recognition practice to reinforce the current focus before freer production.",
+        }
+    })
+
+    mode: str = Field(..., description="Study mode that is consuming the context")
+    cefr_level: str = Field(..., description="Current estimated learner level")
+    support_level: str = Field(..., description="Current scaffolding level")
+    current_focus: str = Field(..., description="Top current pedagogical focus")
+    session_goal: str = Field(..., description="Current session objective")
+    topic: str = Field(..., description="Recommended topic anchor")
+    feedback_language: str = Field(..., description="Language used for explicit feedback")
+    why_this_now: str = Field(..., description="Why this card mode is useful right now")
+    retention_signal: Optional[str] = Field(
+        None,
+        description="How stable the learner retention looks right now (fragile|building|stable)",
+    )
+    review_pressure: Optional[str] = Field(
+        None,
+        description="Whether the learner is carrying low, medium, or high review pressure",
+    )
+    difficulty_signal: Optional[str] = Field(
+        None,
+        description="Whether the current mode should stabilize, stay on target, or stretch difficulty",
+    )
+    recommended_pace: Optional[str] = Field(
+        None,
+        description="Suggested pacing for the next turns (stabilize|balance|accelerate)",
+    )
+    next_mode_hint: Optional[str] = Field(
+        None,
+        description="Which mode would currently be the best next step if the learner switches",
+    )
+
+
 class CardResponse(BaseModel):
     """Response schema for GET /api/cards/next - EXACT match to specification"""
     model_config = ConfigDict(json_schema_extra={
@@ -45,6 +91,10 @@ class CardResponse(BaseModel):
     audio_word_url: str = Field(..., description="URL for word audio")
     audio_sentence_url: str = Field(..., description="URL for sentence audio")
     sentence_source: Optional[str] = Field(None, description="Source title (e.g., 'Dracula') if from sentence bank")
+    learning_context: Optional[LearningContext] = Field(
+        None,
+        description="Shared pedagogical context that explains why this card is useful now",
+    )
     
 class AnswerRequest(BaseModel):
     """Request schema for POST /api/cards/{id}/answer"""

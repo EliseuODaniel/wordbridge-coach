@@ -41,6 +41,7 @@ test.describe('Study Session (Spec4)', () => {
       await expect(page.locator('[data-testid="study-card"]')).toBeVisible();
       await expect(page.locator('[data-testid="answer-input"]')).toBeVisible();
       await expect(page.locator('[data-testid="answer-submit"]')).toBeVisible();
+      await expect(page.locator('[data-testid="learning-context-panel"]')).toBeVisible();
     } else {
       // Check for no cards message
       const hasNoCards = await page.locator('text=No cards available').isVisible().catch(() => false);

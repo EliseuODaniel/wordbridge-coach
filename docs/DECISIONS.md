@@ -1,5 +1,50 @@
 # Decisions
 
+## 2026-04-22 - Renomear o produto para WordBridge Coach e manter identificadores operacionais legados
+
+Status: aceito
+
+### Contexto
+
+O nome `FillTheWord` descrevia razoavelmente o MVP original focado em lacunas, mas deixou de representar o escopo atual do produto. Hoje o repositório combina estudo principal com cards, modo estilo Lingvist, Chat Coach com LLM local, TTS e contexto pedagógico compartilhado entre modos.
+
+Ao mesmo tempo, o ambiente local já validado depende de nomes operacionais como `filltheword`, `filltheword_test` e containers `filltheword-*`.
+
+### Decisão
+
+- adotar `WordBridge Coach` como nome oficial do produto e do repositório público
+- atualizar branding visível, metadata das aplicações, documentação oficial, dados demo e testes que validam esse texto
+- manter, por enquanto, identificadores operacionais legados como nomes de banco, containers, network e caminhos locais já validados
+
+### Impacto
+
+- o nome público passa a refletir melhor o produto multimodal atual
+- onboarding, README, UI e GitHub ficam alinhados com o escopo real do projeto
+- evitamos uma migração operacional desnecessária nesta rodada, preservando compatibilidade com compose, banco e scripts existentes
+
+## 2026-04-21 - Tornar adaptação pedagógica explícita e guiada por sinais reais
+
+Status: aceito
+
+### Contexto
+
+Depois da introdução de `pedagogical_state`, `lesson_frame` adaptativo e `learning_context` compartilhado, a trilha pedagógica principal ainda dependia demais de heurísticas textuais simples. Faltavam sinais explícitos de retenção, pressão de review, pacing e prontidão por modo para orientar Chat Coach, Spec4 e Lingvist com a mesma base.
+
+### Decisão
+
+- derivar `pedagogical_metrics` a partir de `UserCardState`, `ReviewEvent` e `UserSessionStats`
+- persistir esses sinais dentro de `student_profile_json` e projetá-los em `lesson_frame_json.diagnostics`
+- expor uma projeção compacta desses sinais em `learning_context` para `Spec4` e `Lingvist`
+- usar esses sinais também para calibrar `determine_scaffolding_level`, `build_chat_system_prompt` e `get_lingvist_difficulty_profile`
+- estabilizar o E2E do Lingvist com um seletor explícito (`data-testid="lingvist-inline-input"`) em vez de depender de um `input[type="text"]` genérico
+
+### Impacto
+
+- o Chat Coach passou a usar contexto mais rico e coerente em prompts, memória longitudinal e sidebar
+- `lesson_frame` e `learning_context` ficaram auditáveis sem endpoint novo de analytics
+- o perfil Lingvist agora desacelera ou acelera com sinais reais de retenção e carga de review
+- o E2E focal deixou de depender de um seletor ambíguo que confundia o campo de criação de perfil com o input inline do card
+
 ## 2026-03-23 - Remover OpenSpec e consolidar governança
 
 Status: aceito
@@ -258,6 +303,31 @@ Depois da extração das funções puras, `handle_user_message` ainda carregava 
 ## 2026-03-23 - Separar payload final e teacher analysis do fluxo principal de chat
 
 Status: aceito
+
+## 2026-04-21 - Reusar estado pedagógico explícito entre Chat Coach, Spec4 e Lingvist
+
+Status: aceito
+
+### Contexto
+
+A memória longitudinal do Chat Coach já existia, mas ainda estava implícita demais: o `student_profile_json` não carregava um estado pedagógico suficientemente explícito, o `lesson_frame_json` não era recalculado de forma clara a cada turno e os modos `Spec4` e `Lingvist` não reaproveitavam esse contexto.
+
+Além disso, o repositório já possuía a tabela `chat_lesson_history`, criada em migration anterior, mas ela seguia subutilizada.
+
+### Decisão
+
+- tornar `pedagogical_state` parte explícita do `student_profile_json`
+- recalcular `lesson_frame_json` a cada `teacher_analysis`, incluindo `learning_goal`, `expected_intent`, `primary_focus`, `lesson_stage` e `success_criteria`
+- persistir snapshots do `lesson_frame` em `chat_lesson_history` em vez de criar nova tabela
+- estender o evento WebSocket `teacher_analysis` para devolver o `lesson_frame` atualizado
+- projetar um `learning_context` compacto para `Spec4` e `Lingvist`, mantendo o frontend desacoplado da heurística interna completa
+
+### Impacto
+
+- o estado pedagógico deixou de depender só de heurísticas escondidas no prompt ou no frontend
+- Chat Coach, Spec4 e Lingvist agora compartilham a mesma memória pedagógica de forma observável
+- analytics futuros podem usar `chat_lesson_history` para medir evolução de foco e objetivo entre turnos
+- a próxima camada de melhoria sai de refatoração de contrato e entra em calibração/eval de heurísticas
 
 ### Contexto
 
@@ -1716,3 +1786,91 @@ Mesmo funcionando, `api/app/llm/mock_provider.py` continuava como um arquivo gra
 - o provider local fica muito mais fácil de percorrer e manter
 - a heurística mock continua disponível para desenvolvimento sem GPU, mas agora organizada por responsabilidade
 - a regressão de comportamento fica protegida pela suíte existente do mock provider e pela fábrica de LLM
+
+## 2026-04-21 - Usar structured outputs para as tarefas pedagógicas do Chat Coach
+
+Status: aceito
+
+### Contexto
+
+O `Chat Coach` já usava LLM real para a resposta principal, mas `micro_eval` e autocomplete ainda ficavam presos à heurística mock, enquanto a `teacher_analysis` dependia de parsing textual frágil e expunha um schema didático raso. Isso desperdiçava capacidade do modelo justamente na parte mais pedagógica do produto.
+
+### Decisão
+
+- introduzir `api/app/llm/pedagogical_tasks.py` com prompts e schemas explícitos para `micro_eval`, autocomplete e `teacher_analysis`
+- fazer `LlamaCppLLMProvider` e `OpenAILLMProvider` pedirem JSON estruturado por schema nessas três tarefas, mantendo fallback seguro para `MockLLMProvider`
+- enriquecer o contrato do `Chat Coach` com scaffolds adicionais:
+  - `self_check_prompt`
+  - `encouragement`
+  - `strengths`
+  - `focus_areas`
+  - `reflection_question`
+- normalizar o payload de `teacher_analysis` na camada de entrega para manter compatibilidade com payloads antigos/incompletos
+
+### Impacto
+
+- o Chat Coach passa a aproveitar LLM real também nas camadas de feedback e não só na resposta conversacional
+- o contrato de análise fica mais estável e menos dependente de parsing permissivo
+- a sidebar do frontend ganha sinais mais didáticos, sem alterar o fluxo principal do chat
+
+## 2026-04-21 - Fechar a variedade real do lookahead no Lingvist
+
+Status: aceito
+
+### Contexto
+
+O WIP local do Lingvist já introduzia perfil de dificuldade por fase e melhor escolha de sentenças, mas a função `choose_frequency_ordered_new_word()` ainda sempre devolvia o menor rank disponível no pool. Na prática, o comentário prometia lookahead com variedade, mas a implementação ainda era determinística demais.
+
+### Decisão
+
+- ordenar explicitamente os candidatos por rank dentro de `choose_frequency_ordered_new_word()`
+- escolher dentro da janela com pesos decrescentes por posição, preservando viés forte para palavras mais frequentes sem eliminar variedade
+- ampliar a suíte focal de `api/tests/test_lingvist_difficulty_service.py` para cobrir ordenação do pool, exclusões e lookahead real
+
+### Impacto
+
+- o modo Lingvist continua frequency-first, mas deixa de repetir um comportamento excessivamente mecânico
+- a regra fica coerente com o comentário do código e com a intenção pedagógica do modo
+- futuras calibrações de dificuldade ficam mais fáceis porque a escolha do novo item agora tem uma fronteira explícita
+
+## 2026-04-21 - Persistir memória pedagógica do Chat Coach em `student_profile_json` e `session_summary`
+
+Status: aceito
+
+### Contexto
+
+Depois dos structured outputs, o Chat Coach ainda reagia principalmente ao turno isolado. O repositório já tinha sinais úteis em `User` e no histórico de `teacher_analysis`, mas eles não eram reinjetados de forma consistente em novas conversas nem em novos prompts.
+
+### Decisão
+
+- criar `api/app/services/chat_profile_service.py` para derivar um perfil pedagógico longitudinal a partir de `User` e do histórico recente de `teacher_analysis`
+- usar `student_profile_json` e `session_summary` como memória persistida do Chat Coach, sem introduzir nova tabela nesta fase
+- atualizar essa memória a cada `teacher_analysis`, preservando strengths, focus areas, recent topics, scaffolding e idioma de feedback
+- devolver `student_profile` e `session_summary` atualizados no evento WebSocket de `teacher_analysis`
+
+### Impacto
+
+- novas conversas do Chat Coach passam a nascer com contexto pedagógico real, e não mais com perfil genérico
+- o frontend consegue mostrar o "coach memory" sem fazer roundtrip REST extra
+- a arquitetura ganha um ponto explícito para calibrar heurísticas de CEFR, scaffolding e foco pedagógico sem espalhar regra por handlers e prompts
+
+## 2026-04-21 - Separar idioma do feedback pedagógico do idioma-alvo
+
+Status: aceito
+
+### Contexto
+
+O produto já conhecia `language_preference` do aluno, mas o Chat Coach quase sempre devolvia feedback pedagógico em inglês, misturando explicação, scaffold e exercício no mesmo idioma. Isso reduzia clareza didática justamente para alunos mais iniciantes.
+
+### Decisão
+
+- usar `language_preference` como fonte para `feedback_language` no perfil pedagógico do Chat Coach
+- orientar prompts estruturadas para que explicações, summaries, strengths, focus areas, reflection questions e encouragement apareçam no idioma de feedback
+- manter rewrites, sugestões e exercícios no idioma-alvo, para não perder o papel de treino
+- alinhar também o `MockLLMProvider` a esse contrato multilíngue básico, para desenvolvimento local sem GPU continuar representativo
+
+### Impacto
+
+- o Chat Coach fica mais didático para perfis iniciantes sem abandonar a prática no idioma-alvo
+- o contrato entre backend, prompts e frontend fica mais explícito sobre o que deve ser localizado e o que deve permanecer em inglês
+- futuras melhorias multilíngues passam a ter uma fronteira de implementação clara

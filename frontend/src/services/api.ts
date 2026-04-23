@@ -1,4 +1,4 @@
-/** API service facade for FillTheWord frontend */
+/** API service facade for WordBridge Coach frontend */
 
 import api from './apiClient';
 
@@ -16,6 +16,7 @@ export type {
   AnswerResponse,
   CardResponse,
   Gap,
+  LearningContext,
   LingvistCardResponse,
   MicroProgress,
 } from './apiCards';

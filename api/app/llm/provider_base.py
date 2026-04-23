@@ -86,3 +86,33 @@ class LLMProvider(ABC):
             - reason (brief explanation)
         """
         pass
+
+    @abstractmethod
+    async def generate_teacher_analysis(
+        self,
+        user_message: str,
+        context: str,
+        lesson_frame: Dict[str, Any],
+        student_profile: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Generate structured post-turn teacher analysis.
+
+        Args:
+            user_message: Final message sent by the student
+            context: Teacher-only conversation context
+            lesson_frame: Current pedagogical objective
+            student_profile: Learner profile with CEFR, feedback language, and recent focus areas
+
+        Returns:
+            Dict with:
+            - rewrite
+            - corrections
+            - teacher_summary
+            - strengths
+            - focus_areas
+            - next_practice
+            - reflection_question
+            - encouragement
+        """
+        pass

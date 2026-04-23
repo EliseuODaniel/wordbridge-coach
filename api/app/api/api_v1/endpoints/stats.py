@@ -1,4 +1,4 @@
-"""Stats endpoints for FillTheWord."""
+"""Stats endpoints for WordBridge Coach."""
 
 from datetime import timedelta
 from typing import Optional

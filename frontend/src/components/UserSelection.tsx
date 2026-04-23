@@ -56,10 +56,10 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
       <div className="container mx-auto px-4 max-w-xl w-full">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-100 mb-2">
-            FillTheWord
+            WordBridge Coach
           </h1>
           <p className="text-gray-400">
-            Learn vocabulary with smart spaced repetition
+            Bridge cards, cloze practice and chat coaching in one local trainer
           </p>
         </div>
 

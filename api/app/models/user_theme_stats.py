@@ -1,4 +1,4 @@
-"""User theme statistics model for FillTheWord analytics"""
+"""User theme statistics model for WordBridge Coach analytics."""
 
 from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.dialects.postgresql import UUID

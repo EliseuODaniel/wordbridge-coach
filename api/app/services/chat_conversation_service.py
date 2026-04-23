@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.models import ChatConversation, ChatMessage
+from app.services.chat_profile_service import build_seed_chat_state, record_lesson_frame_snapshot
 from app.services.chat_rest_service import (
     get_conversation_or_404,
     get_user_or_404,
@@ -41,25 +42,33 @@ def get_default_student_profile() -> dict:
     }
 
 
-def build_system_message_content(lesson_frame: dict) -> str:
+def build_system_message_content(lesson_frame: dict, student_profile: dict | None = None) -> str:
     """Build the default system message persisted for a new conversation."""
     cefr_target = lesson_frame.get("cefr_target", "A2")
+    student_profile = student_profile or {}
+    feedback_language = student_profile.get("feedback_language", "English")
     return (
         "You are an English teacher helping a "
-        f"{cefr_target} level student practice conversation."
+        f"{cefr_target} level student practice conversation. "
+        f"Use {feedback_language} for explicit feedback when needed."
     )
 
 
 def create_chat_conversation(db, conversation_data):
     """Create a conversation plus its initial system message."""
-    get_user_or_404(db, conversation_data.user_id)
+    user = get_user_or_404(db, conversation_data.user_id)
+    student_profile, lesson_frame, session_summary = build_seed_chat_state(
+        db,
+        user,
+        base_lesson_frame=get_default_lesson_frame(),
+    )
 
     conversation = ChatConversation(
         user_id=conversation_data.user_id,
         title=conversation_data.title,
-        student_profile_json=get_default_student_profile(),
-        lesson_frame_json=get_default_lesson_frame(),
-        session_summary="",
+        student_profile_json=student_profile,
+        lesson_frame_json=lesson_frame,
+        session_summary=session_summary,
     )
     db.add(conversation)
     db.commit()
@@ -68,8 +77,12 @@ def create_chat_conversation(db, conversation_data):
     system_message = ChatMessage(
         conversation_id=conversation.id,
         role="system",
-        content=build_system_message_content(conversation.lesson_frame_json),
+        content=build_system_message_content(
+            conversation.lesson_frame_json,
+            conversation.student_profile_json,
+        ),
     )
+    record_lesson_frame_snapshot(db, conversation, conversation.lesson_frame_json)
     db.add(system_message)
     db.commit()
 

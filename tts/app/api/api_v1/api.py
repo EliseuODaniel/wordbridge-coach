@@ -1,4 +1,4 @@
-"""API v1 router for FillTheWord TTS Service"""
+"""API v1 router for the WordBridge Coach TTS service."""
 
 from fastapi import APIRouter
 

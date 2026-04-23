@@ -1,4 +1,4 @@
-"""User management endpoints for FillTheWord"""
+"""User management endpoints for WordBridge Coach."""
 
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, status

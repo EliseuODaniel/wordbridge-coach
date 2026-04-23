@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# FillTheWord Backend Test Runner
+# WordBridge Coach Backend Test Runner
 # Usage: ./test-runner.sh [test_type] [options]
 
 set -e
 
-echo "🧪 FillTheWord Backend Test Runner"
+echo "🧪 WordBridge Coach Backend Test Runner"
 echo "=================================="
 
 # Colors for output
@@ -22,12 +22,12 @@ VERBOSE=false
 SPEC4_ONLY=false
 PYTHON_BIN="python"
 PIP_BIN="pip"
-PYTEST_BIN="pytest"
+PYTEST_CMD="python -m pytest"
 
 if [[ -x ".venv/bin/python" ]]; then
     PYTHON_BIN=".venv/bin/python"
     PIP_BIN=".venv/bin/pip"
-    PYTEST_BIN=".venv/bin/pytest"
+    PYTEST_CMD=".venv/bin/python -m pytest"
 fi
 
 # Parse arguments
@@ -102,6 +102,11 @@ fi
 # Create test database if needed
 echo -e "${BLUE}Setting up test environment...${NC}"
 
+REPO_ROOT="$(cd .. && pwd)"
+TMPDIR="${TMPDIR:-$REPO_ROOT/.tmp_pytest}"
+mkdir -p "$TMPDIR"
+export TMPDIR
+
 # Check if test database is available
 echo -e "${BLUE}Checking test database connectivity...${NC}"
 if ! "$PYTHON_BIN" -c "
@@ -121,8 +126,7 @@ except Exception as e:
 fi
 
 # Build pytest command
-PYTEST_CMD="$PYTEST_BIN"
-PYTEST_ENV_PREFIX="PYTHONPATH=. DEBUG=false"
+PYTEST_ENV_PREFIX="PYTHONPATH=. DEBUG=false TMPDIR=$TMPDIR"
 
 if [[ "$VERBOSE" == true ]]; then
     PYTEST_CMD="$PYTEST_CMD -v"

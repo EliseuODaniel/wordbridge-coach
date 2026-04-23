@@ -1,4 +1,4 @@
-"""FillTheWord TTS Service - Main FastAPI Application"""
+"""WordBridge Coach TTS service - main FastAPI application."""
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -10,9 +10,9 @@ from app.api.api_v1.api import api_router
 from app.core.config import settings
 
 app = FastAPI(
-    title="FillTheWord TTS Service",
+    title="WordBridge Coach TTS Service",
     version="0.1.0",
-    description="Text-to-Speech service for FillTheWord vocabulary learning",
+    description="Text-to-Speech service for WordBridge Coach vocabulary training",
 )
 
 # Configure CORS
@@ -34,14 +34,14 @@ os.makedirs(settings.AUDIO_CACHE_PATH, exist_ok=True)
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "FillTheWord TTS Service"}
+    return {"status": "healthy", "service": "WordBridge Coach TTS Service"}
 
 
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "FillTheWord TTS Service",
+        "message": "WordBridge Coach TTS Service",
         "version": "0.1.0",
         "endpoints": ["/api/tts/word", "/api/tts/sentence", "/api/audio"]
     }

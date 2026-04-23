@@ -67,12 +67,16 @@ def build_chat_generation_inputs(
     conversation,
     db: Session,
     build_context: Callable[[str, Session, int, bool], List[dict]],
-    build_system_prompt: Callable[[dict], str],
+    build_system_prompt: Callable[[dict, dict, str], str],
     build_generation_config: Callable[[], dict],
 ) -> tuple[List[dict], str, dict]:
     """Build generation inputs for assistant streaming."""
     messages = build_context(str(conversation.id), db, limit=10, exclude_system=True)
-    system_prompt = build_system_prompt(conversation.lesson_frame_json)
+    system_prompt = build_system_prompt(
+        conversation.lesson_frame_json,
+        conversation.student_profile_json,
+        conversation.session_summary,
+    )
     generation_config = build_generation_config()
     return messages, system_prompt, generation_config
 
@@ -83,9 +87,15 @@ def build_teacher_analysis_context(
     build_teacher_context_fn: Callable[[str, Session, int], List[dict]],
     limit: int = 10,
 ) -> str:
-    """Build teacher-analysis context, falling back to session summary when needed."""
+    """Build teacher-analysis context, combining recent turns with session memory."""
     teacher_messages = build_teacher_context_fn(str(conversation.id), db, limit=limit)
-    if teacher_messages:
-        return "\n".join(message["content"] for message in teacher_messages if message.get("content"))
+    recent_user_turns = "\n".join(
+        message["content"] for message in teacher_messages if message.get("content")
+    )
+    session_summary = (conversation.session_summary or "").strip()
 
-    return conversation.session_summary
+    if session_summary and recent_user_turns:
+        return f"{session_summary}\n\nRecent student messages:\n{recent_user_turns}"
+    if recent_user_turns:
+        return recent_user_turns
+    return session_summary

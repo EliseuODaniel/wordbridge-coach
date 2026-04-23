@@ -1,9 +1,19 @@
 """OpenAI LLM Provider via HTTP (no SDK)"""
 
+import json
 import logging
 from typing import AsyncGenerator, Dict, Any, List
 import httpx
 
+from app.llm.pedagogical_tasks import (
+    AutocompletePayload,
+    DraftEvaluationPayload,
+    TeacherAnalysisPayload,
+    build_autocomplete_messages,
+    build_micro_eval_messages,
+    build_openai_response_format,
+    build_teacher_analysis_messages,
+)
 from app.llm.provider_base import LLMProvider
 from app.llm.mock_provider import MockLLMProvider
 
@@ -16,8 +26,9 @@ class OpenAILLMProvider(LLMProvider):
 
     Features:
     - chat_stream: Real OpenAI responses
-    - micro_eval: Delegates to MockLLMProvider for now
-    - autocomplete: Delegates to MockLLMProvider for now
+    - micro_eval: Structured pedagogical evaluation with mock fallback
+    - autocomplete: Structured continuation with mock fallback
+    - teacher analysis: Structured post-turn review with mock fallback
     - Automatic fallback to Mock on error
     """
 
@@ -172,6 +183,37 @@ class OpenAILLMProvider(LLMProvider):
             else:
                 raise
 
+    async def _request_structured_output(
+        self,
+        *,
+        messages: List[Dict[str, str]],
+        response_model,
+        schema_name: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> dict:
+        """Request structured JSON from OpenAI and validate it locally."""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": build_openai_response_format(schema_name, response_model),
+        }
+        response = await self.client.post(
+            "https://api.openai.com/v1/chat/completions",
+            json=payload,
+        )
+        response.raise_for_status()
+
+        response_data = response.json()
+        content = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("OpenAI returned empty structured content")
+
+        return response_model.model_validate(json.loads(content)).model_dump()
+
     async def micro_eval(
         self,
         context: str,
@@ -180,12 +222,26 @@ class OpenAILLMProvider(LLMProvider):
         student_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Evaluate draft (delegates to MockLLMProvider for now).
-
-        Real LLM-based evaluation is not implemented in this change.
+        Evaluate a learner draft with structured pedagogical feedback.
         """
-        logger.debug("micro_eval: delegating to MockLLMProvider")
-        return await self._mock.micro_eval(context, lesson_frame, draft, student_profile)
+        try:
+            return await self._request_structured_output(
+                messages=build_micro_eval_messages(
+                    context=context,
+                    lesson_frame=lesson_frame,
+                    draft=draft,
+                    student_profile=student_profile,
+                ),
+                response_model=DraftEvaluationPayload,
+                schema_name="draft_evaluation",
+                temperature=0.1,
+                max_tokens=700,
+            )
+        except Exception as error:
+            logger.warning("OpenAI micro_eval failed, falling back to Mock: %s", error)
+            if self.fallback_to_mock:
+                return await self._mock.micro_eval(context, lesson_frame, draft, student_profile)
+            raise
 
     async def autocomplete(
         self,
@@ -195,12 +251,62 @@ class OpenAILLMProvider(LLMProvider):
         student_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Generate autocomplete (delegates to MockLLMProvider for now).
-
-        Real LLM-based autocomplete is not implemented in this change.
+        Generate a short structured ghost suggestion.
         """
-        logger.debug("autocomplete: delegating to MockLLMProvider")
-        return await self._mock.autocomplete(context, lesson_frame, draft, student_profile)
+        try:
+            return await self._request_structured_output(
+                messages=build_autocomplete_messages(
+                    context=context,
+                    lesson_frame=lesson_frame,
+                    draft=draft,
+                    student_profile=student_profile,
+                ),
+                response_model=AutocompletePayload,
+                schema_name="autocomplete_hint",
+                temperature=0.1,
+                max_tokens=120,
+            )
+        except Exception as error:
+            logger.warning("OpenAI autocomplete failed, falling back to Mock: %s", error)
+            if self.fallback_to_mock:
+                return await self._mock.autocomplete(context, lesson_frame, draft, student_profile)
+            raise
+
+    async def generate_teacher_analysis(
+        self,
+        user_message: str,
+        context: str,
+        lesson_frame: Dict[str, Any],
+        student_profile: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Generate structured post-turn teacher analysis."""
+        try:
+            return await self._request_structured_output(
+                messages=build_teacher_analysis_messages(
+                    user_message=user_message,
+                    context=context,
+                    lesson_frame=lesson_frame,
+                    student_profile=student_profile,
+                ),
+                response_model=TeacherAnalysisPayload,
+                schema_name="teacher_analysis",
+                temperature=0.2,
+                max_tokens=900,
+            )
+        except Exception as error:
+            logger.warning("OpenAI teacher analysis failed, falling back to Mock: %s", error)
+            if self.fallback_to_mock:
+                fallback = await self._mock.generate_teacher_analysis(
+                    user_message,
+                    context,
+                    lesson_frame,
+                    student_profile,
+                )
+                return {
+                    **fallback,
+                    "debug_reason": str(error)[:200],
+                }
+            raise
 
     async def close(self):
         """Close HTTP client."""

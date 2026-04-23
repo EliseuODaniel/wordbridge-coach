@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from sqlalchemy import and_, func
 
 from app.models import Word, WordFrequency
+from app.services.lingvist_difficulty_service import choose_frequency_ordered_new_word
 from app.services.card_selection_fallback_service import (
     find_any_eligible_card as _find_any_eligible_card_service,
     get_card_review_state as _get_card_review_state_service,
@@ -34,6 +35,7 @@ def build_selected_card(
         user_id,
         word.id,
         exclude_card_id,
+        use_lingvist_profile=selector._get_user_mode(user_id) == 'lingvist',
     )
     card_context = selector._build_card_context(user_id, word, sentence, is_new=is_new)
     selector.progression_service.record_card_shown(user_id, is_new_card=is_new)
@@ -46,48 +48,85 @@ def get_random_new_card(
     progress: 'UserFrequencyProgress',
     exclude_card_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Get a random new card within the user's active window."""
+    """Get the next Lingvist new card in frequency order with small lookahead variety."""
     user, target_lang = selector._get_user_and_target_language(user_id)
     if not target_lang:
         return None
 
     max_rank = min(progress.current_window_end_rank, progress.word_goal_rank)
+    user_mode = selector._get_user_mode(user_id)
 
-    query = selector.db.query(Word).join(
-        WordFrequency,
-        and_(
-            func.lower(Word.lemma) == func.lower(WordFrequency.word),
-            WordFrequency.language_code == target_lang.code,
-            WordFrequency.rank <= max_rank,
-        ),
-    )
+    if user_mode == 'lingvist':
+        profile = selector.progression_service.get_lingvist_difficulty_profile(user_id)
+        query = selector.db.query(Word, WordFrequency.rank).join(
+            WordFrequency,
+            and_(
+                func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                WordFrequency.language_code == target_lang.code,
+                WordFrequency.rank <= max_rank,
+            ),
+        ).order_by(WordFrequency.rank.asc(), Word.id.asc())
 
-    excluded_word_id = selector._get_excluded_word_id(exclude_card_id)
-    recent_word_ids = selector._get_recent_correct_word_ids(user_id, days=7, limit=50)
+        excluded_word_id = selector._get_excluded_word_id(exclude_card_id)
+        recent_word_ids = selector._get_recent_correct_word_ids(user_id, days=7, limit=50)
 
-    exclusions = set(recent_word_ids)
-    if excluded_word_id:
-        exclusions.add(excluded_word_id)
-
-    words_without_recent = query.filter(~Word.id.in_(exclusions)).all()
-
-    if len(words_without_recent) >= 10:
-        word = random.choice(words_without_recent)
-    else:
+        exclusions = {str(word_id) for word_id in recent_word_ids}
         if excluded_word_id:
-            words_without_current = query.filter(Word.id != excluded_word_id).all()
-            if words_without_current:
-                word = random.choice(words_without_current)
+            exclusions.add(str(excluded_word_id))
+
+        ranked_candidates = query.limit(max(profile.ranked_candidate_pool * 3, 12)).all()
+        word = choose_frequency_ordered_new_word(
+            ranked_candidates,
+            excluded_word_ids=exclusions,
+            pool_size=profile.ranked_candidate_pool,
+        )
+
+        if word is None:
+            fallback_candidates = query.limit(24).all()
+            word = choose_frequency_ordered_new_word(
+                fallback_candidates,
+                excluded_word_ids={str(excluded_word_id)} if excluded_word_id else set(),
+                pool_size=max(profile.ranked_candidate_pool, 4),
+            )
+
+        if word is None:
+            return None
+    else:
+        query = selector.db.query(Word).join(
+            WordFrequency,
+            and_(
+                func.lower(Word.lemma) == func.lower(WordFrequency.word),
+                WordFrequency.language_code == target_lang.code,
+                WordFrequency.rank <= max_rank,
+            ),
+        )
+
+        excluded_word_id = selector._get_excluded_word_id(exclude_card_id)
+        recent_word_ids = selector._get_recent_correct_word_ids(user_id, days=7, limit=50)
+
+        exclusions = set(recent_word_ids)
+        if excluded_word_id:
+            exclusions.add(excluded_word_id)
+
+        words_without_recent = query.filter(~Word.id.in_(exclusions)).all()
+
+        if len(words_without_recent) >= 10:
+            word = random.choice(words_without_recent)
+        else:
+            if excluded_word_id:
+                words_without_current = query.filter(Word.id != excluded_word_id).all()
+                if words_without_current:
+                    word = random.choice(words_without_current)
+                else:
+                    words = query.all()
+                    if not words:
+                        return None
+                    word = random.choice(words)
             else:
                 words = query.all()
                 if not words:
                     return None
                 word = random.choice(words)
-        else:
-            words = query.all()
-            if not words:
-                return None
-            word = random.choice(words)
 
     return build_selected_card(
         selector,

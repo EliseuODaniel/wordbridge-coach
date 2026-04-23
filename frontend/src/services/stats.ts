@@ -1,4 +1,4 @@
-/** Stats service for FillTheWord */
+/** Stats service for WordBridge Coach */
 
 import api from './apiClient';
 

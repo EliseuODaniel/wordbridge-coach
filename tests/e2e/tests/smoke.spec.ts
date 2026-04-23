@@ -4,7 +4,7 @@ test.describe('Smoke', () => {
   test('loads the profile selection screen', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.locator('h1')).toContainText('FillTheWord');
+    await expect(page.locator('h1')).toContainText('WordBridge Coach');
     await expect(page.locator('[data-testid="profile-create-name"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-create-start"]')).toBeVisible();
   });

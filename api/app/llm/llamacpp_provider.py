@@ -1,9 +1,19 @@
 """llama.cpp LLM Provider (OpenAI-compatible HTTP)"""
 
+import json
 import logging
 from typing import AsyncGenerator, Dict, Any, List
 import httpx
 
+from app.llm.pedagogical_tasks import (
+    AutocompletePayload,
+    DraftEvaluationPayload,
+    TeacherAnalysisPayload,
+    build_autocomplete_messages,
+    build_llamacpp_response_format,
+    build_micro_eval_messages,
+    build_teacher_analysis_messages,
+)
 from app.llm.provider_base import LLMProvider
 from app.llm.mock_provider import MockLLMProvider
 
@@ -28,9 +38,10 @@ class LlamaCppLLMProvider(LLMProvider):
 
     Features:
     - chat_stream: Real LLM responses via llama.cpp
-    - micro_eval: Heuristic-based (delegates to Mock)
-    - autocomplete: Heuristic-based (delegates to Mock)
-    - Optional strict mode (raise instead of fallback)
+    - micro_eval: Structured pedagogical evaluation with mock fallback
+    - autocomplete: Structured short continuation with mock fallback
+    - teacher analysis: Structured post-turn review with mock fallback
+    - Optional strict mode (raise instead of fallback for chat streaming)
     - No API key required
     """
 
@@ -233,6 +244,41 @@ class LlamaCppLLMProvider(LLMProvider):
                 async for token in self._mock.chat_stream(messages, system_prompt, generation_config):
                     yield token
 
+    async def _request_structured_output(
+        self,
+        *,
+        messages: List[Dict[str, str]],
+        response_model,
+        temperature: float,
+        max_tokens: int,
+    ) -> dict:
+        """Request schema-constrained JSON from llama.cpp and validate it."""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": build_llamacpp_response_format(response_model),
+        }
+        url = f"{self.base_url}/chat/completions"
+        response = await self.client.post(url, json=payload)
+        response.raise_for_status()
+
+        response_data = response.json()
+        content = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict)
+            )
+
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("llama.cpp returned empty structured content")
+
+        return response_model.model_validate(json.loads(content)).model_dump()
+
     async def micro_eval(
         self,
         context: str,
@@ -241,13 +287,23 @@ class LlamaCppLLMProvider(LLMProvider):
         student_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Evaluate draft using heuristic analysis.
-
-        Real LLM-based evaluation not implemented yet.
-        Delegates to MockLLMProvider heuristic logic.
+        Evaluate a learner draft with structured pedagogical feedback.
         """
-        logger.debug("micro_eval: using heuristic analysis (Mock)")
-        return await self._mock.micro_eval(context, lesson_frame, draft, student_profile)
+        try:
+            return await self._request_structured_output(
+                messages=build_micro_eval_messages(
+                    context=context,
+                    lesson_frame=lesson_frame,
+                    draft=draft,
+                    student_profile=student_profile,
+                ),
+                response_model=DraftEvaluationPayload,
+                temperature=0.1,
+                max_tokens=700,
+            )
+        except Exception as error:
+            logger.warning("micro_eval structured output failed, falling back to Mock: %s", error)
+            return await self._mock.micro_eval(context, lesson_frame, draft, student_profile)
 
     async def autocomplete(
         self,
@@ -257,186 +313,64 @@ class LlamaCppLLMProvider(LLMProvider):
         student_profile: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Generate autocomplete using heuristic analysis.
-
-        Real LLM-based autocomplete not implemented yet.
-        Delegates to MockLLMProvider heuristic logic.
+        Generate a short structured ghost suggestion.
         """
-        logger.debug("autocomplete: using heuristic analysis (Mock)")
-        return await self._mock.autocomplete(context, lesson_frame, draft, student_profile)
+        try:
+            return await self._request_structured_output(
+                messages=build_autocomplete_messages(
+                    context=context,
+                    lesson_frame=lesson_frame,
+                    draft=draft,
+                    student_profile=student_profile,
+                ),
+                response_model=AutocompletePayload,
+                temperature=0.1,
+                max_tokens=120,
+            )
+        except Exception as error:
+            logger.warning("autocomplete structured output failed, falling back to Mock: %s", error)
+            return await self._mock.autocomplete(context, lesson_frame, draft, student_profile)
 
     async def generate_teacher_analysis(
         self,
         user_message: str,
         context: str,
-        lesson_frame: Dict[str, Any]
+        lesson_frame: Dict[str, Any],
+        student_profile: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        Generate teacher analysis as JSON (non-streaming, robust parser).
-
-        PASSO 1:
-        - Uses stream=False for complete JSON response
-        - Prompt: "RETURN JSON ONLY. NO markdown. NO extra text."
-        - Robust parser: removes code fences, extracts JSON
-        - Fallback with error reason if parsing fails
-
-        Returns structured analysis with:
-        - rewrite: Corrected version of user's message
-        - corrections: List of {mistake, fix, why}
-        - teacher_summary: Brief pedagogical feedback
-        - next_practice: 2-3 suggested practice sentences
+        Generate structured post-turn teacher analysis.
         """
-        # Build teacher-only context (user messages only)
-        # PASSO 3: Contextos independentes
-        teacher_system_prompt = f"""You are an expert English teacher. Analyze the student's message and return JSON ONLY.
-
-**CRITICAL: RETURN JSON ONLY**
-- NO markdown
-- NO code blocks (no ```json)
-- NO extra text
-- ONLY raw JSON
-
-Example format:
-{{
-  "rewrite": "I enjoyed sleeping.",
-  "corrections": [
-    {{
-      "mistake": "enjoyed to sleep",
-      "fix": "enjoyed sleeping",
-      "why": "After 'enjoy', use gerund (-ing), not infinitive."
-    }}
-  ],
-  "teacher_summary": "Good attempt! Remember: enjoy + gerund.",
-  "next_practice": [
-    "I enjoy reading books.",
-    "She enjoys playing tennis."
-  ]
-}}
-
-Student message: "{user_message}"
-
-Return JSON NOW:"""
-
         try:
-            # PASSO 1: Non-streaming call for complete JSON
-            payload = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": teacher_system_prompt}],
-                "stream": False,  # CRITICAL: Non-streaming for JSON
-                "temperature": 0.3,  # Lower temperature for consistent JSON
-                "max_tokens": 500
-            }
-
-            url = f"{self.base_url}/chat/completions"
-
-            logger.info(f"[TEACHER_LLM] Calling llama.cpp for teacher analysis (non-streaming)")
-
-            async with self.client.stream("POST", url, json=payload) as response:
-                response.raise_for_status()
-
-                # Parse response (non-streaming)
-                import json
-                response_data = json.loads(await response.aread())
-
-                # Extract content from OpenAI-compatible response
-                raw_text = response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-                logger.info(f"[TEACHER_LLM] Raw output (first 500 chars): {raw_text[:500]}")
-
-                # PASSO 1: Robust JSON parser
-                parsed_analysis = self._parse_teacher_json(raw_text)
-
-                logger.info(f"[TEACHER_LLM] Successfully parsed teacher analysis")
-                return parsed_analysis
-
-        except (httpx.HTTPError, httpx.TimeoutException) as e:
-            logger.error(f"[TEACHER_LLM] llama.cpp error: {e}")
-            if self.strict:
+            return await self._request_structured_output(
+                messages=build_teacher_analysis_messages(
+                    user_message=user_message,
+                    context=context,
+                    lesson_frame=lesson_frame,
+                    student_profile=student_profile,
+                ),
+                response_model=TeacherAnalysisPayload,
+                temperature=0.2,
+                max_tokens=900,
+            )
+        except Exception as error:
+            logger.warning(
+                "teacher analysis structured output failed, falling back to Mock: %s",
+                error,
+            )
+            if self.strict and isinstance(error, (httpx.HTTPError, httpx.TimeoutException)):
                 raise
 
-            # Fallback to Mock provider
-            logger.info(f"[TEACHER_LLM] Falling back to Mock provider")
-            return await self._mock.generate_teacher_analysis(user_message, context, lesson_frame)
-
-        except Exception as e:
-            logger.exception(f"[TEACHER_LLM] Unexpected error: {e}")
-            # PASSO 1: NUNCA retorne "temporarily unavailable" silencioso
-            # Retorne com debug_reason
+            fallback = await self._mock.generate_teacher_analysis(
+                user_message,
+                context,
+                lesson_frame,
+                student_profile,
+            )
             return {
-                "rewrite": None,
-                "corrections": [],
-                "teacher_summary": f"Teacher analysis error: {str(e)[:100]}",
-                "next_practice": [],
-                "debug_reason": str(e)[:200]
+                **fallback,
+                "debug_reason": str(error)[:200],
             }
-
-    def _parse_teacher_json(self, raw_text: str) -> Dict[str, Any]:
-        """
-        Parse JSON from LLM response with robust error handling.
-
-        PASSO 1: Parser robusto
-        - Remove code fences (```json, ```)
-        - Extract substring from first "{" to last "}"
-        - Try json.loads
-        - If fail, return Mock analysis
-
-        Args:
-            raw_text: Raw text from LLM
-
-        Returns:
-            Parsed teacher analysis dict
-        """
-        import json
-        import re
-
-        try:
-            # Step 1: Remove code fences if present
-            cleaned = raw_text.strip()
-
-            # Remove ```json and ``` markers
-            cleaned = re.sub(r'^```json\s*', '', cleaned, flags=re.IGNORECASE)
-            cleaned = re.sub(r'^```\s*', '', cleaned, flags=re.IGNORECASE)
-            cleaned = re.sub(r'\s*```$', '', cleaned, flags=re.IGNORECASE)
-
-            # Step 2: Extract JSON from first { to last }
-            first_brace = cleaned.find('{')
-            last_brace = cleaned.rfind('}')
-
-            if first_brace == -1 or last_brace == -1 or last_brace <= first_brace:
-                logger.warning(f"[TEACHER_PARSE] No valid JSON braces found in: {raw_text[:200]}")
-                raise ValueError("No valid JSON object found")
-
-            json_str = cleaned[first_brace:last_brace + 1]
-
-            # Step 3: Parse JSON
-            parsed = json.loads(json_str)
-
-            # Validate required keys
-            required_keys = ["rewrite", "corrections", "teacher_summary", "next_practice"]
-            missing_keys = [k for k in required_keys if k not in parsed]
-
-            if missing_keys:
-                logger.warning(f"[TEACHER_PARSE] Missing keys: {missing_keys}, adding defaults")
-                for key in missing_keys:
-                    if key == "rewrite":
-                        parsed[key] = None
-                    elif key == "corrections":
-                        parsed[key] = []
-                    elif key == "teacher_summary":
-                        parsed[key] = "Analysis incomplete."
-                    elif key == "next_practice":
-                        parsed[key] = []
-
-            return parsed
-
-        except json.JSONDecodeError as e:
-            logger.error(f"[TEACHER_PARSE] JSON decode error: {e} in: {raw_text[:300]}")
-            # Return Mock fallback instead of crashing
-            return self._mock._analyze_text(raw_text, lesson_frame={})
-        except Exception as e:
-            logger.error(f"[TEACHER_PARSE] Parse error: {e}")
-            # Return Mock fallback
-            return self._mock._analyze_text(raw_text, lesson_frame={})
 
     async def close(self):
         """Close HTTP client."""

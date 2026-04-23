@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for FillTheWord testing"""
+"""Pytest configuration and fixtures for WordBridge Coach testing."""
 
 import os
 

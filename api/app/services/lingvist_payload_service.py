@@ -14,6 +14,7 @@ from app.models import Card, Language, Sentence, User, UserCardState, Word
 from app.models.user_card_state import MemoryStage
 from app.models.user_session_stats import UserSessionStats
 from app.schemas.lingvist import LingvistCardResponse, MicroProgress
+from app.services.chat_profile_service import load_cross_mode_learning_context
 
 
 def get_user_target_language_code(db: Session, user_id: str, default: str = "en") -> str:
@@ -153,6 +154,7 @@ def build_lingvist_card_response(
     micro_progress = get_micro_progress(db, user_id, user)
     lang_code = get_user_target_language_code(db, user_id)
     audio_word_url, audio_sentence_url = build_relative_audio_urls(card, word, sentence, lang_code)
+    learning_context = load_cross_mode_learning_context(db, user_id, mode="lingvist")
 
     return LingvistCardResponse(
         card_id=str(card.id),
@@ -170,4 +172,5 @@ def build_lingvist_card_response(
         micro_progress=micro_progress,
         audio_word_url=audio_word_url,
         audio_sentence_url=audio_sentence_url,
+        learning_context=learning_context,
     )

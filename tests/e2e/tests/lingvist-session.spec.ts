@@ -41,8 +41,8 @@ test.describe('Lingvist Mode - E2E', () => {
     await page.fill('[data-testid="profile-create-name"]', uniqueName);
     await page.click('[data-testid="profile-create-start"]');
 
-    // Wait for card to load
-    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    // Wait for Lingvist session to replace the profile form and load its inline input
+    await page.waitForSelector('[data-testid="lingvist-inline-input"]', { timeout: 15000 });
     console.log('✅ Card loaded');
 
     // TEST 1: Verify no Check button
@@ -51,7 +51,7 @@ test.describe('Lingvist Mode - E2E', () => {
     console.log('✅ No Check button found');
 
     // Get initial state
-    const inlineInput = page.locator('input[type="text"]');
+    const inlineInput = page.locator('[data-testid="lingvist-inline-input"]');
     await expect(inlineInput).toBeVisible();
     const initialCardText = await page.textContent('body');
 
@@ -62,6 +62,11 @@ test.describe('Lingvist Mode - E2E', () => {
     const isTranslationsVisible = await translationsPanel.isVisible().catch(() => false);
     expect(isTranslationsVisible).toBeTruthy();
     console.log('✅ Translations panel visible from card load');
+
+    const learningContextPanel = page.locator('[data-testid="learning-context-panel"]');
+    await expect(learningContextPanel).toBeVisible();
+    await expect(learningContextPanel).toContainText('Objetivo da sessão');
+    console.log('✅ Learning context panel visible in Lingvist');
 
     // TEST 2: Submit wrong answer - should NOT advance
     await inlineInput.fill('wronganswer123');
@@ -150,7 +155,7 @@ test.describe('Lingvist Mode - E2E', () => {
       await page.waitForTimeout(1500);
 
       // Verify we're on a different card now (input exists and is enabled again)
-      const newInput = page.locator('input[type="text"]');
+      const newInput = page.locator('[data-testid="lingvist-inline-input"]');
       await expect(newInput).toBeVisible();
       const isNewEnabled = await newInput.isEnabled();
       expect(isNewEnabled).toBeTruthy();
@@ -190,7 +195,7 @@ test.describe('Lingvist Mode - E2E', () => {
     }
 
     // Verify we DON'T have Lingvist-specific inline input (no data-testid)
-    const hasInlineInput = await page.locator('input[type="text"]:not([data-testid])').isVisible().catch(() => false);
+    const hasInlineInput = await page.locator('[data-testid="lingvist-inline-input"]').isVisible().catch(() => false);
     expect(hasInlineInput).toBeFalsy();
     console.log('✅ Spec4 has no Lingvist inline input');
   });

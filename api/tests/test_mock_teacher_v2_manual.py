@@ -7,7 +7,7 @@ Run this script to see example responses for two different user inputs.
 
 import asyncio
 import sys
-sys.path.insert(0, '/home/edann/vscode_projects/filltheword/api')
+sys.path.insert(0, '/home/edann/projects/wordbridge-coach/api')
 
 from app.llm.mock_provider import MockLLMProvider
 

@@ -8,9 +8,24 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
 from app.models import ChatMessage
-from app.schemas.chat import AssistantDoneOut, TeacherAnalysisOut
+from app.schemas.chat import AssistantDoneOut, TeacherAnalysisOut, TeacherAnalysisPayload
+from app.services.chat_profile_service import refresh_conversation_learning_state
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_teacher_analysis(analysis: dict) -> dict:
+    """Fill backward-compatible defaults before schema validation."""
+    payload = dict(analysis or {})
+    payload.setdefault("rewrite", None)
+    payload.setdefault("corrections", [])
+    payload.setdefault("teacher_summary", "Analysis unavailable.")
+    payload.setdefault("strengths", [])
+    payload.setdefault("focus_areas", [])
+    payload.setdefault("next_practice", [])
+    payload.setdefault("reflection_question", None)
+    payload.setdefault("encouragement", None)
+    return TeacherAnalysisPayload.model_validate(payload).model_dump()
 
 
 def create_chat_message(conversation_id, role: str, content: str) -> ChatMessage:
@@ -42,7 +57,7 @@ def persist_assistant_message(db: Session, conversation, content: str) -> ChatMe
 def attach_teacher_analysis_metadata(user_message: ChatMessage, teacher_analysis: dict) -> None:
     """Store teacher analysis inside the user message metadata payload."""
     metadata = dict(user_message.metadata_json or {})
-    metadata["teacher_analysis"] = teacher_analysis
+    metadata["teacher_analysis"] = normalize_teacher_analysis(teacher_analysis)
     user_message.metadata_json = metadata
 
 
@@ -50,13 +65,20 @@ def build_teacher_analysis_event_payload(
     conversation_id: str,
     user_message_id: str,
     analysis: dict,
+    student_profile: dict | None = None,
+    lesson_frame: dict | None = None,
+    session_summary: str = "",
 ) -> dict:
     """Build the websocket payload for teacher analysis responses."""
+    normalized_analysis = normalize_teacher_analysis(analysis)
     return TeacherAnalysisOut(
         type="teacher_analysis",
         conversation_id=conversation_id,
         user_message_id=user_message_id,
-        analysis=analysis,
+        analysis=normalized_analysis,
+        student_profile=student_profile or {},
+        lesson_frame=lesson_frame or {},
+        session_summary=session_summary,
     ).model_dump()
 
 
@@ -76,12 +98,18 @@ async def send_teacher_analysis_event(
     conversation_id: str,
     user_message_id: str,
     analysis: dict,
+    student_profile: dict | None = None,
+    lesson_frame: dict | None = None,
+    session_summary: str = "",
 ) -> None:
     """Send the teacher analysis payload to the websocket client."""
     event_payload = build_teacher_analysis_event_payload(
         conversation_id=conversation_id,
         user_message_id=user_message_id,
         analysis=analysis,
+        student_profile=student_profile,
+        lesson_frame=lesson_frame,
+        session_summary=session_summary,
     )
 
     has_rewrite = bool(analysis and analysis.get("rewrite"))
@@ -134,8 +162,16 @@ async def persist_and_emit_teacher_analysis(
 ) -> None:
     """Persist teacher analysis when valid and emit the websocket event."""
     try:
+        updated_student_profile = dict(conversation.student_profile_json or {})
+        updated_lesson_frame = dict(conversation.lesson_frame_json or {})
+        updated_session_summary = str(conversation.session_summary or "")
         if not used_fallback:
             attach_teacher_analysis_metadata(user_message, teacher_analysis)
+            updated_student_profile, updated_lesson_frame, updated_session_summary = refresh_conversation_learning_state(
+                db,
+                conversation,
+                teacher_analysis,
+            )
             db.commit()
 
         await send_event(
@@ -143,6 +179,9 @@ async def persist_and_emit_teacher_analysis(
             conversation_id=str(conversation.id),
             user_message_id=str(user_message.id),
             analysis=teacher_analysis,
+            student_profile=updated_student_profile,
+            lesson_frame=updated_lesson_frame,
+            session_summary=updated_session_summary,
         )
 
         if used_fallback:

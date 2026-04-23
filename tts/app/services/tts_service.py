@@ -1,4 +1,4 @@
-"""TTS Service implementation for FillTheWord"""
+"""TTS service implementation for WordBridge Coach."""
 
 import os
 import hashlib

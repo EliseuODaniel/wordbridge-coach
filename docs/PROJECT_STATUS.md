@@ -1,10 +1,10 @@
 # Project Status
 
-Data de referência: 2026-04-14
+Data de referência: 2026-04-22
 
 ## Resumo executivo
 
-FillTheWord já funciona como uma aplicação local multi-serviço para estudo de vocabulário. O projeto foi além do MVP original e hoje mistura:
+WordBridge Coach já funciona como uma aplicação local multi-serviço para estudo de vocabulário. O projeto foi além do MVP original e hoje mistura:
 
 - loop principal de estudo com SRS
 - um modo estilo Lingvist
@@ -14,6 +14,31 @@ FillTheWord já funciona como uma aplicação local multi-serviço para estudo d
 
 O código existe, mas a governança documental antiga gerou múltiplas versões da verdade. A partir desta data, este arquivo passa a registrar o estado oficial do projeto.
 
+Os identificadores internos de banco, compose e alguns caminhos ainda mantêm o prefixo legado `filltheword` por compatibilidade com o ambiente local validado.
+
+## Ponto de retomada
+
+- workspace atual: `/home/edann/projects/wordbridge-coach`
+- repositório GitHub: `EliseuODaniel/wordbridge-coach`
+- branch local ativa na última sessão: `codex/refactor-local-platform-quality`
+- `HEAD` local na última sessão de retomada: `469358c`
+- o worktree não está limpo; existe um conjunto relevante de mudanças locais ainda não commitadas e ele não deve ser resetado sem revisão
+
+Arquivos mais importantes para a próxima leitura:
+
+- `docs/PROJECT_STATUS.md`
+- `docs/ROADMAP.md`
+- `docs/DECISIONS.md`
+- `api/app/services/chat_profile_service.py`
+- `api/app/services/lingvist_difficulty_service.py`
+- `api/app/services/lingvist_payload_service.py`
+- `api/app/services/card_spec4_service.py`
+- `frontend/src/components/useChatCoachSession.ts`
+- `frontend/src/components/AnalysisPanel.tsx`
+- `frontend/src/components/LearningContextPanel.tsx`
+- `tests/e2e/tests/study-session.spec.ts`
+- `tests/e2e/tests/lingvist-session.spec.ts`
+
 ## Estado atual do produto
 
 ### Baseline tecnico validado nesta fase
@@ -22,26 +47,41 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
 - `docker build -t ftw-frontend-localcheck -f frontend/Dockerfile frontend`: OK
 - `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_spec4_card_selection.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_answer_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_progress_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_response_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_submission_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_spec4_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_lingvist_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_payload_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_policy_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_query_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_fallback_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_card_selection_progress_service.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/test_chat_utilities.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_chat_websocket_flow.py -q`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest tests/integration/test_themes_stats.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/integration/test_spec4_card_selection.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_answer_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_progress_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_response_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_submission_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_spec4_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_lingvist_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_payload_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_policy_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_query_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_fallback_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_progress_service.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_utilities.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/integration/test_chat_websocket_flow.py -q`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/integration/test_themes_stats.py -q`: OK
 - `python3 -m py_compile api/app/api/api_v1/endpoints/chat.py api/tests/test_chat_utilities.py`: OK
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest -o addopts='' tests/test_chat_utilities.py -W default -rw`: OK sem warnings visíveis
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest -o addopts='' tests/integration/test_chat_websocket_flow.py -W default -rw`: OK sem warnings visíveis
-- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/pytest -o addopts='' tests/integration/test_spec4_card_selection.py -W default -rw`: OK sem warnings visíveis
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -o addopts='' tests/test_chat_utilities.py -W default -rw`: OK sem warnings visíveis
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -o addopts='' tests/integration/test_chat_websocket_flow.py -W default -rw`: OK sem warnings visíveis
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -o addopts='' tests/integration/test_spec4_card_selection.py -W default -rw`: OK sem warnings visíveis
 - `cd api && TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test ./test-runner.sh --spec4`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_feedback_service.py tests/test_chat_delivery_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_llamacpp_provider_sse.py tests/test_lingvist_difficulty_service.py tests/integration/test_chat_websocket_flow.py`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_feedback_service.py tests/test_chat_delivery_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_chat_context_service.py tests/test_llamacpp_provider_sse.py tests/test_chat_coach_mock_provider.py tests/test_lingvist_difficulty_service.py tests/integration/test_chat_websocket_flow.py`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_context_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_chat_delivery_service.py tests/test_chat_endpoint_adapter_service.py tests/test_chat_turn_service.py tests/test_chat_utilities.py tests/integration/test_chat_websocket_flow.py`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_delivery_service.py tests/test_chat_endpoint_adapter_service.py tests/test_chat_utilities.py tests/test_lingvist_payload_service.py tests/test_card_lingvist_service.py tests/test_card_spec4_service.py tests/integration/test_chat_websocket_flow.py tests/integration/test_spec4_card_selection.py`: OK
+- `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/integration/test_chat_websocket_flow.py`: OK
+- `python3 -m py_compile api/app/services/chat_profile_service.py api/app/services/chat_delivery_service.py api/app/services/chat_conversation_service.py api/app/services/lingvist_payload_service.py api/app/services/card_spec4_service.py api/app/services/chat_endpoint_adapter_service.py api/app/schemas/chat.py api/app/schemas/card.py api/app/schemas/lingvist.py`: OK
+- `Playwright` focal de `tests/e2e/tests/study-session.spec.ts` e `tests/e2e/tests/lingvist-session.spec.ts`: OK localmente com `Node v20.20.2` Linux no PATH da thread, `api/frontend` rebuildados e `14 passed`
+- `docker build -t ftw-frontend-localcheck -f frontend/Dockerfile frontend`: OK com `frontend/nginx.conf` incluindo proxy dedicado de WebSocket para o Chat Coach
+- rename e mudança de workspace validados em `2026-04-22`:
+  - `python3 -m py_compile` nos arquivos backend/TTS tocados pelo rename: OK
+  - `./scripts/frontend_tooling.sh check`: OK no novo caminho `/home/edann/projects/wordbridge-coach`
+  - `docker compose config --quiet`: OK no novo caminho
+  - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_text_service.py tests/test_lingvist_difficulty_service.py tests/test_card_spec4_service.py tests/test_lingvist_payload_service.py tests/integration/test_chat_websocket_flow.py`: OK (`26 passed`)
+  - `cd api && TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test ./test-runner.sh --spec4`: OK (`10 passed`) depois de ajustar o runner para usar `.venv/bin/python -m pytest` e `TMPDIR` estável
+  - `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test tests/smoke.spec.ts tests/user-profile.spec.ts tests/study-session.spec.ts tests/lingvist-session.spec.ts --project=chromium`: OK (`26 passed`)
 
 ### Áreas implementadas
 
@@ -134,10 +174,32 @@ O código existe, mas a governança documental antiga gerou múltiplas versões 
 - `CardSelectionService` agora delega a orquestração por modo para `api/app/services/card_selection_mode_service.py`, reduzindo o miolo residual mais acoplado
 - `CardSelectionService` agora também delega montagem de payload, novo/review/fallback/relearn para `api/app/services/card_selection_resolution_service.py`, encerrando o hotspot residual de resolução dentro do service principal
 - o `MockLLMProvider` agora ficou como adaptador fino e delega análise, respostas conversacionais e payloads pedagógicos para `mock_text_analysis.py`, `mock_chat_responses.py` e `mock_feedback_payloads.py`
+- os providers reais do Chat Coach agora também tentam usar structured outputs para `micro_eval`, autocomplete e `teacher_analysis`, com fallback seguro para o mock quando o runtime não responde ou não entrega JSON válido
+- o payload de feedback do Chat Coach agora também inclui `self_check_prompt` e `encouragement`, e a sidebar mostra além disso `strengths`, `focus_areas` e `reflection_question` vindos da `teacher_analysis`
+- o Chat Coach agora também deriva um perfil pedagógico longitudinal a partir de `User` + histórico recente de `teacher_analysis`, e cada nova conversa já nasce com memória de strengths, focus areas, scaffolding e idioma de feedback
+- a `teacher_analysis` agora também devolve `student_profile` e `session_summary` atualizados no evento WebSocket, e a sidebar mostra esse "coach memory" ao lado do feedback do turno atual
+- os textos pedagógicos do Chat Coach agora também se alinham ao `language_preference` do aluno nas prompts estruturadas e no mock provider, enquanto rewrites, sugestões e exercícios continuam no idioma-alvo
+- a introdução de novos cards no modo Lingvist agora também usa lookahead ponderado por frequência em vez de sempre pegar mecanicamente o menor rank do pool, preservando a ordem pedagógica mas com variedade real
+- o Chat Coach agora também persiste um `pedagogical_state` explícito no `student_profile_json`, recalcula um `lesson_frame` adaptativo a cada `teacher_analysis` e registra snapshots desse frame em `chat_lesson_history`
+- o evento WebSocket `teacher_analysis` agora também devolve o `lesson_frame` adaptativo já atualizado, e a sidebar do chat mostra goal, primary focus, expected intent e stage da iteração atual
+- os modos `Spec4` e `Lingvist` agora também consomem um `learning_context` compartilhado a partir da memória pedagógica mais recente do Chat Coach, deixando o foco atual, o objetivo da sessão e o motivo pedagógico do card visíveis no frontend
+- o `student_profile_json` agora também carrega `pedagogical_metrics` explícitos derivados de `UserCardState`, `ReviewEvent` e `UserSessionStats`, com sinais de retenção, pressão de review, pacing e prontidão de CEFR
+- o `lesson_frame_json` agora também projeta esses sinais em `diagnostics`, e o prompt do Chat Coach passou a usar retenção, dificuldade e pacing além do histórico textual
+- o perfil de dificuldade do Lingvist agora também desacelera ou acelera com base nesses sinais reais, ajustando dificuldade-alvo de sentença, comprimento e tamanho do pool antes da seleção
+- os painéis de `learning_context` e da sidebar do Chat Coach agora mostram esses sinais adaptativos na UI, e o input inline do Lingvist ganhou `data-testid` estável para remover flakiness do E2E
 
 ### Hotspots residuais
 
-Nesta fase, os hotspots estruturais principais de backend foram fechados. O que sobra agora é otimização incremental de heurísticas e cobertura, não mais refatoração obrigatória de arquivos monolíticos centrais.
+Nesta fase, os hotspots estruturais principais de backend e frontend foram fechados para a trilha pedagógica principal. O que sobra agora é:
+
+- revisar a qualidade das métricas pedagógicas com dados de uso real e ajustar limiares de retenção/dificuldade sem perder previsibilidade
+- decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context`
+- expandir a mesma disciplina de validação para mais fluxos E2E além da dupla `StudySession`/`LingvistSession`
+- revisar o WIP local antes de qualquer commit, porque ele mistura:
+  - evolução pedagógica de Chat Coach, Spec4 e Lingvist
+  - rename público para `WordBridge Coach`
+  - mudança de workspace para `/home/edann/projects/wordbridge-coach`
+  - ajustes de robustez em `api/test-runner.sh` e docs para sobreviver a mudança de pasta
 
 ## Componentes ativos
 
@@ -209,7 +271,6 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 
 ## Próximos passos imediatos
 
-1. Observar a estabilidade da suíte E2E Chromium completa no CI e decidir se vale separar smoke e regressão por custo/tempo.
-2. Confirmar se `alembic upgrade head` e `seed_data.py` devem permanecer explícitos em todos os fluxos operacionais documentados.
-3. Continuar reduzindo a superfície operacional do stack local, principalmente nas dependências opcionais de IA e áudio.
-4. Voltar a investir em evolução de produto e analytics com a base estrutural já saneada.
+1. Observar o comportamento dos novos `pedagogical_metrics` em uso real e recalibrar os limiares de `retention_band`, `review_pressure` e `recommended_pace` se necessário.
+2. Decidir se vale abrir analytics pedagógico dedicado na API ou manter a projeção atual nos contratos já existentes.
+3. Ampliar a cobertura E2E da mesma forma para Chat Coach e fluxos de troca de modo, agora que os seletores críticos ficaram explícitos.

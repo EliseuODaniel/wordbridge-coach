@@ -58,6 +58,7 @@ async def generate_teacher_analysis_with_fallback(
             user_message=content,
             context=teacher_context,
             lesson_frame=conversation.lesson_frame_json,
+            student_profile=conversation.student_profile_json,
         )
 
         logger.info(
