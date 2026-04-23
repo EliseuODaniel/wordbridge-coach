@@ -23,6 +23,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
     editTargetLanguage,
     editUsername,
     editWordGoalRank,
+    errorMessage,
     editingUser,
     focusedIndex,
     loading,
@@ -45,6 +46,7 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
     setEditTargetLanguage,
     setEditUsername,
     setEditWordGoalRank,
+    setErrorMessage,
     setNativeLanguage,
     setNewUsername,
     setTargetLanguage,
@@ -111,6 +113,16 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
           <div className={`${users.length > 0 ? 'border-t border-gray-700 pt-6' : ''}`}>
             <p className="text-sm text-gray-400 mb-4">Or create a new profile:</p>
 
+            {errorMessage && (
+              <div
+                className="mb-4 rounded-lg border border-red-700 bg-red-950/50 px-4 py-3 text-sm text-red-200"
+                role="alert"
+                data-testid="profile-create-error"
+              >
+                {errorMessage}
+              </div>
+            )}
+
             <UserProfileCreateForm
               loading={loading}
               nativeLanguage={nativeLanguage}
@@ -120,7 +132,10 @@ const UserSelection: React.FC<UserSelectionProps> = ({ onUserSelected, onModeSel
               onNativeLanguageChange={setNativeLanguage}
               onSubmit={handleCreateUser}
               onTargetLanguageChange={setTargetLanguage}
-              onUsernameChange={setNewUsername}
+              onUsernameChange={(value) => {
+                setErrorMessage(null);
+                setNewUsername(value);
+              }}
               onWordGoalRankChange={setWordGoalRank}
             />
           </div>

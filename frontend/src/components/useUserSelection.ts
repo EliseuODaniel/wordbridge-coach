@@ -1,6 +1,7 @@
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
+import { getApiErrorMessage } from '../services/apiErrors';
 import { usersApi, type CreateUserRequest, type UpdateUserRequest } from '../services/apiUsers';
 import { statsService } from '../services/stats';
 import type { Profile, ProfileStats } from './ProfileCard';
@@ -15,6 +16,7 @@ interface UseUserSelectionResult {
   editTargetLanguage: string;
   editUsername: string;
   editWordGoalRank: number;
+  errorMessage: string | null;
   editingUser: string | null;
   focusedIndex: number | null;
   loading: boolean;
@@ -39,6 +41,7 @@ interface UseUserSelectionResult {
   setNativeLanguage: (value: string) => void;
   setNewUsername: (value: string) => void;
   setTargetLanguage: (value: string) => void;
+  setErrorMessage: (value: string | null) => void;
   setWordGoalRank: (value: number) => void;
   handleCancelEdit: () => void;
 }
@@ -62,9 +65,11 @@ export const useUserSelection = (
   const [editLoading, setEditLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     try {
+      setErrorMessage(null);
       const usersFromApi = await usersApi.listUsers();
       const usersWithStats = await Promise.all(
         usersFromApi.map(async (user) => {
@@ -87,6 +92,7 @@ export const useUserSelection = (
       setUsers(usersWithStats);
     } catch (error) {
       console.error('Error loading users:', error);
+      setErrorMessage(getApiErrorMessage(error, 'Failed to load profiles.'));
     }
   }, []);
 
@@ -98,6 +104,7 @@ export const useUserSelection = (
     event.preventDefault();
     if (!newUsername.trim() || loading) return;
 
+    setErrorMessage(null);
     setLoading(true);
     try {
       const userData: CreateUserRequest = {
@@ -119,6 +126,7 @@ export const useUserSelection = (
       onUserSelected(newUser.id);
     } catch (error) {
       console.error('Error creating user:', error);
+      setErrorMessage(getApiErrorMessage(error, 'Failed to create profile.'));
     } finally {
       setLoading(false);
     }
@@ -141,6 +149,7 @@ export const useUserSelection = (
     setEditTargetLanguage(user.target_language);
     setEditNativeLanguage(user.language_preference);
     setEditWordGoalRank(user.word_goal_rank);
+    setErrorMessage(null);
   }, [users]);
 
   const handleDeleteProfile = useCallback((userId: string) => {
@@ -159,6 +168,7 @@ export const useUserSelection = (
   const handleSaveEdit = useCallback(async (userId: string) => {
     if (!editUsername.trim() || editLoading) return;
 
+    setErrorMessage(null);
     setEditLoading(true);
     try {
       const updateData: UpdateUserRequest = {
@@ -180,6 +190,7 @@ export const useUserSelection = (
       handleCancelEdit();
     } catch (error) {
       console.error('Error updating user:', error);
+      setErrorMessage(getApiErrorMessage(error, 'Failed to update profile.'));
     } finally {
       setEditLoading(false);
     }
@@ -187,11 +198,13 @@ export const useUserSelection = (
 
   const handleConfirmDelete = useCallback(async (userId: string) => {
     try {
+      setErrorMessage(null);
       await usersApi.deleteUser(userId);
       setUsers((prev) => prev.filter((user) => user.id !== userId));
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting user:', error);
+      setErrorMessage(getApiErrorMessage(error, 'Failed to delete profile.'));
     }
   }, []);
 
@@ -225,6 +238,7 @@ export const useUserSelection = (
     editTargetLanguage,
     editUsername,
     editWordGoalRank,
+    errorMessage,
     editingUser,
     focusedIndex,
     loading,
@@ -249,6 +263,7 @@ export const useUserSelection = (
     setNativeLanguage,
     setNewUsername,
     setTargetLanguage,
+    setErrorMessage,
     setWordGoalRank,
     handleCancelEdit,
   };
