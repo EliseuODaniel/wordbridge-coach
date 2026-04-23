@@ -1,5 +1,6 @@
 """Vocabulary progression service implementing Spec4 algorithms"""
 
+import logging
 from typing import Optional, List, Tuple
 from datetime import datetime, date
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from app.services.lingvist_difficulty_service import (
 )
 from app.services.chat_profile_service import collect_pedagogical_metrics
 
+logger = logging.getLogger(__name__)
 
 WINDOW_STEP = 100
 TARGET_NEW_SHARE = 0.25  # ~25% of daily cards should be new
@@ -260,7 +262,7 @@ class VocabularyProgressionService:
         # Special handling for sparse data: if this is the first correct answer,
         # set it as the mastered rank even if it's not rank 1
         if progress.max_contiguous_mastered_rank == 0:
-            print(f"DEBUG: Setting initial mastered rank to {word_rank} (first correct answer)")
+            logger.debug("Setting initial mastered rank to %s (first correct answer)", word_rank)
             progress.max_contiguous_mastered_rank = word_rank
             self.db.commit()
             return

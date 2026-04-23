@@ -1,6 +1,6 @@
 # Project Status
 
-Data de referência: 2026-04-22
+Data de referência: 2026-04-23
 
 ## Resumo executivo
 
@@ -14,15 +14,21 @@ WordBridge Coach já funciona como uma aplicação local multi-serviço para est
 
 O código existe, mas a governança documental antiga gerou múltiplas versões da verdade. A partir desta data, este arquivo passa a registrar o estado oficial do projeto.
 
-Os identificadores internos de banco, compose e alguns caminhos ainda mantêm o prefixo legado `filltheword` por compatibilidade com o ambiente local validado.
+Os identificadores internos de banco e alguns caminhos ainda mantêm o prefixo legado `filltheword` por compatibilidade com o ambiente local validado.
+
+- hardening inicial de runtime da API:
+  - validações de configuração no startup (`api/app/core/config.py`, `api/app/main.py`)
+  - mensagens de configuração em `strict mode` via `STRICT_CONFIG`
+  - debug residual em produção substituído por `logger.debug` em pontos ativos (`users.py`, `card_selection_mode_service.py`, `vocabulary_progression.py`)
+  - `quick_start.sh` atualizado para nomenclatura WordBridge e alias de porta `WORDBRIDGE_DB_PORT`
 
 ## Ponto de retomada
 
 - workspace atual: `/home/edann/projects/wordbridge-coach`
 - repositório GitHub: `EliseuODaniel/wordbridge-coach`
-- branch local ativa na última sessão: `codex/refactor-local-platform-quality`
-- `HEAD` local na última sessão de retomada: `469358c`
-- o worktree não está limpo; existe um conjunto relevante de mudanças locais ainda não commitadas e ele não deve ser resetado sem revisão
+- branch local ativa nesta sessão: `main`
+- `HEAD` local desta sessão: `4c8395f`
+- o worktree ainda contém mudanças locais relevantes em andamento e não deve ser limpo sem revisão
 
 Arquivos mais importantes para a próxima leitura:
 
@@ -45,7 +51,7 @@ Arquivos mais importantes para a próxima leitura:
 
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
-- `docker build -t ftw-frontend-localcheck -f frontend/Dockerfile frontend`: OK
+- `docker build -t wordbridge-coach-frontend-localcheck -f frontend/Dockerfile frontend`: OK
 - `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/integration/test_spec4_card_selection.py -q`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_answer_service.py -q`: OK
@@ -74,7 +80,7 @@ Arquivos mais importantes para a próxima leitura:
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/integration/test_chat_websocket_flow.py`: OK
 - `python3 -m py_compile api/app/services/chat_profile_service.py api/app/services/chat_delivery_service.py api/app/services/chat_conversation_service.py api/app/services/lingvist_payload_service.py api/app/services/card_spec4_service.py api/app/services/chat_endpoint_adapter_service.py api/app/schemas/chat.py api/app/schemas/card.py api/app/schemas/lingvist.py`: OK
 - `Playwright` focal de `tests/e2e/tests/study-session.spec.ts` e `tests/e2e/tests/lingvist-session.spec.ts`: OK localmente com `Node v20.20.2` Linux no PATH da thread, `api/frontend` rebuildados e `14 passed`
-- `docker build -t ftw-frontend-localcheck -f frontend/Dockerfile frontend`: OK com `frontend/nginx.conf` incluindo proxy dedicado de WebSocket para o Chat Coach
+- `docker build -t wordbridge-coach-frontend-localcheck -f frontend/Dockerfile frontend`: OK com `frontend/nginx.conf` incluindo proxy dedicado de WebSocket para o Chat Coach
 - rename e mudança de workspace validados em `2026-04-22`:
   - `python3 -m py_compile` nos arquivos backend/TTS tocados pelo rename: OK
   - `./scripts/frontend_tooling.sh check`: OK no novo caminho `/home/edann/projects/wordbridge-coach`

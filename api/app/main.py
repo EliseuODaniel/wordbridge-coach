@@ -1,12 +1,16 @@
 """WordBridge Coach API - Main FastAPI application."""
 
-from fastapi import FastAPI, HTTPException
+import logging
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import uvicorn
 
 from app.api.api_v1.api import api_router
-from app.core.config import settings
+from app.core.config import ensure_runtime_safety, settings, collect_runtime_issues
+
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -28,6 +32,19 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
+@app.on_event("startup")
+async def _startup_checks() -> None:
+    """Run lightweight startup configuration checks."""
+    if settings.DEBUG:
+        for issue in collect_runtime_issues():
+            logger.warning("Configuration warning: %s", issue)
+        return
+
+    ensure_runtime_safety()
+    for issue in collect_runtime_issues():
+        logger.warning("Configuration warning: %s", issue)
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -40,7 +57,7 @@ async def root():
     return {
         "message": "WordBridge Coach API",
         "version": settings.VERSION,
-        "docs": f"{settings.API_V1_STR}/docs"
+        "docs": "/docs"
     }
 
 

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from app.services.card_selection_policy_service import calculate_session_new_share
 
 if TYPE_CHECKING:
     from app.services.card_selection import CardSelectionService
+
+logger = logging.getLogger(__name__)
 
 
 def select_next_card_spec4(
@@ -44,7 +47,7 @@ def select_next_card_spec4(
     if fallback_card:
         return fallback_card
 
-    print(f'DEBUG: No cards available for user {user_id} - DB may be empty')
+    logger.debug("No cards available for user %s - DB may be empty", user_id)
     return None
 
 
@@ -99,5 +102,5 @@ def select_next_card_lingvist(
     if fallback_card:
         return fallback_card
 
-    print(f'DEBUG: No cards available for user {user_id} - DB may be empty')
+    logger.debug("No cards available for user %s - DB may be empty", user_id)
     return None

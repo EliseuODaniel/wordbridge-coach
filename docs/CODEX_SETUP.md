@@ -26,8 +26,15 @@ Skills disponíveis no repositório:
 - `backend-endpoint-slice`
 - `frontend-session-slice`
 - `codex-readiness`
+- `engineering-hygiene`
+- `git-hygiene`
 
 Use skills para tarefas repetitivas. Não use skills como substituto de arquitetura ou de documentação oficial.
+
+Uso recomendado:
+
+- `engineering-hygiene`: para manter mudanças pequenas, com contratos explícitos, validação proporcional e docs alinhados
+- `git-hygiene`: para revisar `git status`, separar escopo, stagear com intenção e sincronizar com remotos sem risco desnecessário
 
 ## MCP recomendado
 

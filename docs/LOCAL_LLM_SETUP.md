@@ -70,8 +70,8 @@ docker compose --profile optional-llm --profile fastchat up -d
 
 ```bash
 docker compose ps
-docker logs filltheword-llm
-docker logs filltheword-llm-teacher
+docker compose logs llm
+docker compose logs llm_teacher
 ```
 
 ## Observação

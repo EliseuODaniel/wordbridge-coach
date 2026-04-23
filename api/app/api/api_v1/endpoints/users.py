@@ -1,5 +1,6 @@
 """User management endpoints for WordBridge Coach."""
 
+import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from app.core.time import utc_now
 from app.models import User, Language, Card, UserCardState, UserWordStats, MemoryStage, Sentence, Word, ReviewEvent
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class UserResponse(BaseModel):
@@ -326,7 +328,11 @@ async def update_user(
                     user_data.word_goal_rank
                 )
                 # Note: we DON'T clamp max_contiguous_mastered_rank as that represents actual progress
-                print(f"DEBUG: Updated UserFrequencyProgress for user {user_id} to goal {user_data.word_goal_rank}")
+                logger.debug(
+                    "Updated UserFrequencyProgress for user %s to goal %s",
+                    user_id,
+                    user_data.word_goal_rank
+                )
 
         # Adaptive Scheduler: Update mode if provided
         if user_data.mode is not None:
@@ -343,7 +349,7 @@ async def update_user(
 
             # Update user mode
             user.mode = user_data.mode
-            print(f"DEBUG: Updated mode for user {user_id} to {user_data.mode}")
+            logger.debug("Updated mode for user %s to %s", user_id, user_data.mode)
 
         db.commit()
         db.refresh(user)

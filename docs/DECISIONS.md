@@ -8,19 +8,41 @@ Status: aceito
 
 O nome `FillTheWord` descrevia razoavelmente o MVP original focado em lacunas, mas deixou de representar o escopo atual do produto. Hoje o repositório combina estudo principal com cards, modo estilo Lingvist, Chat Coach com LLM local, TTS e contexto pedagógico compartilhado entre modos.
 
-Ao mesmo tempo, o ambiente local já validado depende de nomes operacionais como `filltheword`, `filltheword_test` e containers `filltheword-*`.
+Ao mesmo tempo, o ambiente local já validado ainda depende de identificadores operacionais como `filltheword` e `filltheword_test` em banco e defaults internos.
 
 ### Decisão
 
 - adotar `WordBridge Coach` como nome oficial do produto e do repositório público
 - atualizar branding visível, metadata das aplicações, documentação oficial, dados demo e testes que validam esse texto
-- manter, por enquanto, identificadores operacionais legados como nomes de banco, containers, network e caminhos locais já validados
+- manter, por enquanto, identificadores operacionais legados como nomes de banco e alguns defaults/caminhos locais já validados
 
 ### Impacto
 
 - o nome público passa a refletir melhor o produto multimodal atual
 - onboarding, README, UI e GitHub ficam alinhados com o escopo real do projeto
-- evitamos uma migração operacional desnecessária nesta rodada, preservando compatibilidade com compose, banco e scripts existentes
+- evitamos uma migração desnecessária nos identificadores de banco e defaults internos, preservando compatibilidade com o ambiente já validado
+
+## 2026-04-23 - Fortalecer configuração da API sem bloquear desenvolvimento local
+
+Status: em andamento
+
+### Contexto
+
+Havia sinais de que a API ainda carecia de validações de operação mais claras (secret defaults, debug/envos e mensagens de debug no fluxo de produção), enquanto `quick_start.sh` ainda trazia texto legado no contrato com o usuário.
+
+### Decisão
+
+- tornar o `main.py` sensível a problemas de configuração na inicialização
+- adicionar validações de configuração em `api/app/core/config.py` com modo estrito opcional (`STRICT_CONFIG`)
+- corrigir mensagens de `quick_start.sh` para branding atual e permitir alias de porta legado/novo via `FTW_DB_PORT` e `WORDBRIDGE_DB_PORT`
+- substituir `print` de debug remanescentes por `logger.debug` em pontos de backend ativos
+- consolidar `.env` com variáveis alinhadas ao runtime (`DEBUG`, `SECRET_KEY`, `ENVIRONMENT`, `STRICT_CONFIG`)
+
+### Impacto
+
+- o ambiente de desenvolvimento continua funcionando com defaults simples, mas com trilha de risco explícita quando a configuração não está adequada
+- a API passa a registrar avisos no startup e pode falhar antes de aceitar tráfego se `STRICT_CONFIG=true` em ambiente não-local
+- reduzimos o acoplamento de mensagens de debug com stdout de produção, deixando os logs mais úteis
 
 ## 2026-04-21 - Tornar adaptação pedagógica explícita e guiada por sinais reais
 

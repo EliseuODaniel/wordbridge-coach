@@ -2,13 +2,13 @@
 
 Data de início desta nova fase: 2026-03-23
 
-## Status de retomada em 2026-04-22
+## Status de retomada em 2026-04-23
 
 - branding público renomeado de `FillTheWord` para `WordBridge Coach`
 - repositório GitHub renomeado para `EliseuODaniel/wordbridge-coach`
 - workspace local movido para `/home/edann/projects/wordbridge-coach`
 - `api/test-runner.sh` e docs de teste foram ajustados para continuar funcionando após a mudança de pasta
-- a próxima sessão deve partir do worktree atual na branch `codex/refactor-local-platform-quality`, não de um estado limpo hipotético
+- a próxima sessão deve partir do worktree atual na branch `main`, com as mudanças desta rodada para revisão e alinhamento final
 
 ## Objetivo
 
@@ -162,11 +162,12 @@ Prioridade alta:
 - [x] alinhar testes ao comportamento realmente suportado
 - [~] manter suítes de backend com banco compartilhado em execução serial
 - [~] revisar lacunas de cobertura nos fluxos críticos
-- [ ] eliminar falsos positivos de documentação e scripts antigos
+- [x] eliminar falsos positivos de documentação e scripts antigos (mensagens de setup legadas em quick_start, strings de debug em paths de produção, `.env` duplicado)
 - [x] consolidar quality gates locais e em CI para frontend, backend crítico e suíte Chromium de E2E
 - [~] ampliar cobertura focal de regras de domínio no backend, além de chat e Spec4
 - [x] rerodar localmente os specs Playwright focais de `StudySession` e `LingvistSession` quando houver runtime Node/Playwright estável na thread
 - [x] validar novamente backend, frontend, test-runner e Playwright focal depois do rename público e da mudança do workspace
+- [x] adicionar validação de startup da API com modo estrito opcional (`STRICT_CONFIG`) e registrar issues de configuração com logger
 
 ## Critérios de sucesso
 

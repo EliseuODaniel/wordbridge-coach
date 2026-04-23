@@ -6,6 +6,8 @@ COMPOSE_CMD=(docker compose)
 WITH_AI=0
 WITH_AUDIO=0
 DB_PORT="${FTW_DB_PORT:-5432}"
+ALT_DB_PORT="${WORDBRIDGE_DB_PORT:-${DB_PORT}}"
+DB_PORT="$ALT_DB_PORT"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -20,6 +22,7 @@ while [[ $# -gt 0 ]]; do
         *)
             echo "Unknown option: $1"
             echo "Usage: ./scripts/quick_start.sh [--with-ai] [--with-audio]"
+            echo "Tip: set WORDBRIDGE_DB_PORT instead of FTW_DB_PORT to avoid legacy naming."
             exit 1
             ;;
     esac
@@ -33,7 +36,7 @@ if [[ "$WITH_AUDIO" -eq 1 ]]; then
     COMPOSE_CMD+=(--profile audio)
 fi
 
-echo "Starting FillTheWord setup..."
+echo "Starting WordBridge Coach setup..."
 echo "============================="
 
 if ! docker info >/dev/null 2>&1; then
@@ -70,7 +73,7 @@ if [[ "$WITH_AUDIO" -eq 1 ]]; then
 fi
 
 echo
-echo "FillTheWord is running."
+echo "WordBridge Coach is running."
 echo "======================="
 echo "Frontend:  http://localhost:3007"
 echo "API docs:  http://localhost:8000/docs"

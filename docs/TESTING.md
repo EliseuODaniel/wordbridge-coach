@@ -145,7 +145,7 @@ Para validar integração local:
 ```bash
 docker compose up -d --build
 docker compose ps
-docker build -t ftw-frontend-localcheck -f frontend/Dockerfile frontend
+docker build -t wordbridge-coach-frontend-localcheck -f frontend/Dockerfile frontend
 ```
 
 Para validar Chat Coach completo com IA local:
