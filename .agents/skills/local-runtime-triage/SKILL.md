@@ -18,9 +18,10 @@ Bring the local app up predictably, diagnose runtime drift quickly, and leave th
 5. Run migrations and seed after `api` is healthy when not using `scripts/quick_start.sh`.
 6. Use profile `audio` only when TTS behavior is being tested.
 7. Use profile `ai` only when Chat Coach local LLM or LanguageTool behavior is being tested.
-8. If the containerized frontend is blocked, use Vite as a temporary fallback and record that as runtime drift.
-9. Verify behavior with `/health`, `/api/v1/users/`, and a browser smoke path before handing it to the user.
-10. After testing, run `docker compose down --remove-orphans` and stop any Vite process that was started manually.
+8. Use `./scripts/smoke_local.sh` for the short default-runtime check whenever compose, Nginx, startup, or API/frontend contracts changed.
+9. If the containerized frontend is blocked, use Vite as a temporary fallback and record that as runtime drift.
+10. Verify behavior with `/health`, `/api/v1/users/`, and a browser smoke path before handing it to the user.
+11. After testing, run `docker compose down --remove-orphans` and stop any Vite process that was started manually.
 
 ## Rules
 
@@ -29,4 +30,5 @@ Bring the local app up predictably, diagnose runtime drift quickly, and leave th
 - Treat a button that appears to do nothing as both a frontend UX problem and a backend/runtime signal until proven otherwise.
 - Prefer fixing the supported runtime path over documenting a workaround as if it were normal.
 - Keep `scripts/init.sql` table-agnostic; extensions and permissions belong there, while schema and indexes belong in Alembic migrations.
-- If a simple smoke test spends minutes building API dependencies, record it as platform debt. The base runtime should stay separate from heavy NLP/Torch/CUDA concerns where practical.
+- Keep heavy translation dependencies out of the base API runtime. Use `INSTALL_ARGOS=true` only when validating offline Argos translation.
+- If a simple smoke test spends minutes building API dependencies, record it as platform debt before expanding the smoke scope.

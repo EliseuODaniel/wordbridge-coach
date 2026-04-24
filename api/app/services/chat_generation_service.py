@@ -67,5 +67,10 @@ async def generate_teacher_analysis_with_fallback(
         )
         return teacher_analysis, False
     except Exception as error:
-        logger.error("[TEACHER_ANALYSIS] Failed to generate: %s", error)
+        logger.warning(
+            "teacher_analysis_fallback conversation_id=%s provider_model=%s error=%s",
+            conv_id_str,
+            getattr(teacher_provider, "model", "unknown"),
+            error,
+        )
         return build_fallback(error), True

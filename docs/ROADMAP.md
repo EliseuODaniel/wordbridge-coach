@@ -189,9 +189,9 @@ Prioridade alta:
 - [x] garantir que o frontend containerizado não dependa do upstream `tts` quando o perfil `audio` estiver desligado
 - [x] mostrar erro visível no fluxo de criação de perfil quando a API falhar
 - [x] corrigir boot de volume novo do Postgres removendo índices prematuros de `scripts/init.sql`
-- [ ] formalizar smoke local curto para `db/api/frontend`: health, listagem/criação de perfil e carregamento do frontend
+- [x] formalizar smoke local curto para `db/api/frontend`: health, listagem/criação de perfil e carregamento do frontend
 - [x] alinhar `quick_start.sh`, README e `docs/TESTING.md` com `WORDBRIDGE_DB_PORT` como variável principal
-- [ ] separar dependências pesadas de NLP/Torch/CUDA do runtime base da API ou documentar explicitamente esse custo
+- [x] separar dependências pesadas de NLP/Torch/CUDA do runtime base da API ou documentar explicitamente esse custo
 - [ ] revisar o custo de build do serviço `tts` e decidir se ele deve ser uma imagem separada, pré-buildada ou documentação de instalação sob demanda
 - [ ] reduzir divergência entre Vite dev server e Nginx containerizado
 
@@ -199,8 +199,8 @@ Prioridade alta:
 
 Prioridade alta:
 
-- [ ] criar fixtures pequenas de histórico de estudo para validar `pedagogical_metrics`, `lesson_frame` e `learning_context`
-- [ ] registrar expectativas de retenção, pressão de review, pacing e melhor próximo modo em testes determinísticos
+- [x] criar fixtures pequenas de histórico de estudo para validar `pedagogical_metrics`, `lesson_frame` e `learning_context`
+- [x] registrar expectativas de retenção, pressão de review, pacing e melhor próximo modo em testes determinísticos
 - [ ] medir se o ajuste de dificuldade do Lingvist melhora ou piora previsibilidade em usuários simulados
 - [ ] avaliar se `student_profile_json` continua suficiente ou se analytics pedagógico merece endpoint/tabela própria
 - [ ] criar snapshots de prompt/teacher-analysis para evitar regressão silenciosa na qualidade do Chat Coach
@@ -209,9 +209,9 @@ Prioridade alta:
 
 Prioridade média:
 
-- [ ] migrar startup checks da API de `@app.on_event("startup")` para `lifespan`
+- [x] migrar startup checks da API de `@app.on_event("startup")` para `lifespan`
 - [ ] definir contrato de configuração local, staging e produção (`SECRET_KEY`, `DEBUG`, `ENVIRONMENT`, `STRICT_CONFIG`)
-- [ ] adicionar logs estruturados mínimos para criação de perfil, seleção de card, chat turn e fallback de provider
+- [x] adicionar logs estruturados mínimos para criação de perfil, seleção de card, chat turn e fallback de provider
 - [ ] decidir política de secrets e `.env.example`
 - [ ] preparar um fluxo de backup/restore local do banco antes de uso continuado
 

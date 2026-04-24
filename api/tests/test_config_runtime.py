@@ -2,6 +2,8 @@
 
 import importlib
 import json
+import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -67,3 +69,21 @@ def test_collect_runtime_issues_blocks_strict_mode(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Strict runtime validation failed"):
         config.ensure_runtime_safety()
+
+
+def test_run_startup_checks_uses_lifespan_helper_in_debug_mode(monkeypatch, caplog):
+    """Startup checks should stay testable outside FastAPI event decorators."""
+    main_module = importlib.import_module("app.main")
+
+    monkeypatch.setattr(main_module, "settings", SimpleNamespace(DEBUG=True))
+    monkeypatch.setattr(main_module, "collect_runtime_issues", lambda: ["placeholder issue"])
+
+    def fail_if_called():
+        raise AssertionError("debug startup should not enforce strict safety")
+
+    monkeypatch.setattr(main_module, "ensure_runtime_safety", fail_if_called)
+
+    with caplog.at_level(logging.WARNING):
+        main_module.run_startup_checks()
+
+    assert "placeholder issue" in caplog.text

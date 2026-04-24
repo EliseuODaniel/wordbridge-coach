@@ -136,12 +136,20 @@ async def create_user(
         initialize_user_card_states(db, new_user.id, target_lang.id)
 
         db.refresh(new_user)
+        logger.info(
+            "user_profile_created user_id=%s target_language=%s mode=%s word_goal_rank=%s",
+            str(new_user.id),
+            target_lang.code,
+            new_user.mode,
+            new_user.word_goal_rank,
+        )
         return _serialize_user_response(new_user)
 
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
+        logger.exception("user_profile_create_failed username=%s", user_data.username)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}

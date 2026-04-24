@@ -86,17 +86,12 @@ docker compose config --quiet
 Runtime local padrão:
 
 ```bash
-WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
-docker compose exec -T api alembic upgrade head
-docker compose exec -T api python scripts/seed_data.py
-curl -fsS http://localhost:8000/health
-curl -fsS http://localhost:3007 >/dev/null
-WORDBRIDGE_DB_PORT=55432 docker compose down --remove-orphans
+./scripts/smoke_local.sh
 ```
 
 Use `WORDBRIDGE_DB_PORT=55432` quando a porta `5432` já estiver ocupada no host.
 
-Nota operacional: o build inicial da API ainda é pesado porque o runtime base instala dependências de NLP/Torch/CUDA. Trate isso como dívida de plataforma e evite confundir esse custo com falha funcional do produto.
+Nota operacional: a imagem base da API não instala Argos Translate por padrão. Use `INSTALL_ARGOS=true` apenas quando precisar validar tradução offline por Argos; o caminho padrão usa o provider HTTP configurado no compose.
 
 Compose com áudio local opcional:
 

@@ -67,6 +67,14 @@ Se `5432` ja estiver ocupada no host, suba com outra porta para o Postgres local
 WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
 ```
 
+Smoke local automatizado:
+
+```bash
+./scripts/smoke_local.sh
+```
+
+Esse smoke usa um projeto Compose temporário, roda migrations/seed, valida API/frontend, cria um perfil e carrega o primeiro card. Por padrão ele derruba a stack e remove os volumes temporários ao terminar.
+
 Fluxo manual com áudio local:
 
 ```bash
@@ -104,6 +112,12 @@ Isso evita corromper `frontend/node_modules` ao misturar installs Linux e execuc
 O bundle de produção do frontend agora usa rotas relativas para API e TTS (`/api` e `/api/tts`), então o mesmo artefato funciona atrás do Nginx local sem embutir `localhost` no build.
 
 O stack padrão deve subir sem áudio e sem IA local. TTS e LLM continuam opcionais para preservar memória, VRAM e tempo de build durante testes comuns.
+
+A imagem base da API não instala Argos Translate por padrão. Para testar tradução offline com Argos, use:
+
+```bash
+INSTALL_ARGOS=true docker compose up -d --build db api frontend
+```
 
 ## Estrutura principal
 

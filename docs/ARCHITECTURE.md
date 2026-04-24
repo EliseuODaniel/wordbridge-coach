@@ -103,11 +103,13 @@ Topologia operacional padrão:
 ## Fronteiras operacionais atuais
 
 - a API usa configuração de engine dependente do backend: `StaticPool` fica restrito a SQLite em memória; PostgreSQL usa pool padrão com `pool_pre_ping`
+- a API usa `lifespan` do FastAPI para checks leves de startup e logs de ciclo de vida
 - o frontend gera bundle de produção apontando para rotas relativas (`/api` e `/api/tts`), enquanto o Vite usa proxy explícito para `localhost:8000` e `localhost:8001` no desenvolvimento
 - o Nginx do frontend resolve o upstream opcional de TTS de forma tardia, permitindo que o stack padrão suba mesmo quando o perfil `audio` está desligado
 - `stats` e `settings` exigem `user_id` explícito e não criam mais usuário demo como efeito colateral de endpoints de leitura
 - payloads de áudio e TTS usam URLs relativas, reduzindo acoplamento com host fixo
 - o lookup e a serialização de insights por palavra/card vivem em um service dedicado, reduzindo duplicação na borda HTTP
+- o runtime base da API não instala Argos Translate; tradução offline é extra opcional via `INSTALL_ARGOS=true`
 
 ## Fluxos principais
 
@@ -162,5 +164,5 @@ Topologia operacional padrão:
 2. Reduzir acoplamento entre modos de treino.
 3. Tornar regras de domínio mais explícitas.
 4. Separar melhor código de produto, código experimental e snapshots históricos.
-5. Migrar startup/shutdown da API para `lifespan` do FastAPI antes de ampliar hooks de operação.
-6. Transformar sinais pedagógicos em métricas avaliáveis, com datasets pequenos e estáveis para regressão.
+5. Expandir smoke automatizado para cobrir troca de modo e Chat Coach quando o custo de runtime estiver menor.
+6. Transformar sinais pedagógicos em métricas avaliáveis cada vez mais próximas de dados reais, mantendo datasets pequenos e estáveis para regressão.

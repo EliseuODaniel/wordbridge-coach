@@ -1,5 +1,6 @@
 """WordBridge Coach API - Main FastAPI application."""
 
+from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
@@ -12,11 +13,34 @@ from app.core.config import ensure_runtime_safety, settings, collect_runtime_iss
 
 logger = logging.getLogger(__name__)
 
+
+def run_startup_checks() -> None:
+    """Run lightweight startup configuration checks."""
+    if settings.DEBUG:
+        for issue in collect_runtime_issues():
+            logger.warning("Configuration warning: %s", issue)
+        return
+
+    ensure_runtime_safety()
+    for issue in collect_runtime_issues():
+        logger.warning("Configuration warning: %s", issue)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application startup and shutdown checks."""
+    run_startup_checks()
+    logger.info("WordBridge Coach API started")
+    yield
+    logger.info("WordBridge Coach API stopped")
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="WordBridge Coach - Local vocabulary training across cards, cloze and chat coaching",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -30,19 +54,6 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
-
-@app.on_event("startup")
-async def _startup_checks() -> None:
-    """Run lightweight startup configuration checks."""
-    if settings.DEBUG:
-        for issue in collect_runtime_issues():
-            logger.warning("Configuration warning: %s", issue)
-        return
-
-    ensure_runtime_safety()
-    for issue in collect_runtime_issues():
-        logger.warning("Configuration warning: %s", issue)
 
 
 @app.get("/health")

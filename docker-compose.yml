@@ -65,6 +65,8 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
+      args:
+        INSTALL_ARGOS: "${INSTALL_ARGOS:-false}"
     environment:
       DATABASE_URL: postgresql://ftw_user:ftw_password@db:5432/filltheword
       TTS_SERVICE_URL: http://tts:8001

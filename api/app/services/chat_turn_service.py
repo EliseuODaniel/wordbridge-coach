@@ -1,12 +1,15 @@
 """Turn-orchestration helpers for Chat Coach user messages."""
 
 from dataclasses import dataclass
+import logging
 from typing import Awaitable, Callable, List
 
 from fastapi import WebSocket
 from sqlalchemy.orm import Session
 
 from app.models import ChatConversation, ChatMessage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +40,14 @@ async def process_user_message_turn(
 ) -> None:
     """Run the full Chat Coach turn for a submitted user message."""
     content = data.get("content", "")
+    conversation_id = str(conversation.id)
+
+    logger.info(
+        "chat_turn_started conversation_id=%s user_id=%s content_length=%s",
+        conversation_id,
+        str(getattr(conversation, "user_id", "unknown")),
+        len(content),
+    )
 
     await helpers.freeze_feedback(
         websocket=websocket,
@@ -50,7 +61,7 @@ async def process_user_message_turn(
 
     full_response = await helpers.stream_assistant_response(
         websocket=websocket,
-        conversation_id=str(conversation.id),
+        conversation_id=conversation_id,
         chat_provider=chat_provider,
         messages=messages,
         system_prompt=system_prompt,
@@ -79,4 +90,11 @@ async def process_user_message_turn(
         user_message=user_message,
         teacher_analysis=teacher_analysis,
         used_fallback=used_fallback,
+    )
+    logger.info(
+        "chat_turn_completed conversation_id=%s user_message_id=%s used_teacher_fallback=%s response_length=%s",
+        conversation_id,
+        str(user_message.id),
+        used_fallback,
+        len(full_response),
     )

@@ -143,6 +143,14 @@ Status da rodada 2026-04-21:
 Para validar integração local:
 
 ```bash
+./scripts/smoke_local.sh
+```
+
+Esse é o smoke recomendado para o stack padrão. Ele usa `wordbridge-smoke` como projeto Compose temporário, sobe `db/api/frontend`, aplica migrations, roda seed, valida `/health`, valida o frontend, cria um perfil via API e carrega o primeiro card Spec4.
+
+Fluxo manual equivalente:
+
+```bash
 WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
 docker compose exec -T api alembic upgrade head
 docker compose exec -T api python scripts/seed_data.py
@@ -164,7 +172,7 @@ Existe um baseline inicial de quality gate em `.github/workflows/quality.yml` co
 
 - `frontend`: `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build`
 - `compose`: `docker compose config --quiet`
-- `api`: trilhas críticas já validadas de draft/state/feedback/contexto/adapters/handlers/entrega/texto/rest/conversation/generation/runtime/websocket/orquestração/utilitários de chat, autofill Lingvist, fluxo legado `/cards/next`, WebSocket, progressão e Spec4
+- `api`: trilhas críticas já validadas de draft/state/feedback/contexto/adapters/handlers/entrega/texto/rest/conversation/generation/runtime/websocket/orquestração/utilitários de chat, autofill Lingvist, fluxo legado `/cards/next`, WebSocket, progressão, Spec4 e avaliação determinística de sinais pedagógicos
 - `e2e-chromium`: Playwright Chromium cobrindo a suíte completa de `tests/e2e/tests/*.spec.ts` contra o stack padrão `db/api/frontend`, sem IA local e sem TTS obrigatório
 
 ## Regra prática
@@ -175,3 +183,4 @@ Existe um baseline inicial de quality gate em `.github/workflows/quality.yml` co
 - mudanças amplas: valide também `docker compose`, `alembic upgrade head` e healthchecks
 - mudanças em `docker-compose.yml`, `frontend/nginx.conf`, startup da API ou scripts de setup precisam validar o runtime padrão `db/api/frontend`, não só `docker compose config`
 - se `5432` estiver ocupada no host, use `WORDBRIDGE_DB_PORT=55432` para o stack local sem afetar a rede interna do compose
+- use `INSTALL_ARGOS=true` apenas quando precisar validar tradução offline por Argos; a imagem base da API não instala essa dependência pesada por padrão

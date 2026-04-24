@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+ARG INSTALL_ARGOS=false
+
 # Set working directory
 WORKDIR /app
 
@@ -10,10 +12,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY requirements.txt requirements-argos.txt ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && if [ "$INSTALL_ARGOS" = "true" ]; then \
+        pip install --no-cache-dir -r requirements-argos.txt; \
+    fi
 
 # Copy application code
 COPY . .

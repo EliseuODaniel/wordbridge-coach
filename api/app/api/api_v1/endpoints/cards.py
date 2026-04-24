@@ -1,5 +1,6 @@
 """Card endpoints for WordBridge Coach API."""
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, status
@@ -15,6 +16,7 @@ from app.services.card_lingvist_service import get_next_lingvist_card_response
 from app.services.lingvist_autofill_service import autofill_translations
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/next", response_model=CardResponse)
@@ -33,15 +35,17 @@ async def get_next_card(
     Returns exact payload specification from API.md
     """
     try:
-        return get_next_card_response(
+        response = get_next_card_response(
             db,
             user_id=user_id,
         )
+        logger.info("card_selected mode=legacy user_id=%s card_id=%s", user_id, response.card_id)
+        return response
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in get_next_card: {e}")
+        logger.exception("card_selection_failed mode=legacy user_id=%s", user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}
@@ -95,16 +99,18 @@ async def get_next_card_spec4(
     Get next card for study using Spec4 intelligent selection algorithm
     """
     try:
-        return get_next_spec4_card_response(
+        response = get_next_spec4_card_response(
             db,
             user_id=user_id,
             exclude_card_id=exclude_card_id,
         )
+        logger.info("card_selected mode=spec4 user_id=%s card_id=%s", user_id, response.card_id)
+        return response
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in get_next_card_spec4: {e}")
+        logger.exception("card_selection_failed mode=spec4 user_id=%s", user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}
@@ -130,17 +136,19 @@ async def get_next_card_lingvist(
     translations are missing, generates them on-demand using Argos Translate.
     """
     try:
-        return get_next_lingvist_card_response(
+        response = get_next_lingvist_card_response(
             db,
             user_id=user_id,
             exclude_card_id=exclude_card_id,
             autofill_translations=autofill_translations,
         )
+        logger.info("card_selected mode=lingvist user_id=%s card_id=%s", user_id, response.card_id)
+        return response
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in get_next_card_lingvist: {e}")
+        logger.exception("card_selection_failed mode=lingvist user_id=%s", user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal server error", "message": str(e)}

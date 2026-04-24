@@ -29,6 +29,32 @@ O primeiro boot em volume novo também expôs que `scripts/init.sql` criava índ
 - próximos ajustes em compose, Nginx, startup da API ou scripts de setup devem validar runtime real, não apenas configuração estática
 - futuras otimizações de plataforma devem mirar primeiro em build/cache/dependências da API antes de expandir recursos de IA local
 
+## 2026-04-24 - Manter runtime base da API leve e avaliação pedagógica determinística
+
+Status: aceito
+
+### Contexto
+
+O smoke local mostrou que uma validação simples do stack padrão podia gastar vários minutos instalando dependências de tradução offline puxadas por Argos/Torch/CUDA. Isso torna onboarding, CI e debug local mais lentos do que o necessário para o produto principal.
+
+Ao mesmo tempo, os sinais pedagógicos (`pedagogical_metrics`, `lesson_frame` e `learning_context`) passaram a influenciar a experiência entre Chat Coach, Spec4 e Lingvist. Sem fixtures determinísticas, qualquer ajuste de heurística poderia mudar a política pedagógica de forma silenciosa.
+
+### Decisão
+
+- remover Argos Translate do runtime base da API
+- manter `api/requirements-argos.txt` como extra opcional via `INSTALL_ARGOS=true`
+- manter `api/requirements-test.txt` e `api/requirements-dev.txt` separados do runtime de produção
+- adicionar `scripts/smoke_local.sh` como smoke oficial do stack padrão
+- adicionar testes determinísticos para cenários de suporte, equilíbrio e aceleração pedagógica
+- migrar checks de startup da API para `lifespan`, mantendo a função `run_startup_checks()` testável
+
+### Impacto
+
+- o build padrão da API deixa de carregar a árvore pesada de Argos/Torch/CUDA
+- tradução offline continua possível, mas passa a ser escolha explícita
+- mudanças futuras nos sinais pedagógicos precisam preservar expectativas claras de retenção, pressão de review, pacing e próximo modo recomendado
+- a operação da API fica alinhada ao ciclo de vida atual do FastAPI, sem depender de `@app.on_event("startup")`
+
 ## 2026-04-22 - Renomear o produto para WordBridge Coach e manter identificadores operacionais legados
 
 Status: aceito

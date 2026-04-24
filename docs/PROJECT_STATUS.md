@@ -40,8 +40,8 @@ Direção recomendada:
 - workspace atual: `/home/edann/projects/wordbridge-coach`
 - repositório GitHub: `EliseuODaniel/wordbridge-coach`
 - branch local ativa: `main`
-- `HEAD` remoto alinhado antes desta rodada de análise: `245039f`
-- o worktree recebeu ajustes de runtime, skills e documentação nesta rodada; revisar `git status` antes de publicar
+- `HEAD` remoto alinhado antes da segunda rodada de implementação: `5b60a64`
+- o worktree recebeu novos ajustes de smoke, dependências, avaliações pedagógicas e operabilidade nesta rodada; revisar `git status` antes de publicar
 
 Arquivos mais importantes para a próxima leitura:
 
@@ -65,6 +65,11 @@ Arquivos mais importantes para a próxima leitura:
 
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
+- `./scripts/frontend_tooling.sh check`: OK em 2026-04-24 depois da criação do smoke e ajustes de runtime; npm audit ainda reporta `13 vulnerabilities (5 moderate, 8 high)`
+- `./scripts/smoke_local.sh`: OK em 2026-04-24 no stack padrão `db/api/frontend`, com migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
+- `docker run --rm wordbridge-smoke-api python -c "import importlib.util; assert importlib.util.find_spec('argostranslate') is None"`: OK, confirmando que Argos não está no runtime base
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_config_runtime.py tests/test_pedagogical_metrics_eval.py tests/test_chat_turn_service.py tests/test_chat_generation_service.py -q`: OK (`12 passed`)
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`6 passed, 1 deselected`)
 - `WORDBRIDGE_DB_PORT=55433 docker compose -p wordbridge-smoke up -d --build db api frontend`: OK em volume novo depois de tornar `scripts/init.sql` agnóstico de tabelas
 - `docker compose -p wordbridge-smoke exec -T api alembic upgrade head`: OK
 - `docker compose -p wordbridge-smoke exec -T api python scripts/seed_data.py`: OK
@@ -212,6 +217,10 @@ Arquivos mais importantes para a próxima leitura:
 - o `lesson_frame_json` agora também projeta esses sinais em `diagnostics`, e o prompt do Chat Coach passou a usar retenção, dificuldade e pacing além do histórico textual
 - o perfil de dificuldade do Lingvist agora também desacelera ou acelera com base nesses sinais reais, ajustando dificuldade-alvo de sentença, comprimento e tamanho do pool antes da seleção
 - os painéis de `learning_context` e da sidebar do Chat Coach agora mostram esses sinais adaptativos na UI, e o input inline do Lingvist ganhou `data-testid` estável para remover flakiness do E2E
+- existe agora uma suíte determinística de avaliação pedagógica em `api/tests/test_pedagogical_metrics_eval.py`, cobrindo cenários de suporte, equilíbrio e aceleração
+- a API usa `lifespan` para checks de startup e logs de ciclo de vida, mantendo `run_startup_checks()` testável
+- o runtime base da API deixou de instalar Argos Translate; tradução offline fica opcional via `INSTALL_ARGOS=true`
+- logs mínimos foram adicionados para criação de perfil, seleção de card, turno do Chat Coach e fallback de teacher analysis
 
 ### Hotspots residuais
 
@@ -220,8 +229,8 @@ Nesta fase, os hotspots estruturais principais de backend e frontend foram fecha
 - revisar a qualidade das métricas pedagógicas com dados de uso real e ajustar limiares de retenção/dificuldade sem perder previsibilidade
 - decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context`
 - expandir a mesma disciplina de validação para mais fluxos E2E além da dupla `StudySession`/`LingvistSession`
-- formalizar uma smoke local curta para evitar que falhas de runtime pareçam bugs silenciosos de UI
-- revisar custo de build da imagem da API, que hoje puxa dependências pesadas de NLP/Torch/CUDA no caminho padrão
+- ampliar o smoke local para troca de modo e Chat Coach quando isso não tornar o check lento demais
+- monitorar se a remoção de Argos do runtime base reduz suficientemente o custo de build da API
 - revisar custo de build e isolamento do serviço `tts`, que ainda é pesado para ciclos comuns de teste
 
 ## Componentes ativos
@@ -283,7 +292,7 @@ Serviços hoje definidos:
 2. Há acoplamento considerável entre modos de estudo, analytics e integrações de IA local.
 3. A superfície do `docker-compose.yml` cresceu e precisa ser revisada com foco em simplicidade, embora a porta do Postgres local agora possa ser parametrizada por `WORDBRIDGE_DB_PORT`.
 4. O runtime local precisa continuar validando o contrato padrão `db/api/frontend` separado dos perfis opcionais `audio` e `ai`.
-5. A imagem da API ainda é pesada demais para ciclos rápidos porque instala dependências avançadas de NLP/LLM no caminho base.
+5. O stack opcional de áudio/IA ainda precisa de validação separada e documentação de custo antes de ser recomendado no onboarding principal.
 
 ## Objetivo desta nova fase
 
@@ -296,8 +305,8 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 
 ## Próximos passos imediatos
 
-1. Observar o comportamento dos novos `pedagogical_metrics` em uso real e recalibrar os limiares de `retention_band`, `review_pressure` e `recommended_pace` se necessário.
-2. Decidir se vale abrir analytics pedagógico dedicado na API ou manter a projeção atual nos contratos já existentes.
-3. Ampliar a cobertura E2E da mesma forma para Chat Coach e fluxos de troca de modo, agora que os seletores críticos ficaram explícitos.
-4. Migrar o startup da API para `lifespan` do FastAPI antes de ampliar hooks de operação.
-5. Criar uma trilha curta de smoke local que valide criação de perfil, troca de modo e primeiro card no stack padrão.
+1. Rodar o smoke local em cada mudança de compose, Nginx, startup da API ou contrato frontend/API.
+2. Observar o comportamento dos novos `pedagogical_metrics` em uso real e recalibrar os limiares de `retention_band`, `review_pressure` e `recommended_pace` se necessário.
+3. Decidir se vale abrir analytics pedagógico dedicado na API ou manter a projeção atual nos contratos já existentes.
+4. Ampliar a cobertura E2E para Chat Coach e fluxos de troca de modo sem transformar o smoke curto em suíte longa.
+5. Revisar o custo do perfil `audio`/TTS e decidir entre imagem separada, pré-build ou setup sob demanda.

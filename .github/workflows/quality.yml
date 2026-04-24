@@ -65,12 +65,14 @@ jobs:
           cache-dependency-path: |
             api/requirements.txt
             api/requirements-test.txt
+            api/requirements-argos.txt
       - run: pip install -r requirements.txt -r requirements-test.txt
       - run: python -m pytest tests/test_database_config.py -q
       - run: python -m pytest tests/test_request_user_service.py -q
       - run: python -m pytest tests/test_card_selection_mode_service.py -q
       - run: python -m pytest tests/test_vocabulary_progression.py -q
       - run: python -m pytest tests/test_lingvist_difficulty_service.py -q
+      - run: python -m pytest tests/test_pedagogical_metrics_eval.py -q
       - run: python -m pytest tests/test_chat_draft_service.py -q
       - run: python -m pytest tests/test_chat_feedback_service.py -q
       - run: python -m pytest tests/test_chat_context_service.py -q
