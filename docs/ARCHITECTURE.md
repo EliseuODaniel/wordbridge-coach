@@ -1,6 +1,6 @@
 # Architecture
 
-Data de referência: 2026-04-21
+Data de referência: 2026-04-24
 
 ## Visão geral
 
@@ -104,6 +104,7 @@ Topologia operacional padrão:
 
 - a API usa configuração de engine dependente do backend: `StaticPool` fica restrito a SQLite em memória; PostgreSQL usa pool padrão com `pool_pre_ping`
 - o frontend gera bundle de produção apontando para rotas relativas (`/api` e `/api/tts`), enquanto o Vite usa proxy explícito para `localhost:8000` e `localhost:8001` no desenvolvimento
+- o Nginx do frontend resolve o upstream opcional de TTS de forma tardia, permitindo que o stack padrão suba mesmo quando o perfil `audio` está desligado
 - `stats` e `settings` exigem `user_id` explícito e não criam mais usuário demo como efeito colateral de endpoints de leitura
 - payloads de áudio e TTS usam URLs relativas, reduzindo acoplamento com host fixo
 - o lookup e a serialização de insights por palavra/card vivem em um service dedicado, reduzindo duplicação na borda HTTP
@@ -161,3 +162,5 @@ Topologia operacional padrão:
 2. Reduzir acoplamento entre modos de treino.
 3. Tornar regras de domínio mais explícitas.
 4. Separar melhor código de produto, código experimental e snapshots históricos.
+5. Migrar startup/shutdown da API para `lifespan` do FastAPI antes de ampliar hooks de operação.
+6. Transformar sinais pedagógicos em métricas avaliáveis, com datasets pequenos e estáveis para regressão.

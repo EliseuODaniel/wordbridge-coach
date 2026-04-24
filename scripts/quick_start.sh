@@ -3,11 +3,11 @@
 set -euo pipefail
 
 COMPOSE_CMD=(docker compose)
+SERVICES=(db api frontend)
 WITH_AI=0
 WITH_AUDIO=0
-DB_PORT="${FTW_DB_PORT:-5432}"
-ALT_DB_PORT="${WORDBRIDGE_DB_PORT:-${DB_PORT}}"
-DB_PORT="$ALT_DB_PORT"
+DB_PORT="${WORDBRIDGE_DB_PORT:-${FTW_DB_PORT:-5432}}"
+export WORDBRIDGE_DB_PORT="$DB_PORT"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -36,6 +36,11 @@ if [[ "$WITH_AUDIO" -eq 1 ]]; then
     COMPOSE_CMD+=(--profile audio)
 fi
 
+if [[ "$WITH_AI" -eq 1 || "$WITH_AUDIO" -eq 1 ]]; then
+    # With profiles enabled, let Compose include every service activated by those profiles.
+    SERVICES=()
+fi
+
 echo "Starting WordBridge Coach setup..."
 echo "============================="
 
@@ -49,7 +54,7 @@ mkdir -p audio/{en,pt,es}/{word,sentence}
 mkdir -p tts_models
 
 echo "Building and starting services..."
-"${COMPOSE_CMD[@]}" up -d --build
+"${COMPOSE_CMD[@]}" up -d --build "${SERVICES[@]}"
 
 echo "Waiting for database..."
 until "${COMPOSE_CMD[@]}" exec -T db pg_isready -U ftw_user -d filltheword >/dev/null 2>&1; do

@@ -1,5 +1,34 @@
 # Decisions
 
+## 2026-04-24 - Priorizar confiabilidade do runtime local antes de novas features
+
+Status: aceito
+
+### Contexto
+
+Durante o teste manual no navegador, o fluxo `Create Profile` parecia não fazer nada. A causa imediata era operacional: o banco local havia ficado fora do ar e a API retornava `500`. A segunda causa era de UX: o frontend registrava o erro no console, mas não mostrava feedback visível ao usuário.
+
+Na mesma rodada, o frontend containerizado também expôs uma incoerência de perfil: o stack padrão dizia funcionar com `db/api/frontend`, mas o Nginx tentava resolver o upstream `tts` no startup, mesmo com o perfil `audio` desligado.
+
+O primeiro boot em volume novo também expôs que `scripts/init.sql` criava índices antes das migrations Alembic criarem as tabelas. Além disso, a imagem da API trouxe dependências Torch/CUDA no caminho padrão, tornando o build inicial pesado demais para um smoke simples.
+
+### Decisão
+
+- tratar `db/api/frontend` como contrato obrigatório do runtime padrão
+- manter `audio` e `ai` como perfis opcionais reais, sem exigir seus serviços no startup do frontend
+- manter `scripts/init.sql` limitado a extensões/permissões; schema e índices pertencem às migrations
+- mostrar erro visível no fluxo de perfil quando criação, listagem, edição ou remoção falhar
+- criar skill repo-local para triagem de runtime local
+- priorizar uma trilha curta de smoke local antes de novas features grandes
+- separar ou explicitar dependências pesadas de NLP/LLM para que o runtime base continue viável
+
+### Impacto
+
+- problemas de infraestrutura local deixam de parecer botões quebrados sem explicação
+- o onboarding fica mais honesto: o stack padrão precisa funcionar sem TTS e sem LLM
+- próximos ajustes em compose, Nginx, startup da API ou scripts de setup devem validar runtime real, não apenas configuração estática
+- futuras otimizações de plataforma devem mirar primeiro em build/cache/dependências da API antes de expandir recursos de IA local
+
 ## 2026-04-22 - Renomear o produto para WordBridge Coach e manter identificadores operacionais legados
 
 Status: aceito

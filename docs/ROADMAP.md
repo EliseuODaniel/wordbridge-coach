@@ -2,17 +2,30 @@
 
 Data de início desta nova fase: 2026-03-23
 
-## Status de retomada em 2026-04-23
+## Status de retomada em 2026-04-24
 
 - branding público renomeado de `FillTheWord` para `WordBridge Coach`
 - repositório GitHub renomeado para `EliseuODaniel/wordbridge-coach`
 - workspace local movido para `/home/edann/projects/wordbridge-coach`
 - `api/test-runner.sh` e docs de teste foram ajustados para continuar funcionando após a mudança de pasta
-- a próxima sessão deve partir do worktree atual na branch `main`, com as mudanças desta rodada para revisão e alinhamento final
+- `main` local e `origin/main` estavam alinhados no commit `245039f` antes desta rodada de análise
+- a próxima frente deve priorizar confiabilidade operacional e avaliação pedagógica antes de novas features grandes
 
 ## Objetivo
 
 Refatorar o projeto com segurança, reduzindo complexidade e melhorando legibilidade, testabilidade e onboarding.
+
+## Direção recomendada
+
+O produto já passou da fase de "fazer existir". A próxima fase deve provar que ele é confiável, avaliável e agradável de usar repetidamente.
+
+Prioridades:
+
+- runtime local padrão previsível: `db/api/frontend` deve subir sem `audio` e sem `ai`
+- feedback de falhas visível no frontend, sem ações silenciosas
+- métricas pedagógicas calibradas com casos reais e datasets pequenos de regressão
+- observabilidade mínima para startup, criação de perfil, sessão de estudo, Chat Coach e fallback de LLM
+- fronteiras claras entre experiência principal, áudio opcional e IA local opcional
 
 ## Fase 0: Reset de governança
 
@@ -168,6 +181,39 @@ Prioridade alta:
 - [x] rerodar localmente os specs Playwright focais de `StudySession` e `LingvistSession` quando houver runtime Node/Playwright estável na thread
 - [x] validar novamente backend, frontend, test-runner e Playwright focal depois do rename público e da mudança do workspace
 - [x] adicionar validação de startup da API com modo estrito opcional (`STRICT_CONFIG`) e registrar issues de configuração com logger
+
+## Fase 5: Runtime local confiável
+
+Prioridade alta:
+
+- [x] garantir que o frontend containerizado não dependa do upstream `tts` quando o perfil `audio` estiver desligado
+- [x] mostrar erro visível no fluxo de criação de perfil quando a API falhar
+- [x] corrigir boot de volume novo do Postgres removendo índices prematuros de `scripts/init.sql`
+- [ ] formalizar smoke local curto para `db/api/frontend`: health, listagem/criação de perfil e carregamento do frontend
+- [x] alinhar `quick_start.sh`, README e `docs/TESTING.md` com `WORDBRIDGE_DB_PORT` como variável principal
+- [ ] separar dependências pesadas de NLP/Torch/CUDA do runtime base da API ou documentar explicitamente esse custo
+- [ ] revisar o custo de build do serviço `tts` e decidir se ele deve ser uma imagem separada, pré-buildada ou documentação de instalação sob demanda
+- [ ] reduzir divergência entre Vite dev server e Nginx containerizado
+
+## Fase 6: Avaliação pedagógica
+
+Prioridade alta:
+
+- [ ] criar fixtures pequenas de histórico de estudo para validar `pedagogical_metrics`, `lesson_frame` e `learning_context`
+- [ ] registrar expectativas de retenção, pressão de review, pacing e melhor próximo modo em testes determinísticos
+- [ ] medir se o ajuste de dificuldade do Lingvist melhora ou piora previsibilidade em usuários simulados
+- [ ] avaliar se `student_profile_json` continua suficiente ou se analytics pedagógico merece endpoint/tabela própria
+- [ ] criar snapshots de prompt/teacher-analysis para evitar regressão silenciosa na qualidade do Chat Coach
+
+## Fase 7: Operabilidade e preparação de release local
+
+Prioridade média:
+
+- [ ] migrar startup checks da API de `@app.on_event("startup")` para `lifespan`
+- [ ] definir contrato de configuração local, staging e produção (`SECRET_KEY`, `DEBUG`, `ENVIRONMENT`, `STRICT_CONFIG`)
+- [ ] adicionar logs estruturados mínimos para criação de perfil, seleção de card, chat turn e fallback de provider
+- [ ] decidir política de secrets e `.env.example`
+- [ ] preparar um fluxo de backup/restore local do banco antes de uso continuado
 
 ## Critérios de sucesso
 

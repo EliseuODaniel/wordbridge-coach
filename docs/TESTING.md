@@ -143,9 +143,12 @@ Status da rodada 2026-04-21:
 Para validar integração local:
 
 ```bash
-docker compose up -d --build
-docker compose ps
-docker build -t wordbridge-coach-frontend-localcheck -f frontend/Dockerfile frontend
+WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
+docker compose exec -T api alembic upgrade head
+docker compose exec -T api python scripts/seed_data.py
+curl -fsS http://localhost:8000/health
+curl -fsS http://localhost:3007 >/dev/null
+WORDBRIDGE_DB_PORT=55432 docker compose down --remove-orphans
 ```
 
 Para validar Chat Coach completo com IA local:
@@ -170,4 +173,5 @@ Existe um baseline inicial de quality gate em `.github/workflows/quality.yml` co
 - mudanças de frontend: rode `./scripts/frontend_tooling.sh check`
 - mudanças de fluxo crítico: rode `npm run test:ci` em `tests/e2e/`; use `npm run test:smoke` apenas quando a intenção for um check curto de sanidade
 - mudanças amplas: valide também `docker compose`, `alembic upgrade head` e healthchecks
-- se `5432` estiver ocupada no host, use `FTW_DB_PORT=55432` para o stack local sem afetar a rede interna do compose
+- mudanças em `docker-compose.yml`, `frontend/nginx.conf`, startup da API ou scripts de setup precisam validar o runtime padrão `db/api/frontend`, não só `docker compose config`
+- se `5432` estiver ocupada no host, use `WORDBRIDGE_DB_PORT=55432` para o stack local sem afetar a rede interna do compose

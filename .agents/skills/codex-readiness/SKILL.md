@@ -15,10 +15,12 @@ Keep the repository ready for repeatable Codex usage with clear governance, loca
 2. Verify official docs under `docs/` reflect the actual workflow.
 3. Check whether repo-local skills cover repeated workflows.
 4. Check whether validation gates exist locally or in CI.
-5. Document recommended MCP setup without committing user-specific secrets.
+5. Check whether the documented local runtime still matches the actual compose/Vite behavior.
+6. Document recommended MCP setup without committing user-specific secrets.
 
 ## Rules
 
 - Prefer documenting MCP setup over committing user-local MCP credentials or private config.
 - Keep the official source of truth small and centralized.
 - Do not recreate parallel governance systems.
+- Treat `README.md`, `docs/CODEX_SETUP.md`, and local skills as a single onboarding surface; update them together when workflow changes.

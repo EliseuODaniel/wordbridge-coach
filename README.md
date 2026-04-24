@@ -56,15 +56,15 @@ Serviços opcionais com `--with-ai`:
 Fluxo manual equivalente:
 
 ```bash
-docker compose up -d --build
-docker compose exec api alembic upgrade head
-docker compose exec api python scripts/seed_data.py
+docker compose up -d --build db api frontend
+docker compose exec -T api alembic upgrade head
+docker compose exec -T api python scripts/seed_data.py
 ```
 
 Se `5432` ja estiver ocupada no host, suba com outra porta para o Postgres local:
 
 ```bash
-FTW_DB_PORT=55432 docker compose up -d --build
+WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
 ```
 
 Fluxo manual com áudio local:
@@ -102,6 +102,8 @@ Em ambiente hibrido Windows/WSL, o caminho suportado para `lint`, `typecheck` e 
 Isso evita corromper `frontend/node_modules` ao misturar installs Linux e execucao via `node.exe` do Windows.
 
 O bundle de produção do frontend agora usa rotas relativas para API e TTS (`/api` e `/api/tts`), então o mesmo artefato funciona atrás do Nginx local sem embutir `localhost` no build.
+
+O stack padrão deve subir sem áudio e sem IA local. TTS e LLM continuam opcionais para preservar memória, VRAM e tempo de build durante testes comuns.
 
 ## Estrutura principal
 

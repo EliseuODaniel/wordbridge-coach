@@ -1,6 +1,6 @@
 # Project Status
 
-Data de referência: 2026-04-23
+Data de referência: 2026-04-24
 
 ## Resumo executivo
 
@@ -22,19 +22,33 @@ Os identificadores internos de banco e alguns caminhos ainda mantêm o prefixo l
   - debug residual em produção substituído por `logger.debug` em pontos ativos (`users.py`, `card_selection_mode_service.py`, `vocabulary_progression.py`)
   - `quick_start.sh` atualizado para nomenclatura WordBridge e alias de porta `WORDBRIDGE_DB_PORT`
 
+## Avaliação executiva em 2026-04-24
+
+O projeto está em uma boa virada de maturidade: o produto local já é útil, a arquitetura principal foi fatiada em serviços menores e o fluxo pedagógico tem sinais explícitos entre Chat Coach, Spec4 e Lingvist. O risco principal deixou de ser "falta código" e passou a ser "manter o runtime, as métricas pedagógicas e a experiência de teste previsíveis".
+
+Direção recomendada:
+
+- estabilizar o runtime local padrão `db/api/frontend` como contrato de onboarding antes de novas features
+- tratar `audio` e `ai` como perfis opcionais reais, sem quebrar o frontend quando eles não estiverem ativos
+- transformar a memória pedagógica e o `learning_context` em métricas avaliáveis, com regressões pequenas e repetíveis
+- reduzir drift entre Vite, Nginx containerizado e CI para que bugs de UI não pareçam problemas de produto
+- priorizar feedback visível para falhas de usuário, especialmente criação de perfil, sessão de estudo e chat
+- antes de expandir IA local, medir latência, fallback e qualidade pedagógica com prompts/dados fixos
+
 ## Ponto de retomada
 
 - workspace atual: `/home/edann/projects/wordbridge-coach`
 - repositório GitHub: `EliseuODaniel/wordbridge-coach`
-- branch local ativa nesta sessão: `main`
-- `HEAD` local desta sessão: `4c8395f`
-- o worktree ainda contém mudanças locais relevantes em andamento e não deve ser limpo sem revisão
+- branch local ativa: `main`
+- `HEAD` remoto alinhado antes desta rodada de análise: `245039f`
+- o worktree recebeu ajustes de runtime, skills e documentação nesta rodada; revisar `git status` antes de publicar
 
 Arquivos mais importantes para a próxima leitura:
 
 - `docs/PROJECT_STATUS.md`
 - `docs/ROADMAP.md`
 - `docs/DECISIONS.md`
+- `frontend/nginx.conf`
 - `api/app/services/chat_profile_service.py`
 - `api/app/services/lingvist_difficulty_service.py`
 - `api/app/services/lingvist_payload_service.py`
@@ -51,6 +65,11 @@ Arquivos mais importantes para a próxima leitura:
 
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
+- `WORDBRIDGE_DB_PORT=55433 docker compose -p wordbridge-smoke up -d --build db api frontend`: OK em volume novo depois de tornar `scripts/init.sql` agnóstico de tabelas
+- `docker compose -p wordbridge-smoke exec -T api alembic upgrade head`: OK
+- `docker compose -p wordbridge-smoke exec -T api python scripts/seed_data.py`: OK
+- `curl -fsS http://localhost:8000/health`: OK
+- `curl -fsS http://localhost:3007 >/dev/null`: OK
 - `docker build -t wordbridge-coach-frontend-localcheck -f frontend/Dockerfile frontend`: OK
 - `python3 -m py_compile api/app/services/card_selection.py api/app/api/api_v1/endpoints/cards.py`: OK
 - `cd api && PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/integration/test_spec4_card_selection.py -q`: OK
@@ -201,11 +220,9 @@ Nesta fase, os hotspots estruturais principais de backend e frontend foram fecha
 - revisar a qualidade das métricas pedagógicas com dados de uso real e ajustar limiares de retenção/dificuldade sem perder previsibilidade
 - decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context`
 - expandir a mesma disciplina de validação para mais fluxos E2E além da dupla `StudySession`/`LingvistSession`
-- revisar o WIP local antes de qualquer commit, porque ele mistura:
-  - evolução pedagógica de Chat Coach, Spec4 e Lingvist
-  - rename público para `WordBridge Coach`
-  - mudança de workspace para `/home/edann/projects/wordbridge-coach`
-  - ajustes de robustez em `api/test-runner.sh` e docs para sobreviver a mudança de pasta
+- formalizar uma smoke local curta para evitar que falhas de runtime pareçam bugs silenciosos de UI
+- revisar custo de build da imagem da API, que hoje puxa dependências pesadas de NLP/Torch/CUDA no caminho padrão
+- revisar custo de build e isolamento do serviço `tts`, que ainda é pesado para ciclos comuns de teste
 
 ## Componentes ativos
 
@@ -233,6 +250,7 @@ Capacidades observadas:
 - Lingvist Session
 - Chat Coach Session
 - painéis de analytics e componentes auxiliares
+- feedback visível para falhas de criação/carregamento/edição/remoção de perfil
 
 ### TTS
 
@@ -263,8 +281,9 @@ Serviços hoje definidos:
 
 1. O produto prometido em docs antigas não batia mais com o código.
 2. Há acoplamento considerável entre modos de estudo, analytics e integrações de IA local.
-3. A superfície do `docker-compose.yml` cresceu e precisa ser revisada com foco em simplicidade, embora a porta do Postgres local agora possa ser parametrizada por `FTW_DB_PORT`.
-4. Parte da documentação operacional ainda precisa ser validada durante a próxima rodada de refatoração.
+3. A superfície do `docker-compose.yml` cresceu e precisa ser revisada com foco em simplicidade, embora a porta do Postgres local agora possa ser parametrizada por `WORDBRIDGE_DB_PORT`.
+4. O runtime local precisa continuar validando o contrato padrão `db/api/frontend` separado dos perfis opcionais `audio` e `ai`.
+5. A imagem da API ainda é pesada demais para ciclos rápidos porque instala dependências avançadas de NLP/LLM no caminho base.
 
 ## Objetivo desta nova fase
 
@@ -280,3 +299,5 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 1. Observar o comportamento dos novos `pedagogical_metrics` em uso real e recalibrar os limiares de `retention_band`, `review_pressure` e `recommended_pace` se necessário.
 2. Decidir se vale abrir analytics pedagógico dedicado na API ou manter a projeção atual nos contratos já existentes.
 3. Ampliar a cobertura E2E da mesma forma para Chat Coach e fluxos de troca de modo, agora que os seletores críticos ficaram explícitos.
+4. Migrar o startup da API para `lifespan` do FastAPI antes de ampliar hooks de operação.
+5. Criar uma trilha curta de smoke local que valide criação de perfil, troca de modo e primeiro card no stack padrão.
