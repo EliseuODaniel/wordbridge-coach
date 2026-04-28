@@ -66,6 +66,7 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 temp.db
+backups/
 
 # Docker volumes
 postgres_data/

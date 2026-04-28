@@ -1,5 +1,5 @@
 #!/bin/bash
-# Download Piper TTS models for FillTheWord
+# Download Piper TTS models for WordBridge Coach.
 set -e
 
 echo "🎵 Downloading Piper TTS models..."

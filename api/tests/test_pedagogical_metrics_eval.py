@@ -112,3 +112,97 @@ def test_lingvist_profile_uses_metrics_to_adjust_sentence_difficulty():
     assert support_profile.target_sentence_difficulty < stretch_profile.target_sentence_difficulty
     assert support_profile.ranked_candidate_pool < stretch_profile.ranked_candidate_pool
     assert stretch_profile.pace_hint == "accelerate"
+
+
+@pytest.mark.parametrize(
+    ("simulated_user", "expected"),
+    [
+        (
+            {
+                "name": "fragile expanding learner",
+                "max_contiguous_mastered_rank": 900,
+                "current_window_end_rank": 1000,
+                "recent_accuracy": 0.52,
+                "review_pressure": "high",
+                "difficulty_signal": "support_needed",
+            },
+            {
+                "pace_hint": "stabilize",
+                "support_bias": "support_needed",
+                "target_delta": -1,
+                "pool_delta": -2,
+            },
+        ),
+        (
+            {
+                "name": "balanced expanding learner",
+                "max_contiguous_mastered_rank": 900,
+                "current_window_end_rank": 1000,
+                "recent_accuracy": 0.74,
+                "review_pressure": "low",
+                "difficulty_signal": "on_target",
+            },
+            {
+                "pace_hint": "balance",
+                "support_bias": "on_target",
+                "target_delta": 0,
+                "pool_delta": 0,
+            },
+        ),
+        (
+            {
+                "name": "stable expanding learner",
+                "max_contiguous_mastered_rank": 900,
+                "current_window_end_rank": 1000,
+                "recent_accuracy": 0.91,
+                "review_pressure": "low",
+                "difficulty_signal": "ready_to_push",
+            },
+            {
+                "pace_hint": "accelerate",
+                "support_bias": "ready_to_push",
+                "target_delta": 1,
+                "pool_delta": 2,
+            },
+        ),
+        (
+            {
+                "name": "high-performing learner blocked by reviews",
+                "max_contiguous_mastered_rank": 900,
+                "current_window_end_rank": 1000,
+                "recent_accuracy": 0.91,
+                "review_pressure": "high",
+                "difficulty_signal": "ready_to_push",
+            },
+            {
+                "pace_hint": "stabilize",
+                "support_bias": "support_needed",
+                "target_delta": -1,
+                "pool_delta": -2,
+            },
+        ),
+    ],
+)
+def test_lingvist_adaptation_stays_predictable_for_simulated_users(simulated_user, expected):
+    """Adaptive Lingvist tuning should move one controlled step from the phase baseline."""
+    baseline = get_lingvist_difficulty_profile(
+        max_contiguous_mastered_rank=simulated_user["max_contiguous_mastered_rank"],
+        current_window_end_rank=simulated_user["current_window_end_rank"],
+    )
+    adaptive = get_lingvist_difficulty_profile(
+        max_contiguous_mastered_rank=simulated_user["max_contiguous_mastered_rank"],
+        current_window_end_rank=simulated_user["current_window_end_rank"],
+        recent_accuracy=simulated_user["recent_accuracy"],
+        review_pressure=simulated_user["review_pressure"],
+        difficulty_signal=simulated_user["difficulty_signal"],
+    )
+
+    assert adaptive.phase == baseline.phase
+    assert adaptive.rank_limit == baseline.rank_limit
+    assert adaptive.pace_hint == expected["pace_hint"]
+    assert adaptive.support_bias == expected["support_bias"]
+    assert adaptive.target_sentence_difficulty - baseline.target_sentence_difficulty == expected["target_delta"]
+    assert adaptive.ranked_candidate_pool - baseline.ranked_candidate_pool == expected["pool_delta"]
+    assert abs(adaptive.max_word_count - baseline.max_word_count) <= 2
+    assert 1 <= adaptive.sentence_difficulty_min <= adaptive.target_sentence_difficulty
+    assert adaptive.target_sentence_difficulty <= adaptive.sentence_difficulty_max <= 5

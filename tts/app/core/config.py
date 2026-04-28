@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     MODELS_PATH: str = "./models"
     
     # TTS settings
-    DEFAULT_VOICE_ENGINE: str = "piper"  # piper or coqui
+    DEFAULT_VOICE_ENGINE: str = "piper"
     SAMPLE_RATE: int = 22050
     MAX_TEXT_LENGTH: int = 500
     
@@ -21,7 +21,6 @@ class Settings(BaseSettings):
             "name": "English",
             "piper_model": "lessac-glow_tts",
             "piper_voice": "lessac",
-            "coqui_model": "ljspeech",
             "voice_type": "female",
             "language": "en"
         },
@@ -30,7 +29,6 @@ class Settings(BaseSettings):
             "name": "Português",
             "piper_model": "pt_br_female-glow_tts",
             "piper_voice": "pt_br_female",
-            "coqui_model": "ljspeech",
             "voice_type": "female",
             "language": "pt-br"
         },
@@ -39,7 +37,6 @@ class Settings(BaseSettings):
             "name": "Español",
             "piper_model": "es_male-glow_tts",
             "piper_voice": "es_male",
-            "coqui_model": "ljspeech",
             "voice_type": "male",
             "language": "es"
         },
@@ -48,7 +45,6 @@ class Settings(BaseSettings):
             "name": "Français",
             "piper_model": "fr_female-glow_tts",
             "piper_voice": "fr_female",
-            "coqui_model": "ljspeech",
             "voice_type": "female",
             "language": "fr"
         }

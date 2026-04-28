@@ -66,8 +66,20 @@ Arquivos mais importantes para a próxima leitura:
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
 - `./scripts/frontend_tooling.sh check`: OK em 2026-04-24 depois da criação do smoke e ajustes de runtime; npm audit ainda reporta `13 vulnerabilities (5 moderate, 8 high)`
-- `./scripts/smoke_local.sh`: OK em 2026-04-24 no stack padrão `db/api/frontend`, com migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
+- `./scripts/smoke_local.sh`: OK em 2026-04-28 no stack padrão `db/api/frontend`, com build, migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
+- `cd tests/e2e && BASE_URL=http://127.0.0.1:3007 npm run test:ci`: OK em 2026-04-28 contra `db/api/frontend` com `WORDBRIDGE_DB_PORT=55432`, migrations e seed aplicados; `37 passed`, stack derrubada ao final
 - `docker run --rm wordbridge-smoke-api python -c "import importlib.util; assert importlib.util.find_spec('argostranslate') is None"`: OK, confirmando que Argos não está no runtime base
+- `docker compose --profile audio build tts`: OK em 2026-04-28 com runtime Piper-only; build local observado em aproximadamente 25s e imagem `wordbridge-coach-tts` com cerca de 133 MB
+- `docker run --rm wordbridge-coach-tts piper --help >/dev/null`: OK
+- `docker run --rm wordbridge-coach-tts python -c "from app.services.tts_service import TTSService; print('tts import ok')"`: OK
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py tests/test_llamacpp_provider_sse.py tests/test_chat_text_service.py -q`: OK (`13 passed`)
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`14 passed, 1 deselected`)
+- tentativa de rodar `tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py` completo nesta retomada: bloqueada porque o Postgres local em `localhost:5433` não estava ativo; a parte pura da suíte foi validada
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_profile_service.py tests/test_pedagogical_metrics_eval.py -q`: OK (`15 passed`)
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_config_runtime.py -q`: OK (`6 passed`)
+- `bash -n scripts/db_backup.sh scripts/db_restore.sh`: OK
+- `./scripts/db_backup.sh --help`: OK
+- `./scripts/db_restore.sh --help`: OK
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_config_runtime.py tests/test_pedagogical_metrics_eval.py tests/test_chat_turn_service.py tests/test_chat_generation_service.py -q`: OK (`12 passed`)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`6 passed, 1 deselected`)
 - `WORDBRIDGE_DB_PORT=55433 docker compose -p wordbridge-smoke up -d --build db api frontend`: OK em volume novo depois de tornar `scripts/init.sql` agnóstico de tabelas
@@ -197,8 +209,10 @@ Arquivos mais importantes para a próxima leitura:
 - o frontend ganhou um runner oficial em Docker (`./scripts/frontend_tooling.sh`) para estabilizar `lint`, `typecheck` e `build` em ambiente híbrido Windows/WSL
 - o quality gate agora cobre explicitamente `typecheck`, `docker compose config --quiet`, novos testes focais de plataforma/insights/request-user/card-selection-mode e a suíte E2E Chromium completa em `tests/e2e/playwright.ci.config.ts`
 - o stack padrão deixou de exigir LLM local, LanguageTool e TTS para subir; os perfis `ai` e `audio` passaram a ser opcionais conforme o fluxo
+- o serviço `tts` opcional agora usa runtime Piper-only, sem Coqui/Torch/librosa/numpy na imagem do perfil `audio`
 - o runtime principal da API agora usa configuração de pool coerente com o banco: `StaticPool` fica restrito a SQLite em memória, enquanto PostgreSQL usa pool padrão com `pool_pre_ping`
 - o frontend passou a consumir URLs relativas (`/api` e `/api/tts`) no bundle de produção, com proxy explícito no Vite para desenvolvimento local
+- o proxy de desenvolvimento do Vite agora vive em `frontend/viteProxy.ts`, explicita a rota WebSocket do Chat Coach, permite sobrescrever targets por `WORDBRIDGE_API_PROXY_TARGET`/`WORDBRIDGE_TTS_PROXY_TARGET` e não mantém mais o proxy legado divergente de `/api/audio`
 - `stats` e `settings` deixaram de depender de bootstrap implícito do usuário demo; os endpoints agora exigem `user_id` explícito na borda de leitura
 - o lookup e a serialização de insights por palavra/card agora vivem em `api/app/services/insights_service.py`, reduzindo drift entre backend e frontend
 - `CardSelectionService` agora delega a orquestração por modo para `api/app/services/card_selection_mode_service.py`, reduzindo o miolo residual mais acoplado
@@ -218,6 +232,11 @@ Arquivos mais importantes para a próxima leitura:
 - o perfil de dificuldade do Lingvist agora também desacelera ou acelera com base nesses sinais reais, ajustando dificuldade-alvo de sentença, comprimento e tamanho do pool antes da seleção
 - os painéis de `learning_context` e da sidebar do Chat Coach agora mostram esses sinais adaptativos na UI, e o input inline do Lingvist ganhou `data-testid` estável para remover flakiness do E2E
 - existe agora uma suíte determinística de avaliação pedagógica em `api/tests/test_pedagogical_metrics_eval.py`, cobrindo cenários de suporte, equilíbrio e aceleração
+- a suíte pedagógica agora também compara usuários simulados contra o baseline de fase do Lingvist para garantir que suporte/aceleração mudem dificuldade, tamanho de pool e comprimento de sentença em passos previsíveis
+- existe agora também uma suíte de snapshots determinísticos para `teacher_analysis` em `api/tests/test_pedagogical_prompt_snapshots.py`, cobrindo contrato de idioma/scaffolding do prompt e schema strict dos structured outputs
+- analytics pedagógico permanece sem endpoint/tabela própria nesta fase; `build_pedagogical_analytics_projection()` explicita a projeção atual a partir de JSON de conversa, snapshots de lesson frame e métricas cruas existentes
+- o contrato de configuração agora é versionado em `.env.example`; `.env` continua local/ignorado, compose injeta defaults locais explícitos e staging/produção devem usar `DEBUG=false`, `STRICT_CONFIG=true` e `SECRET_KEY` gerado fora do repositório
+- existe fluxo local de backup/restore do Postgres via `scripts/db_backup.sh` e `scripts/db_restore.sh`; dumps ficam em `backups/`, ignorado pelo Git, e restore exige `--yes`
 - a API usa `lifespan` para checks de startup e logs de ciclo de vida, mantendo `run_startup_checks()` testável
 - o runtime base da API deixou de instalar Argos Translate; tradução offline fica opcional via `INSTALL_ARGOS=true`
 - logs mínimos foram adicionados para criação de perfil, seleção de card, turno do Chat Coach e fallback de teacher analysis
@@ -231,7 +250,7 @@ Nesta fase, os hotspots estruturais principais de backend e frontend foram fecha
 - expandir a mesma disciplina de validação para mais fluxos E2E além da dupla `StudySession`/`LingvistSession`
 - ampliar o smoke local para troca de modo e Chat Coach quando isso não tornar o check lento demais
 - monitorar se a remoção de Argos do runtime base reduz suficientemente o custo de build da API
-- revisar custo de build e isolamento do serviço `tts`, que ainda é pesado para ciclos comuns de teste
+- acompanhar se o runtime Piper-only do serviço `tts` reduz suficientemente o custo do perfil `audio` em máquinas novas
 
 ## Componentes ativos
 

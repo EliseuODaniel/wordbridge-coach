@@ -148,6 +148,13 @@ Notas do baseline:
 - octogesima oitava microfatia aplicada: introdução de `pedagogical_state` explícito, `lesson_frame` adaptativo por turno e snapshots persistidos em `chat_lesson_history`, reaproveitando a tabela já existente em vez de abrir nova árvore de estado
 - octogesima nona microfatia aplicada: extensão do contrato WebSocket de `teacher_analysis` com `lesson_frame` atualizado e integração de `learning_context` compartilhado entre Chat Coach, Spec4 e Lingvist, com painéis visuais dedicados no frontend e cobertura focal nova
 - nonagesima microfatia aplicada: introdução de `pedagogical_metrics` explícitos derivados de progresso real (`UserCardState`, `ReviewEvent`, `UserSessionStats`), projeção desses sinais em `lesson_frame.diagnostics` e `learning_context`, calibração adaptativa do perfil Lingvist e estabilização do E2E com seletor dedicado para o input inline
+- nonagesima primeira microfatia aplicada: centralização do proxy de desenvolvimento do Vite em `frontend/viteProxy.ts`, com rota explícita para WebSocket do Chat Coach, targets configuráveis por ambiente e remoção do proxy legado divergente de `/api/audio`
+- nonagesima segunda microfatia aplicada: simplificação do runtime TTS para Piper-only, removendo Coqui/Torch/librosa/numpy e a instalação duplicada de `piper-tts` do build do perfil `audio`
+- nonagesima terceira microfatia aplicada: criação de snapshots determinísticos para prompt/schema de `teacher_analysis`, com schema strict exigindo todos os campos declarados nos structured outputs do OpenAI
+- nonagesima quarta microfatia aplicada: simulações determinísticas de usuários para medir a adaptação do Lingvist contra o baseline da fase, cobrindo suporte, equilíbrio, aceleração e bloqueio por pressão alta de review
+- nonagesima quinta microfatia aplicada: decisão de manter analytics pedagógico projetado a partir de `student_profile_json`, `lesson_frame_json`, `chat_lesson_history` e tabelas cruas nesta fase, com helper explícito de projeção para endpoint futuro
+- nonagesima sexta microfatia aplicada: formalização do contrato de configuração com `.env.example`, defaults locais explícitos no compose e validação de `ENVIRONMENT`, `DEBUG`, `STRICT_CONFIG` e `SECRET_KEY`
+- nonagesima sétima microfatia aplicada: criação de scripts locais de backup/restore do Postgres (`scripts/db_backup.sh` e `scripts/db_restore.sh`) com dumps ignorados em `backups/` e restore destrutivo protegido por `--yes`
 
 ## Fase 2: Limpeza estrutural
 
@@ -192,8 +199,8 @@ Prioridade alta:
 - [x] formalizar smoke local curto para `db/api/frontend`: health, listagem/criação de perfil e carregamento do frontend
 - [x] alinhar `quick_start.sh`, README e `docs/TESTING.md` com `WORDBRIDGE_DB_PORT` como variável principal
 - [x] separar dependências pesadas de NLP/Torch/CUDA do runtime base da API ou documentar explicitamente esse custo
-- [ ] revisar o custo de build do serviço `tts` e decidir se ele deve ser uma imagem separada, pré-buildada ou documentação de instalação sob demanda
-- [ ] reduzir divergência entre Vite dev server e Nginx containerizado
+- [x] revisar o custo de build do serviço `tts` e decidir se ele deve ser uma imagem separada, pré-buildada ou documentação de instalação sob demanda
+- [x] reduzir divergência entre Vite dev server e Nginx containerizado
 
 ## Fase 6: Avaliação pedagógica
 
@@ -201,19 +208,19 @@ Prioridade alta:
 
 - [x] criar fixtures pequenas de histórico de estudo para validar `pedagogical_metrics`, `lesson_frame` e `learning_context`
 - [x] registrar expectativas de retenção, pressão de review, pacing e melhor próximo modo em testes determinísticos
-- [ ] medir se o ajuste de dificuldade do Lingvist melhora ou piora previsibilidade em usuários simulados
-- [ ] avaliar se `student_profile_json` continua suficiente ou se analytics pedagógico merece endpoint/tabela própria
-- [ ] criar snapshots de prompt/teacher-analysis para evitar regressão silenciosa na qualidade do Chat Coach
+- [x] medir se o ajuste de dificuldade do Lingvist melhora ou piora previsibilidade em usuários simulados
+- [x] avaliar se `student_profile_json` continua suficiente ou se analytics pedagógico merece endpoint/tabela própria
+- [x] criar snapshots de prompt/teacher-analysis para evitar regressão silenciosa na qualidade do Chat Coach
 
 ## Fase 7: Operabilidade e preparação de release local
 
 Prioridade média:
 
 - [x] migrar startup checks da API de `@app.on_event("startup")` para `lifespan`
-- [ ] definir contrato de configuração local, staging e produção (`SECRET_KEY`, `DEBUG`, `ENVIRONMENT`, `STRICT_CONFIG`)
+- [x] definir contrato de configuração local, staging e produção (`SECRET_KEY`, `DEBUG`, `ENVIRONMENT`, `STRICT_CONFIG`)
 - [x] adicionar logs estruturados mínimos para criação de perfil, seleção de card, chat turn e fallback de provider
-- [ ] decidir política de secrets e `.env.example`
-- [ ] preparar um fluxo de backup/restore local do banco antes de uso continuado
+- [x] decidir política de secrets e `.env.example`
+- [x] preparar um fluxo de backup/restore local do banco antes de uso continuado
 
 ## Critérios de sucesso
 

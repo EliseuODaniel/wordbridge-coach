@@ -3,14 +3,9 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for audio processing
+# Install the small runtime surface used by the service and healthcheck.
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libsndfile1 \
-    ffmpeg \
-    libsox-fmt-all \
-    wget \
+    ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -19,9 +14,6 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Piper TTS CLI
-RUN pip install --no-cache-dir piper-tts
 
 # Copy application code
 COPY . .

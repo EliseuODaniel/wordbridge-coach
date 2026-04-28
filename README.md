@@ -26,6 +26,14 @@ O projeto se chamava `FillTheWord`, mas o escopo atual já é mais amplo do que 
 
 ## Quick start
 
+Para customizar o ambiente local, use o template versionado:
+
+```bash
+cp .env.example .env
+```
+
+`.env` é local e não deve ser commitado. Para `staging` ou `production`, use `DEBUG=false`, `STRICT_CONFIG=true` e um `SECRET_KEY` gerado fora do repositório.
+
 ```bash
 ./scripts/quick_start.sh
 ```
@@ -47,6 +55,7 @@ Serviços padrão:
 Serviços opcionais com `--with-audio`:
 
 - tts: `http://localhost:8001/health`
+- runtime Piper TTS sob demanda, com modelos em `tts_models`
 
 Serviços opcionais com `--with-ai`:
 
@@ -74,6 +83,15 @@ Smoke local automatizado:
 ```
 
 Esse smoke usa um projeto Compose temporário, roda migrations/seed, valida API/frontend, cria um perfil e carrega o primeiro card. Por padrão ele derruba a stack e remove os volumes temporários ao terminar.
+
+Backup/restore do banco local:
+
+```bash
+./scripts/db_backup.sh
+./scripts/db_restore.sh --yes backups/wordbridge-YYYYMMDD-HHMMSS.dump
+```
+
+Os dumps ficam em `backups/`, ignorado pelo Git.
 
 Fluxo manual com áudio local:
 
@@ -111,7 +129,15 @@ Isso evita corromper `frontend/node_modules` ao misturar installs Linux e execuc
 
 O bundle de produção do frontend agora usa rotas relativas para API e TTS (`/api` e `/api/tts`), então o mesmo artefato funciona atrás do Nginx local sem embutir `localhost` no build.
 
+Quando rodar o Vite manualmente dentro de `frontend/`, o proxy de desenvolvimento usa por padrão `http://localhost:8000` para a API e `http://localhost:8001` para TTS. Para apontar para outros targets sem mudar o bundle:
+
+```bash
+WORDBRIDGE_API_PROXY_TARGET=http://localhost:8000 WORDBRIDGE_TTS_PROXY_TARGET=http://localhost:8001 npm run dev
+```
+
 O stack padrão deve subir sem áudio e sem IA local. TTS e LLM continuam opcionais para preservar memória, VRAM e tempo de build durante testes comuns.
+
+O perfil `audio` usa Piper TTS. Coqui/Torch não fazem parte da imagem local suportada nesta fase.
 
 A imagem base da API não instala Argos Translate por padrão. Para testar tradução offline com Argos, use:
 

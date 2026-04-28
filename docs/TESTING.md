@@ -55,6 +55,7 @@ PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_progress_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_runtime_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_turn_service.py -q
+PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_feedback_service.py tests/test_chat_delivery_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_llamacpp_provider_sse.py tests/test_lingvist_difficulty_service.py tests/integration/test_chat_websocket_flow.py
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_feedback_service.py tests/test_chat_delivery_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_chat_context_service.py tests/test_llamacpp_provider_sse.py tests/test_chat_coach_mock_provider.py tests/test_lingvist_difficulty_service.py tests/integration/test_chat_websocket_flow.py
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_context_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_chat_delivery_service.py tests/test_chat_endpoint_adapter_service.py tests/test_chat_turn_service.py tests/test_chat_utilities.py tests/integration/test_chat_websocket_flow.py
@@ -92,6 +93,11 @@ Comandos isolados:
 ```
 
 Uso nativo de `npm` continua valido apenas quando install e execucao ficam no mesmo runtime.
+
+Quando for necessário rodar o Vite manualmente, o proxy de desenvolvimento fica em `frontend/viteProxy.ts` e usa:
+
+- `WORDBRIDGE_API_PROXY_TARGET`, default `http://localhost:8000`
+- `WORDBRIDGE_TTS_PROXY_TARGET`, default `http://localhost:8001`
 
 Local alternativo: `frontend/`
 
@@ -164,6 +170,47 @@ Para validar Chat Coach completo com IA local:
 ```bash
 docker compose --profile ai up -d --build
 docker compose --profile ai ps
+```
+
+Para validar áudio local, o perfil `audio` usa Piper TTS e mantém modelos no volume `tts_models`:
+
+```bash
+docker compose --profile audio build tts
+docker compose --profile audio up -d tts
+```
+
+## Backup e restore local
+
+Antes de uso continuado ou mudanças destrutivas no banco local, gere um dump:
+
+```bash
+./scripts/db_backup.sh
+```
+
+Por padrão, o arquivo vai para `backups/wordbridge-YYYYMMDD-HHMMSS.dump`. Esse diretório é ignorado pelo Git.
+
+Restore é destrutivo e exige confirmação explícita:
+
+```bash
+./scripts/db_restore.sh --yes backups/wordbridge-YYYYMMDD-HHMMSS.dump
+```
+
+Os scripts assumem o serviço Compose `db` ativo e usam `pg_dump`/`pg_restore` dentro do container Postgres.
+
+## Configuração e secrets
+
+O contrato versionado de ambiente fica em `.env.example`. Arquivos `.env` reais são locais, ignorados pelo Git e não devem guardar segredo commitado.
+
+Contrato recomendado:
+
+- local: `ENVIRONMENT=development`, `DEBUG=true`, `STRICT_CONFIG=false`
+- staging/produção: `ENVIRONMENT=staging` ou `production`, `DEBUG=false`, `STRICT_CONFIG=true`, `SECRET_KEY` gerado fora do repositório
+
+Validação focal:
+
+```bash
+cd api
+TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_config_runtime.py -q
 ```
 
 ## CI

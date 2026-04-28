@@ -75,6 +75,7 @@ Responsabilidades:
 
 - geração de áudio
 - cache de áudio em volume compartilhado
+- runtime opcional baseado em Piper TTS; Coqui/Torch não fazem parte da imagem local suportada nesta fase
 
 ### Infra local
 
@@ -99,12 +100,15 @@ Topologia operacional padrão:
 - stack com áudio local: `docker compose --profile audio up -d --build`
 - stack com IA local: `docker compose --profile ai up -d --build`
 - `Chat Coach` completo depende do perfil `ai`; áudio local depende do perfil `audio`; Study Session e Lingvist seguem funcionais no stack padrão
+- o perfil `audio` usa uma imagem TTS pequena e sob demanda; modelos Piper ficam no volume `tts_models` e devem ser baixados separadamente quando áudio real for necessário
 
 ## Fronteiras operacionais atuais
 
 - a API usa configuração de engine dependente do backend: `StaticPool` fica restrito a SQLite em memória; PostgreSQL usa pool padrão com `pool_pre_ping`
 - a API usa `lifespan` do FastAPI para checks leves de startup e logs de ciclo de vida
-- o frontend gera bundle de produção apontando para rotas relativas (`/api` e `/api/tts`), enquanto o Vite usa proxy explícito para `localhost:8000` e `localhost:8001` no desenvolvimento
+- configuração local é documentada em `.env.example`; `.env` real fica fora do Git, e ambientes `staging`/`production` devem rodar com `DEBUG=false`, `STRICT_CONFIG=true` e segredo real em `SECRET_KEY`
+- backup/restore local do banco usa `pg_dump`/`pg_restore` pelo container `db`; dumps ficam em `backups/` e não fazem parte do repositório
+- o frontend gera bundle de produção apontando para rotas relativas (`/api` e `/api/tts`), enquanto o Vite usa um contrato explícito de proxy em `frontend/viteProxy.ts` para API, Chat Coach WebSocket, TTS opcional e `/health`; os targets de desenvolvimento podem ser sobrescritos por `WORDBRIDGE_API_PROXY_TARGET` e `WORDBRIDGE_TTS_PROXY_TARGET`
 - o Nginx do frontend resolve o upstream opcional de TTS de forma tardia, permitindo que o stack padrão suba mesmo quando o perfil `audio` está desligado
 - `stats` e `settings` exigem `user_id` explícito e não criam mais usuário demo como efeito colateral de endpoints de leitura
 - payloads de áudio e TTS usam URLs relativas, reduzindo acoplamento com host fixo
@@ -147,6 +151,7 @@ Topologia operacional padrão:
 - `lesson_frame_json` guarda o objetivo adaptativo do turno atual (`learning_goal`, `expected_intent`, `primary_focus`, `lesson_stage`, `success_criteria`) e um bloco `diagnostics`
 - `chat_lesson_history` guarda snapshots desse frame para analytics e replay pedagógico
 - `learning_context` é a projeção compacta desse estado para modos de card (`Spec4` e `Lingvist`), incluindo sinais de retenção, pressão de review, pacing e melhor próximo modo
+- `build_pedagogical_analytics_projection()` é a projeção read-side atual para analytics pedagógico; endpoint ou tabela dedicada ficam adiados até existir necessidade de consulta longitudinal mais pesada
 
 ## Pontos de acoplamento
 

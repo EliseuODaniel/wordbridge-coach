@@ -11,9 +11,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-import soundfile as sf
-import numpy as np
-
 
 class TTSService:
     """TTS Service with caching and multiple engine support"""
