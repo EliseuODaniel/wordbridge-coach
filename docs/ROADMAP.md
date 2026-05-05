@@ -1,6 +1,7 @@
 # Roadmap
 
 Data de início desta nova fase: 2026-03-23
+Atualização mais recente: 2026-05-05
 
 ## Status de retomada em 2026-04-24
 
@@ -155,6 +156,7 @@ Notas do baseline:
 - nonagesima quinta microfatia aplicada: decisão de manter analytics pedagógico projetado a partir de `student_profile_json`, `lesson_frame_json`, `chat_lesson_history` e tabelas cruas nesta fase, com helper explícito de projeção para endpoint futuro
 - nonagesima sexta microfatia aplicada: formalização do contrato de configuração com `.env.example`, defaults locais explícitos no compose e validação de `ENVIRONMENT`, `DEBUG`, `STRICT_CONFIG` e `SECRET_KEY`
 - nonagesima sétima microfatia aplicada: criação de scripts locais de backup/restore do Postgres (`scripts/db_backup.sh` e `scripts/db_restore.sh`) com dumps ignorados em `backups/` e restore destrutivo protegido por `--yes`
+- nonagesima oitava microfatia aplicada: abertura da Fase 8 de calibração/release local, sincronização de `PROJECT_STATUS.md` e expansão focal de E2E para Chat Coach e troca Spec4/Lingvist
 
 ## Fase 2: Limpeza estrutural
 
@@ -221,6 +223,17 @@ Prioridade média:
 - [x] adicionar logs estruturados mínimos para criação de perfil, seleção de card, chat turn e fallback de provider
 - [x] decidir política de secrets e `.env.example`
 - [x] preparar um fluxo de backup/restore local do banco antes de uso continuado
+
+## Fase 8: Calibração, release local e UX de uso continuado
+
+Prioridade alta:
+
+- [x] sincronizar `docs/PROJECT_STATUS.md` com a Fase 7 fechada e com o ponto real de retomada da branch de release
+- [x] adicionar cobertura E2E focal para inicialização do Chat Coach e troca Spec4/Lingvist
+- [~] validar perfis opcionais `audio` e `ai` separadamente, registrando custos, portas e precondições em vez de misturar isso ao smoke padrão
+- [ ] usar sessões reais para calibrar limiares de `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode`
+- [ ] decidir se a projeção de analytics pedagógico deve virar endpoint público após dados reais de uso
+- [ ] preparar checklist de release local com smoke padrão, backup/restore, E2E crítico, status da branch e riscos conhecidos
 
 ## Critérios de sucesso
 

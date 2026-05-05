@@ -118,6 +118,7 @@ Comandos úteis:
 cd tests/e2e
 npm test
 PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test tests/study-session.spec.ts tests/lingvist-session.spec.ts --project=chromium
+PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium
 ```
 
 Variações:
@@ -144,6 +145,11 @@ Status da rodada 2026-04-21:
 - os specs focais de `tests/e2e/tests/study-session.spec.ts` e `tests/e2e/tests/lingvist-session.spec.ts` foram atualizados para o novo `learning-context-panel` e para o seletor estável `lingvist-inline-input`
 - a execução local desses specs foi concluída nesta thread com `Node v20.20.2` Linux no PATH local, stack `api/frontend` rebuildada e resultado `14 passed (53.1s)`
 
+Status da rodada 2026-05-05:
+
+- `tests/e2e/tests/chat-coach.spec.ts` cobre abertura do Chat Coach por `?mode=chat` e por card de perfil existente
+- `tests/e2e/tests/mode-switch.spec.ts` cobre a troca Spec4 -> Lingvist -> Spec4 dentro do shell React, sem reload manual de página
+
 ## Compose local
 
 Para validar integração local:
@@ -168,16 +174,22 @@ WORDBRIDGE_DB_PORT=55432 docker compose down --remove-orphans
 Para validar Chat Coach completo com IA local:
 
 ```bash
+docker compose --profile ai config --quiet
 docker compose --profile ai up -d --build
 docker compose --profile ai ps
 ```
+
+O perfil `ai` exige modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA para os serviços `llama.cpp` configurados e portas livres para `8080`, `8081`, `8082` e `8010`. Se uma dessas precondições não estiver disponível, registre a limitação e valide pelo menos `docker compose --profile ai config --quiet`. Na estação usada em 2026-05-05, a porta `8080` estava ocupada por outro projeto, então o runtime completo do perfil não foi iniciado.
 
 Para validar áudio local, o perfil `audio` usa Piper TTS e mantém modelos no volume `tts_models`:
 
 ```bash
 docker compose --profile audio build tts
 docker compose --profile audio up -d tts
+docker run --rm wordbridge-coach-tts piper --help >/dev/null
 ```
+
+O perfil `audio` publica `8001`; quando a porta já estiver ocupada por outro serviço local, prefira validar build/import/CLI da imagem e registrar a limitação antes de subir o serviço. Na estação usada em 2026-05-05, a porta `8001` estava ocupada por outro projeto, então a validação ficou em `docker compose --profile audio config --quiet` e `docker run --rm wordbridge-coach-tts piper --help >/dev/null`.
 
 ## Backup e restore local
 
