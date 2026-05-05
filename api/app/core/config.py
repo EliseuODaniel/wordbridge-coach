@@ -21,6 +21,8 @@ _PLACEHOLDER_SECRETS = {
     "test-secret",
     "",
 }
+_KNOWN_ENVIRONMENTS = {"development", "local", "test", "testing", "staging", "production", "prod"}
+_PRODUCTION_LIKE_ENVIRONMENTS = {"staging", "production", "prod"}
 
 
 class Settings(BaseSettings):
@@ -79,6 +81,12 @@ def collect_runtime_issues() -> list[str]:
     issues = []
     normalized_secret = settings.SECRET_KEY.strip()
     normalized_env = settings.ENVIRONMENT.lower().strip()
+    if normalized_env not in _KNOWN_ENVIRONMENTS:
+        issues.append(
+            f"ENVIRONMENT '{settings.ENVIRONMENT}' is not recognized. "
+            f"Expected one of: {', '.join(sorted(_KNOWN_ENVIRONMENTS))}."
+        )
+
     if not normalized_secret:
         issues.append("SECRET_KEY is empty; JWT sessions cannot be used safely.")
     elif normalized_secret.lower() in _PLACEHOLDER_SECRETS:
@@ -87,8 +95,8 @@ def collect_runtime_issues() -> list[str]:
             "Replace with a generated secret in non-local environments."
         )
 
-    if not settings.DEBUG and normalized_env in {"production", "prod"} and issues:
-        issues.append("Production-like environment is running with DEBUG=false but insecure secrets.")
+    if normalized_env in _PRODUCTION_LIKE_ENVIRONMENTS and settings.DEBUG:
+        issues.append("Production-like environment must run with DEBUG=false.")
 
     return issues
 

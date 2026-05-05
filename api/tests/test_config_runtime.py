@@ -71,6 +71,29 @@ def test_collect_runtime_issues_blocks_strict_mode(monkeypatch):
         config.ensure_runtime_safety()
 
 
+def test_collect_runtime_issues_flags_unknown_environment(monkeypatch):
+    """Environment names should stay inside the documented contract."""
+    config = _reload_config_module(monkeypatch, ENVIRONMENT="preview")
+
+    issues = config.collect_runtime_issues()
+
+    assert any("ENVIRONMENT 'preview' is not recognized" in issue for issue in issues)
+
+
+def test_collect_runtime_issues_flags_debug_in_production_like_environment(monkeypatch):
+    """Production-like runtimes should not keep DEBUG enabled."""
+    config = _reload_config_module(
+        monkeypatch,
+        ENVIRONMENT="staging",
+        DEBUG="true",
+        SECRET_KEY="super-long-and-random-key",
+    )
+
+    issues = config.collect_runtime_issues()
+
+    assert "Production-like environment must run with DEBUG=false." in issues
+
+
 def test_run_startup_checks_uses_lifespan_helper_in_debug_mode(monkeypatch, caplog):
     """Startup checks should stay testable outside FastAPI event decorators."""
     main_module = importlib.import_module("app.main")

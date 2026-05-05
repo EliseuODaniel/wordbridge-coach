@@ -277,3 +277,47 @@ def test_build_learning_context_includes_adaptive_signals():
     assert context["review_pressure"] == "medium"
     assert context["recommended_pace"] == "balance"
     assert context["next_mode_hint"] == "lingvist"
+
+
+def test_build_pedagogical_analytics_projection_uses_existing_json_state():
+    profile = {
+        "cefr_level": "A2",
+        "scaffolding_level": "guided_practice",
+        "feedback_language": "Portuguese",
+        "pedagogical_metrics": dict(METRICS_FIXTURE, recommended_mode="lingvist"),
+        "pedagogical_state": {
+            "lesson_stage": "guided_expansion",
+            "primary_focus": "Use past simple after yesterday",
+            "session_goal": "stabilize past-time verbs in short personal sentences",
+            "recommended_topic": "travel",
+        },
+    }
+    lesson_frame = {
+        "learning_goal": "stabilize past-time verbs in short personal sentences",
+        "topic": "travel",
+    }
+
+    projection = chat_profile_service.build_pedagogical_analytics_projection(
+        profile,
+        lesson_frame,
+        mode="lingvist",
+        lesson_history=[
+            {"lesson_stage": "stabilize_foundations", "primary_focus": "Article choice"},
+            {"lesson_stage": "guided_expansion", "primary_focus": "Use past simple after yesterday"},
+        ],
+    )
+
+    assert projection["storage_strategy"] == "project_from_conversation_json"
+    assert projection["needs_dedicated_store"] is False
+    assert projection["context"]["mode"] == "lingvist"
+    assert projection["metrics"]["retention_band"] == "building"
+    assert projection["metrics"]["recommended_mode"] == "lingvist"
+    assert projection["history"]["snapshot_count"] == 2
+    assert projection["history"]["recent_focus_areas"] == [
+        "Article choice",
+        "Use past simple after yesterday",
+    ]
+    assert projection["history"]["recent_lesson_stages"] == [
+        "stabilize_foundations",
+        "guided_expansion",
+    ]

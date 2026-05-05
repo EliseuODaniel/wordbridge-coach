@@ -55,6 +55,7 @@ PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_card_selection_progress_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_runtime_service.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_turn_service.py -q
+PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py -q
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_feedback_service.py tests/test_chat_delivery_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_llamacpp_provider_sse.py tests/test_lingvist_difficulty_service.py tests/integration/test_chat_websocket_flow.py
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_feedback_service.py tests/test_chat_delivery_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_chat_context_service.py tests/test_llamacpp_provider_sse.py tests/test_chat_coach_mock_provider.py tests/test_lingvist_difficulty_service.py tests/integration/test_chat_websocket_flow.py
 PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest -s -q tests/test_chat_profile_service.py tests/test_chat_conversation_service.py tests/test_chat_context_service.py tests/test_chat_text_service.py tests/test_chat_generation_service.py tests/test_chat_delivery_service.py tests/test_chat_endpoint_adapter_service.py tests/test_chat_turn_service.py tests/test_chat_utilities.py tests/integration/test_chat_websocket_flow.py
@@ -93,6 +94,11 @@ Comandos isolados:
 
 Uso nativo de `npm` continua valido apenas quando install e execucao ficam no mesmo runtime.
 
+Quando for necessário rodar o Vite manualmente, o proxy de desenvolvimento fica em `frontend/viteProxy.ts` e usa:
+
+- `WORDBRIDGE_API_PROXY_TARGET`, default `http://localhost:8000`
+- `WORDBRIDGE_TTS_PROXY_TARGET`, default `http://localhost:8001`
+
 Local alternativo: `frontend/`
 
 ```bash
@@ -112,6 +118,7 @@ Comandos úteis:
 cd tests/e2e
 npm test
 PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test tests/study-session.spec.ts tests/lingvist-session.spec.ts --project=chromium
+PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium
 ```
 
 Variações:
@@ -138,6 +145,11 @@ Status da rodada 2026-04-21:
 - os specs focais de `tests/e2e/tests/study-session.spec.ts` e `tests/e2e/tests/lingvist-session.spec.ts` foram atualizados para o novo `learning-context-panel` e para o seletor estável `lingvist-inline-input`
 - a execução local desses specs foi concluída nesta thread com `Node v20.20.2` Linux no PATH local, stack `api/frontend` rebuildada e resultado `14 passed (53.1s)`
 
+Status da rodada 2026-05-05:
+
+- `tests/e2e/tests/chat-coach.spec.ts` cobre abertura do Chat Coach por `?mode=chat` e por card de perfil existente
+- `tests/e2e/tests/mode-switch.spec.ts` cobre a troca Spec4 -> Lingvist -> Spec4 dentro do shell React, sem reload manual de página
+
 ## Compose local
 
 Para validar integração local:
@@ -146,7 +158,7 @@ Para validar integração local:
 ./scripts/smoke_local.sh
 ```
 
-Esse é o smoke recomendado para o stack padrão. Ele usa `wordbridge-smoke` como projeto Compose temporário, sobe `db/api/frontend`, aplica migrations, roda seed, valida `/health`, valida o frontend, cria um perfil via API e carrega o primeiro card Spec4.
+Esse é o smoke recomendado para o stack padrão. Ele usa `wordbridge-smoke` como projeto Compose temporário, sobe `db/api/frontend`, aplica migrations, roda seed, valida `/health`, valida o frontend, cria um perfil via API e carrega o primeiro card Spec4. Por padrão ele usa portas e subnet próprios (`55433`, `18000`, `13007`, `172.29.0.0/16`) para poder rodar mesmo quando a stack principal está ativa em `55432`, `8000` e `3007`.
 
 Fluxo manual equivalente:
 
@@ -159,11 +171,84 @@ curl -fsS http://localhost:3007 >/dev/null
 WORDBRIDGE_DB_PORT=55432 docker compose down --remove-orphans
 ```
 
+Portas e subnet do compose podem ser sobrescritos por:
+
+- `WORDBRIDGE_DB_PORT`
+- `WORDBRIDGE_API_PORT`
+- `WORDBRIDGE_FRONTEND_PORT`
+- `WORDBRIDGE_DOCKER_SUBNET`
+- `WORDBRIDGE_TTS_PORT`
+- `WORDBRIDGE_LLM_PORT`
+- `WORDBRIDGE_LLM_CHAT_PORT`
+- `WORDBRIDGE_LLM_TEACHER_PORT`
+- `WORDBRIDGE_LANGUAGETOOL_PORT`
+
 Para validar Chat Coach completo com IA local:
 
 ```bash
+docker compose --profile ai config --quiet
 docker compose --profile ai up -d --build
 docker compose --profile ai ps
+```
+
+O perfil `ai` exige modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA para os serviços `llama.cpp` configurados e portas livres para `8080`, `8081`, `8082` e `8010`. Se uma dessas precondições não estiver disponível, registre a limitação e valide pelo menos `docker compose --profile ai config --quiet`. Na estação usada em 2026-05-05, a porta `8080` estava ocupada por outro projeto, então o runtime completo do perfil não foi iniciado.
+Quando as portas padrão estiverem ocupadas, use `WORDBRIDGE_LLM_PORT`, `WORDBRIDGE_LLM_CHAT_PORT`, `WORDBRIDGE_LLM_TEACHER_PORT` e `WORDBRIDGE_LANGUAGETOOL_PORT` para validar os serviços em portas alternativas. Na estação usada em 2026-05-05, LanguageTool validou em `18110`; o LLM completo não foi iniciado porque havia apenas cerca de 3.3 GB de VRAM livre com outro LLM ativo.
+
+Para validar áudio local, o perfil `audio` usa Piper TTS e mantém modelos no volume `tts_models`:
+
+```bash
+docker compose --profile audio build tts
+docker compose --profile audio up -d tts
+docker run --rm wordbridge-coach-tts piper --help >/dev/null
+```
+
+O perfil `audio` publica `8001`; quando a porta já estiver ocupada por outro serviço local, prefira validar build/import/CLI da imagem e registrar a limitação antes de subir o serviço. Na estação usada em 2026-05-05, a porta `8001` estava ocupada por outro projeto, então a validação ficou em `docker compose --profile audio config --quiet` e `docker run --rm wordbridge-coach-tts piper --help >/dev/null`.
+Com `WORDBRIDGE_TTS_PORT`, o runtime completo pode ser validado sem liberar `8001`; na estação usada em 2026-05-05, `WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d tts` + `/health` passou.
+
+## Calibração pedagógica
+
+Depois de uma sessão real, exporte os sinais atuais do usuário:
+
+```bash
+WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedagogy_calibration.py --username demo
+```
+
+Esse export deve ser comparado com a experiência observada antes de ajustar limiares pedagógicos. O protocolo completo fica em `docs/CALIBRATION.md`.
+
+Na calibração de 2026-05-05, o usuário `demo` sem retenção real exportava `retention_band=unknown` mas ainda recomendava aceleração. O limiar foi ajustado para exigir sinal de retenção antes de `ready_to_push`; com isso o export passou a `difficulty_signal=on_target`, `recommended_pace=balance` e `recommended_mode=spec4`.
+
+## Backup e restore local
+
+Antes de uso continuado ou mudanças destrutivas no banco local, gere um dump:
+
+```bash
+./scripts/db_backup.sh
+```
+
+Por padrão, o arquivo vai para `backups/wordbridge-YYYYMMDD-HHMMSS.dump`. Esse diretório é ignorado pelo Git.
+
+Restore é destrutivo e exige confirmação explícita:
+
+```bash
+./scripts/db_restore.sh --yes backups/wordbridge-YYYYMMDD-HHMMSS.dump
+```
+
+Os scripts assumem o serviço Compose `db` ativo e usam `pg_dump`/`pg_restore` dentro do container Postgres.
+
+## Configuração e secrets
+
+O contrato versionado de ambiente fica em `.env.example`. Arquivos `.env` reais são locais, ignorados pelo Git e não devem guardar segredo commitado.
+
+Contrato recomendado:
+
+- local: `ENVIRONMENT=development`, `DEBUG=true`, `STRICT_CONFIG=false`
+- staging/produção: `ENVIRONMENT=staging` ou `production`, `DEBUG=false`, `STRICT_CONFIG=true`, `SECRET_KEY` gerado fora do repositório
+
+Validação focal:
+
+```bash
+cd api
+TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_config_runtime.py -q
 ```
 
 ## CI

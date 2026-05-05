@@ -253,6 +253,40 @@ def build_llamacpp_response_format(model: Type[BaseModel]) -> dict[str, Any]:
     }
 
 
+def _strict_object_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return a strict JSON schema copy for providers that require explicit fields."""
+    strict_schema = json.loads(json.dumps(schema))
+
+    def visit(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+
+        properties = node.get("properties")
+        if isinstance(properties, dict):
+            node["additionalProperties"] = False
+            node["required"] = list(properties.keys())
+            for child in properties.values():
+                visit(child)
+
+        defs = node.get("$defs")
+        if isinstance(defs, dict):
+            for child in defs.values():
+                visit(child)
+
+        items = node.get("items")
+        if isinstance(items, dict):
+            visit(items)
+
+        for keyword in ("anyOf", "oneOf", "allOf"):
+            branches = node.get(keyword)
+            if isinstance(branches, list):
+                for branch in branches:
+                    visit(branch)
+
+    visit(strict_schema)
+    return strict_schema
+
+
 def build_openai_response_format(name: str, model: Type[BaseModel]) -> dict[str, Any]:
     """Build OpenAI-compatible response_format config."""
     return {
@@ -260,6 +294,6 @@ def build_openai_response_format(name: str, model: Type[BaseModel]) -> dict[str,
         "json_schema": {
             "name": name,
             "strict": True,
-            "schema": model.model_json_schema(),
+            "schema": _strict_object_schema(model.model_json_schema()),
         },
     }

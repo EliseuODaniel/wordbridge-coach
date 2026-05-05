@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-05-05 - Manter analytics pedagógico como projeção interna durante a calibração real
+
+Status: aceito
+
+### Contexto
+
+A Fase 8 precisa calibrar `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode` com sessões reais. Já existe uma projeção explícita em `build_pedagogical_analytics_projection()`, derivada de `student_profile_json`, `lesson_frame_json`, snapshots de `chat_lesson_history` e tabelas cruas de review.
+
+Ainda não há evidência de que o produto precise de dashboard longitudinal, consumidor externo ou comparação entre muitos perfis. Criar endpoint/tabela agora aumentaria contrato público antes de sabermos quais cortes analíticos realmente importam.
+
+### Decisão
+
+- manter analytics pedagógico como projeção interna nesta fase
+- usar `api/scripts/export_pedagogy_calibration.py` para coletar snapshots locais de calibração
+- documentar o protocolo em `docs/CALIBRATION.md`
+- só promover endpoint público quando houver necessidade real de histórico por período, comparação entre perfis, dashboard de calibração ou integração externa
+
+### Impacto
+
+- a Fase 8 consegue observar sessões reais sem abrir contrato de API prematuro
+- ajustes de limiar continuam pequenos e testáveis
+- a decisão de endpoint fica baseada em uso real, não em especulação arquitetural
+- futuras mudanças que tornem analytics público devem atualizar `docs/ARCHITECTURE.md`, `docs/TESTING.md`, `docs/PROJECT_STATUS.md` e este arquivo
+
 ## 2026-04-24 - Priorizar confiabilidade do runtime local antes de novas features
 
 Status: aceito
@@ -1951,3 +1975,114 @@ O produto já conhecia `language_preference` do aluno, mas o Chat Coach quase se
 - o Chat Coach fica mais didático para perfis iniciantes sem abandonar a prática no idioma-alvo
 - o contrato entre backend, prompts e frontend fica mais explícito sobre o que deve ser localizado e o que deve permanecer em inglês
 - futuras melhorias multilíngues passam a ter uma fronteira de implementação clara
+
+## 2026-04-28 - Manter o perfil `audio` como runtime Piper-only
+
+Status: aceito
+
+### Contexto
+
+O serviço `tts` já operava através do CLI do Piper, mas a imagem ainda instalava uma árvore pesada de dependências de Coqui/Torch/librosa/numpy e ainda repetia a instalação de `piper-tts`. Isso aumentava o custo do perfil opcional `audio` sem representar o comportamento real do código.
+
+### Decisão
+
+- manter o TTS local suportado como Piper-only nesta fase
+- remover Coqui/Torch/librosa/numpy e dependências de teste do `tts/requirements.txt`
+- remover a instalação duplicada de `piper-tts` do Dockerfile
+- reduzir pacotes apt do serviço ao mínimo necessário para runtime/healthcheck
+- manter modelos Piper fora da imagem, no volume `tts_models`, baixados sob demanda
+
+### Impacto
+
+- o stack padrão continua independente de áudio
+- o perfil `audio` deve construir mais rápido e com menos risco de resolver pacotes pesados
+- futuras alternativas de engine TTS devem entrar como decisão explícita, não como dependência latente no runtime local
+
+## 2026-04-28 - Proteger `teacher_analysis` com snapshots e schema strict completo
+
+Status: aceito
+
+### Contexto
+
+O Chat Coach passou a depender de structured outputs para `teacher_analysis`, mas a regressão de qualidade ainda podia acontecer de forma silenciosa: pequenas mudanças no prompt podiam alterar idioma de feedback, scaffolding ou campos pedagógicos esperados. Além disso, o builder OpenAI marcava o schema como `strict`, mas os campos com default no Pydantic não apareciam em `required`.
+
+### Decisão
+
+- adicionar `api/tests/test_pedagogical_prompt_snapshots.py` com snapshots inline do prompt de `teacher_analysis`
+- cobrir explicitamente o contrato de idioma: feedback pedagógico no idioma do aluno e rewrites/correções no idioma-alvo
+- normalizar o schema OpenAI strict para exigir todos os campos declarados em objetos e subobjetos
+- incluir o teste novo no quality gate do backend
+
+### Impacto
+
+- mudanças futuras em prompt/schema de `teacher_analysis` precisam ser intencionais
+- providers OpenAI recebem um contrato strict mais coerente com o schema pedagógico completo
+- a Fase 6 ganha proteção objetiva contra regressão silenciosa na qualidade do Chat Coach
+
+## 2026-04-28 - Adiar tabela dedicada de analytics pedagógico
+
+Status: aceito
+
+### Contexto
+
+Depois da introdução de `pedagogical_metrics`, `pedagogical_state`, `lesson_frame_json` e snapshots em `chat_lesson_history`, havia uma dúvida legítima: abrir uma tabela ou endpoint dedicado de analytics pedagógico agora, ou continuar projetando os sinais a partir do estado existente. As necessidades atuais ainda são operacionais e didáticas: alimentar Chat Coach, Spec4, Lingvist e painéis compactos, não fazer consultas históricas pesadas.
+
+### Decisão
+
+- não criar nova tabela de analytics pedagógico nesta fase
+- manter `student_profile_json` como memória corrente do aluno
+- manter `lesson_frame_json` como objetivo pedagógico corrente da conversa
+- manter `chat_lesson_history` como trilha de snapshots para replay/diagnóstico longitudinal leve
+- adicionar `build_pedagogical_analytics_projection()` como read model explícito para endpoint futuro, sem acoplar a UI a uma nova persistência prematura
+
+### Impacto
+
+- a Fase 6 fecha com uma fronteira clara para analytics sem migração desnecessária
+- o produto continua simples para uso local e testes pequenos
+- se aparecer necessidade real de consultas por período, turma, coorte ou tendências longas, a projeção atual vira contrato de migração para uma tabela ou endpoint dedicado
+
+## 2026-04-28 - Versionar contrato de configuração sem versionar secrets
+
+Status: aceito
+
+### Contexto
+
+A API já tinha checks de startup e modo estrito, mas o repositório ainda não deixava explícito o contrato completo entre ambiente local, staging e produção. Isso deixava `SECRET_KEY`, `DEBUG`, `ENVIRONMENT` e `STRICT_CONFIG` dependentes de conhecimento implícito, e dificultava diferenciar configuração local aceitável de configuração insegura fora do desenvolvimento.
+
+### Decisão
+
+- adicionar `.env.example` como template versionado de configuração local
+- manter `.env` e demais arquivos reais de ambiente ignorados pelo Git
+- fazer o compose injetar defaults locais explícitos para `SECRET_KEY`, `ENVIRONMENT`, `DEBUG` e `STRICT_CONFIG`
+- aceitar apenas ambientes nomeados: `development`, `local`, `test`, `testing`, `staging`, `production` e `prod`
+- reportar `DEBUG=true` como issue em ambientes `staging`, `production` e `prod`
+- recomendar `DEBUG=false`, `STRICT_CONFIG=true` e `SECRET_KEY` real fora do repositório para staging/produção
+
+### Impacto
+
+- onboarding local continua simples com `cp .env.example .env`
+- segredos reais seguem fora do repositório
+- strict mode passa a proteger melhor ambientes production-like
+- futuras mudanças de configuração precisam atualizar o template versionado e os testes de runtime
+
+## 2026-04-28 - Padronizar backup e restore local do Postgres
+
+Status: aceito
+
+### Contexto
+
+O projeto já estava pronto para uso local continuado, mas ainda não havia um fluxo simples para preservar o banco antes de mudanças destrutivas, upgrades locais ou experimentos longos. Como o banco roda em Compose, o caminho mais previsível é usar as ferramentas Postgres dentro do próprio container.
+
+### Decisão
+
+- adicionar `scripts/db_backup.sh` usando `pg_dump --format=custom` via serviço `db`
+- adicionar `scripts/db_restore.sh` usando `pg_restore --clean --if-exists` via serviço `db`
+- exigir `--yes` no restore, porque a operação é destrutiva
+- gravar dumps por padrão em `backups/wordbridge-YYYYMMDD-HHMMSS.dump`
+- ignorar `backups/` no Git
+
+### Impacto
+
+- usuários locais têm um caminho claro para preservar progresso antes de uso continuado
+- dumps não entram no repositório
+- restore fica disponível, mas protegido contra execução acidental

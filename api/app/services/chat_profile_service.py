@@ -177,9 +177,11 @@ def derive_pedagogical_metrics(
     if review_pressure != "high":
         stretch_capacity += 1
 
+    has_retention_signal = retention_score is not None
+
     if support_load >= 3:
         difficulty_signal = "support_needed"
-    elif stretch_capacity >= 4:
+    elif has_retention_signal and stretch_capacity >= 4:
         difficulty_signal = "ready_to_push"
     else:
         difficulty_signal = "on_target"
@@ -1025,6 +1027,64 @@ def build_learning_context(
         "difficulty_signal": difficulty_signal,
         "recommended_pace": recommended_pace,
         "next_mode_hint": pedagogical_metrics.get("recommended_mode"),
+    }
+
+
+def build_pedagogical_analytics_projection(
+    student_profile: dict[str, Any],
+    lesson_frame: dict[str, Any],
+    *,
+    mode: str,
+    lesson_history: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Project the current pedagogical state into a compact analytics view.
+
+    This keeps analytics read-side behavior explicit without introducing a new
+    persistence table before the product has real longitudinal reporting needs.
+    """
+    history = [dict(item or {}) for item in (lesson_history or [])]
+    context = build_learning_context(student_profile, lesson_frame, mode=mode)
+    metrics = dict((student_profile or {}).get("pedagogical_metrics") or {})
+    state = dict((student_profile or {}).get("pedagogical_state") or {})
+
+    recent_focus_areas = merge_ranked_strings(
+        [
+            str(frame.get("primary_focus") or "").strip()
+            for frame in history
+            if str(frame.get("primary_focus") or "").strip()
+        ],
+        [str(context.get("current_focus") or "").strip()],
+    )
+    recent_stages = merge_ranked_strings(
+        [
+            str(frame.get("lesson_stage") or "").strip()
+            for frame in history
+            if str(frame.get("lesson_stage") or "").strip()
+        ],
+        [str(state.get("lesson_stage") or "").strip()],
+    )
+
+    return {
+        "storage_strategy": "project_from_conversation_json",
+        "needs_dedicated_store": False,
+        "reason": (
+            "Current analytics needs are served by student_profile_json, "
+            "lesson_frame_json, chat_lesson_history snapshots, and raw review tables."
+        ),
+        "context": context,
+        "metrics": {
+            "retention_band": metrics.get("retention_band"),
+            "review_pressure": metrics.get("review_pressure"),
+            "difficulty_signal": metrics.get("difficulty_signal"),
+            "recommended_pace": metrics.get("recommended_pace"),
+            "recommended_mode": metrics.get("recommended_mode"),
+            "cefr_readiness": metrics.get("cefr_readiness"),
+        },
+        "history": {
+            "snapshot_count": len(history),
+            "recent_focus_areas": recent_focus_areas,
+            "recent_lesson_stages": recent_stages,
+        },
     }
 
 

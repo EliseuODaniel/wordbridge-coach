@@ -26,6 +26,14 @@ O projeto se chamava `FillTheWord`, mas o escopo atual já é mais amplo do que 
 
 ## Quick start
 
+Para customizar o ambiente local, use o template versionado:
+
+```bash
+cp .env.example .env
+```
+
+`.env` é local e não deve ser commitado. Para `staging` ou `production`, use `DEBUG=false`, `STRICT_CONFIG=true` e um `SECRET_KEY` gerado fora do repositório.
+
 ```bash
 ./scripts/quick_start.sh
 ```
@@ -47,6 +55,7 @@ Serviços padrão:
 Serviços opcionais com `--with-audio`:
 
 - tts: `http://localhost:8001/health`
+- runtime Piper TTS sob demanda, com modelos em `tts_models`
 
 Serviços opcionais com `--with-ai`:
 
@@ -67,6 +76,16 @@ Se `5432` ja estiver ocupada no host, suba com outra porta para o Postgres local
 WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
 ```
 
+As portas publicadas no host também podem ser alteradas por ambiente quando houver colisão local:
+
+```bash
+WORDBRIDGE_DB_PORT=55432 \
+WORDBRIDGE_API_PORT=18000 \
+WORDBRIDGE_FRONTEND_PORT=13007 \
+WORDBRIDGE_DOCKER_SUBNET=172.29.0.0/16 \
+docker compose up -d --build db api frontend
+```
+
 Smoke local automatizado:
 
 ```bash
@@ -74,11 +93,28 @@ Smoke local automatizado:
 ```
 
 Esse smoke usa um projeto Compose temporário, roda migrations/seed, valida API/frontend, cria um perfil e carrega o primeiro card. Por padrão ele derruba a stack e remove os volumes temporários ao terminar.
+Por padrão, ele usa portas e subnet próprios para não colidir com a stack principal já aberta para teste manual.
+
+Backup/restore do banco local:
+
+```bash
+./scripts/db_backup.sh
+./scripts/db_restore.sh --yes backups/wordbridge-YYYYMMDD-HHMMSS.dump
+```
+
+Os dumps ficam em `backups/`, ignorado pelo Git.
 
 Fluxo manual com áudio local:
 
 ```bash
-docker compose --profile audio up -d --build
+WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d --build tts
+curl -fsS http://localhost:18101/health
+```
+
+Fluxo manual com stack padrão + áudio:
+
+```bash
+docker compose --profile audio up -d --build db api frontend tts
 docker compose --profile audio exec api alembic upgrade head
 docker compose --profile audio exec api python scripts/seed_data.py
 ```
@@ -86,6 +122,8 @@ docker compose --profile audio exec api python scripts/seed_data.py
 Fluxo manual com IA local:
 
 ```bash
+WORDBRIDGE_LLM_PORT=18180 \
+WORDBRIDGE_LANGUAGETOOL_PORT=18110 \
 docker compose --profile ai up -d --build
 docker compose --profile ai exec api alembic upgrade head
 docker compose --profile ai exec api python scripts/seed_data.py
@@ -111,7 +149,15 @@ Isso evita corromper `frontend/node_modules` ao misturar installs Linux e execuc
 
 O bundle de produção do frontend agora usa rotas relativas para API e TTS (`/api` e `/api/tts`), então o mesmo artefato funciona atrás do Nginx local sem embutir `localhost` no build.
 
+Quando rodar o Vite manualmente dentro de `frontend/`, o proxy de desenvolvimento usa por padrão `http://localhost:8000` para a API e `http://localhost:8001` para TTS. Para apontar para outros targets sem mudar o bundle:
+
+```bash
+WORDBRIDGE_API_PROXY_TARGET=http://localhost:8000 WORDBRIDGE_TTS_PROXY_TARGET=http://localhost:8001 npm run dev
+```
+
 O stack padrão deve subir sem áudio e sem IA local. TTS e LLM continuam opcionais para preservar memória, VRAM e tempo de build durante testes comuns.
+
+O perfil `audio` usa Piper TTS. Coqui/Torch não fazem parte da imagem local suportada nesta fase.
 
 A imagem base da API não instala Argos Translate por padrão. Para testar tradução offline com Argos, use:
 

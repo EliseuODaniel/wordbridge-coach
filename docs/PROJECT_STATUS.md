@@ -1,6 +1,6 @@
 # Project Status
 
-Data de referência: 2026-04-24
+Data de referência: 2026-05-05
 
 ## Resumo executivo
 
@@ -22,9 +22,9 @@ Os identificadores internos de banco e alguns caminhos ainda mantêm o prefixo l
   - debug residual em produção substituído por `logger.debug` em pontos ativos (`users.py`, `card_selection_mode_service.py`, `vocabulary_progression.py`)
   - `quick_start.sh` atualizado para nomenclatura WordBridge e alias de porta `WORDBRIDGE_DB_PORT`
 
-## Avaliação executiva em 2026-04-24
+## Avaliação executiva em 2026-05-05
 
-O projeto está em uma boa virada de maturidade: o produto local já é útil, a arquitetura principal foi fatiada em serviços menores e o fluxo pedagógico tem sinais explícitos entre Chat Coach, Spec4 e Lingvist. O risco principal deixou de ser "falta código" e passou a ser "manter o runtime, as métricas pedagógicas e a experiência de teste previsíveis".
+O projeto está em uma boa virada de maturidade: o produto local já é útil, a arquitetura principal foi fatiada em serviços menores e o fluxo pedagógico tem sinais explícitos entre Chat Coach, Spec4 e Lingvist. As Fases 5, 6 e 7 do roadmap estão fechadas para o contrato local atual. O risco principal deixou de ser "falta código" e passou a ser "calibrar o comportamento pedagógico com uso real sem perder previsibilidade operacional".
 
 Direção recomendada:
 
@@ -39,17 +39,20 @@ Direção recomendada:
 
 - workspace atual: `/home/edann/projects/wordbridge-coach`
 - repositório GitHub: `EliseuODaniel/wordbridge-coach`
-- branch local ativa: `main`
-- `HEAD` remoto alinhado antes da segunda rodada de implementação: `5b60a64`
-- o worktree recebeu novos ajustes de smoke, dependências, avaliações pedagógicas e operabilidade nesta rodada; revisar `git status` antes de publicar
+- branch local ativa: `codex/runtime-pedagogy-operability-closeout`
+- `HEAD` local antes da rodada final de documentação/E2E: `93e35f5`
+- a branch consolida runtime padrão, avaliação pedagógica, operabilidade local e preparação de release; revisar `git status` antes de publicar novas mudanças
 
 Arquivos mais importantes para a próxima leitura:
 
 - `docs/PROJECT_STATUS.md`
 - `docs/ROADMAP.md`
 - `docs/DECISIONS.md`
+- `docs/CALIBRATION.md`
+- `docs/RELEASE_CHECKLIST.md`
 - `frontend/nginx.conf`
 - `api/app/services/chat_profile_service.py`
+- `api/scripts/export_pedagogy_calibration.py`
 - `api/app/services/lingvist_difficulty_service.py`
 - `api/app/services/lingvist_payload_service.py`
 - `api/app/services/card_spec4_service.py`
@@ -58,6 +61,8 @@ Arquivos mais importantes para a próxima leitura:
 - `frontend/src/components/LearningContextPanel.tsx`
 - `tests/e2e/tests/study-session.spec.ts`
 - `tests/e2e/tests/lingvist-session.spec.ts`
+- `tests/e2e/tests/chat-coach.spec.ts`
+- `tests/e2e/tests/mode-switch.spec.ts`
 
 ## Estado atual do produto
 
@@ -66,8 +71,39 @@ Arquivos mais importantes para a próxima leitura:
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
 - `./scripts/frontend_tooling.sh check`: OK em 2026-04-24 depois da criação do smoke e ajustes de runtime; npm audit ainda reporta `13 vulnerabilities (5 moderate, 8 high)`
-- `./scripts/smoke_local.sh`: OK em 2026-04-24 no stack padrão `db/api/frontend`, com migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
+- `./scripts/smoke_local.sh`: OK em 2026-04-28 no stack padrão `db/api/frontend`, com build, migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
+- `./scripts/smoke_local.sh`: OK em 2026-05-05 com stack principal simultaneamente ativa; o smoke temporário usou `55433`, `18000`, `13007` e subnet `172.29.0.0/16`, aplicou migrations/seed, validou health/frontend, criou perfil e carregou primeiro card
+- `docker build -t wordbridge-coach-frontend-ci-check -f frontend/Dockerfile frontend`: OK em 2026-05-05 após remover a dependência de `frontend/.env.production` no build containerizado
+- `cd tests/e2e && BASE_URL=http://127.0.0.1:3007 npm run test:ci`: OK em 2026-04-28 contra `db/api/frontend` com `WORDBRIDGE_DB_PORT=55432`, migrations e seed aplicados; `37 passed`, stack derrubada ao final
 - `docker run --rm wordbridge-smoke-api python -c "import importlib.util; assert importlib.util.find_spec('argostranslate') is None"`: OK, confirmando que Argos não está no runtime base
+- `docker compose --profile audio build tts`: OK em 2026-04-28 com runtime Piper-only; build local observado em aproximadamente 25s e imagem `wordbridge-coach-tts` com cerca de 133 MB
+- `docker run --rm wordbridge-coach-tts piper --help >/dev/null`: OK
+- `docker run --rm wordbridge-coach-tts python -c "from app.services.tts_service import TTSService; print('tts import ok')"`: OK
+- `WORDBRIDGE_DB_PORT=55432 docker compose --profile audio config --quiet`: OK em 2026-05-05
+- `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai config --quiet`: OK em 2026-05-05; runtime completo do perfil `ai` continua condicionado a modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA e portas livres
+- `docker run --rm wordbridge-coach-tts piper --help >/dev/null`: OK em 2026-05-05
+- validação runtime completa dos perfis opcionais em 2026-05-05: não executada para não colidir com listeners existentes de outro projeto (`eduassist-api-core` em `8001` e `eduassist-keycloak` em `8080`); `8010`, `8081` e `8082` estavam livres
+- `WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d tts` + `curl -fsS http://127.0.0.1:18101/health`: OK em 2026-05-05; serviço removido após validação
+- `WORDBRIDGE_LANGUAGETOOL_PORT=18110 docker compose --profile ai up -d languagetool` + `curl -fsS http://127.0.0.1:18110/v2/languages`: OK em 2026-05-05; serviço removido após validação
+- LLM local completo em 2026-05-05: não iniciado porque havia apenas cerca de 3.3 GB de VRAM livre com outro LLM ativo; modelos GGUF e GPU foram detectados
+- `docker run --rm wordbridge-coach-tts python -c "from app.main import app; from app.services.tts_service import TTSService; print('tts-app-import-ok')"`: OK em 2026-05-05
+- `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai up -d languagetool` + `curl -fsS http://127.0.0.1:8010/v2/languages`: OK em 2026-05-05; o serviço foi removido após validação
+- precondições `ai` observadas em 2026-05-05: modelos GGUF presentes em `llm_models/` e GPU NVIDIA disponível (`RTX 4070 Laptop GPU`, 8188 MiB); LLM principal ainda bloqueado por porta `8080` ocupada
+- `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`)
+- `python3 -m py_compile api/scripts/export_pedagogy_calibration.py`: OK em 2026-05-05
+- `WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedagogy_calibration.py --username demo`: OK em 2026-05-05, exportando `calibration_focus`, métricas cruas e projeção interna de analytics
+- calibração de 2026-05-05: `retention_band=unknown` deixou de gerar `recommended_pace=accelerate`; o export do usuário `demo` passou a `difficulty_signal=on_target`, `recommended_pace=balance` e `recommended_mode=spec4`
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py -q`: OK em 2026-05-05 (`9 passed`)
+- `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`, nova rodada)
+- rodada manual headless em 2026-05-05: criação de perfil, Spec4, Lingvist, retorno para Spec4, abertura do Chat Coach, envio curto e export de calibração pós-sessão; sinais coerentes com erro real (`support_needed/stabilize/lingvist`) e perfil novo (`unknown/balance/spec4`)
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py tests/test_llamacpp_provider_sse.py tests/test_chat_text_service.py -q`: OK (`13 passed`)
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`14 passed, 1 deselected`)
+- tentativa de rodar `tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py` completo nesta retomada: bloqueada porque o Postgres local em `localhost:5433` não estava ativo; a parte pura da suíte foi validada
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_chat_profile_service.py tests/test_pedagogical_metrics_eval.py -q`: OK (`15 passed`)
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_config_runtime.py -q`: OK (`6 passed`)
+- `bash -n scripts/db_backup.sh scripts/db_restore.sh`: OK
+- `./scripts/db_backup.sh --help`: OK
+- `./scripts/db_restore.sh --help`: OK
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_config_runtime.py tests/test_pedagogical_metrics_eval.py tests/test_chat_turn_service.py tests/test_chat_generation_service.py -q`: OK (`12 passed`)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`6 passed, 1 deselected`)
 - `WORDBRIDGE_DB_PORT=55433 docker compose -p wordbridge-smoke up -d --build db api frontend`: OK em volume novo depois de tornar `scripts/init.sql` agnóstico de tabelas
@@ -197,8 +233,10 @@ Arquivos mais importantes para a próxima leitura:
 - o frontend ganhou um runner oficial em Docker (`./scripts/frontend_tooling.sh`) para estabilizar `lint`, `typecheck` e `build` em ambiente híbrido Windows/WSL
 - o quality gate agora cobre explicitamente `typecheck`, `docker compose config --quiet`, novos testes focais de plataforma/insights/request-user/card-selection-mode e a suíte E2E Chromium completa em `tests/e2e/playwright.ci.config.ts`
 - o stack padrão deixou de exigir LLM local, LanguageTool e TTS para subir; os perfis `ai` e `audio` passaram a ser opcionais conforme o fluxo
+- o serviço `tts` opcional agora usa runtime Piper-only, sem Coqui/Torch/librosa/numpy na imagem do perfil `audio`
 - o runtime principal da API agora usa configuração de pool coerente com o banco: `StaticPool` fica restrito a SQLite em memória, enquanto PostgreSQL usa pool padrão com `pool_pre_ping`
 - o frontend passou a consumir URLs relativas (`/api` e `/api/tts`) no bundle de produção, com proxy explícito no Vite para desenvolvimento local
+- o proxy de desenvolvimento do Vite agora vive em `frontend/viteProxy.ts`, explicita a rota WebSocket do Chat Coach, permite sobrescrever targets por `WORDBRIDGE_API_PROXY_TARGET`/`WORDBRIDGE_TTS_PROXY_TARGET` e não mantém mais o proxy legado divergente de `/api/audio`
 - `stats` e `settings` deixaram de depender de bootstrap implícito do usuário demo; os endpoints agora exigem `user_id` explícito na borda de leitura
 - o lookup e a serialização de insights por palavra/card agora vivem em `api/app/services/insights_service.py`, reduzindo drift entre backend e frontend
 - `CardSelectionService` agora delega a orquestração por modo para `api/app/services/card_selection_mode_service.py`, reduzindo o miolo residual mais acoplado
@@ -218,20 +256,26 @@ Arquivos mais importantes para a próxima leitura:
 - o perfil de dificuldade do Lingvist agora também desacelera ou acelera com base nesses sinais reais, ajustando dificuldade-alvo de sentença, comprimento e tamanho do pool antes da seleção
 - os painéis de `learning_context` e da sidebar do Chat Coach agora mostram esses sinais adaptativos na UI, e o input inline do Lingvist ganhou `data-testid` estável para remover flakiness do E2E
 - existe agora uma suíte determinística de avaliação pedagógica em `api/tests/test_pedagogical_metrics_eval.py`, cobrindo cenários de suporte, equilíbrio e aceleração
+- a suíte pedagógica agora também compara usuários simulados contra o baseline de fase do Lingvist para garantir que suporte/aceleração mudem dificuldade, tamanho de pool e comprimento de sentença em passos previsíveis
+- existe agora também uma suíte de snapshots determinísticos para `teacher_analysis` em `api/tests/test_pedagogical_prompt_snapshots.py`, cobrindo contrato de idioma/scaffolding do prompt e schema strict dos structured outputs
+- analytics pedagógico permanece sem endpoint/tabela própria nesta fase; `build_pedagogical_analytics_projection()` explicita a projeção atual a partir de JSON de conversa, snapshots de lesson frame e métricas cruas existentes
+- o contrato de configuração agora é versionado em `.env.example`; `.env` continua local/ignorado, compose injeta defaults locais explícitos e staging/produção devem usar `DEBUG=false`, `STRICT_CONFIG=true` e `SECRET_KEY` gerado fora do repositório
+- existe fluxo local de backup/restore do Postgres via `scripts/db_backup.sh` e `scripts/db_restore.sh`; dumps ficam em `backups/`, ignorado pelo Git, e restore exige `--yes`
+- existe protocolo de calibração em `docs/CALIBRATION.md` e checklist de release local em `docs/RELEASE_CHECKLIST.md`
 - a API usa `lifespan` para checks de startup e logs de ciclo de vida, mantendo `run_startup_checks()` testável
 - o runtime base da API deixou de instalar Argos Translate; tradução offline fica opcional via `INSTALL_ARGOS=true`
 - logs mínimos foram adicionados para criação de perfil, seleção de card, turno do Chat Coach e fallback de teacher analysis
 
 ### Hotspots residuais
 
-Nesta fase, os hotspots estruturais principais de backend e frontend foram fechados para a trilha pedagógica principal. O que sobra agora é:
+Nesta fase, os hotspots estruturais principais de backend e frontend foram fechados para a trilha pedagógica principal. O que sobra agora é a Fase 8 de calibração e release local:
 
 - revisar a qualidade das métricas pedagógicas com dados de uso real e ajustar limiares de retenção/dificuldade sem perder previsibilidade
-- decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context`
-- expandir a mesma disciplina de validação para mais fluxos E2E além da dupla `StudySession`/`LingvistSession`
-- ampliar o smoke local para troca de modo e Chat Coach quando isso não tornar o check lento demais
-- monitorar se a remoção de Argos do runtime base reduz suficientemente o custo de build da API
-- revisar custo de build e isolamento do serviço `tts`, que ainda é pesado para ciclos comuns de teste
+- decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context` após uso real
+- usar `api/scripts/export_pedagogy_calibration.py` depois de sessões reais para comparar sinais exportados com a percepção do aluno antes de alterar limiares
+- manter Chat Coach e troca de modo cobertos por E2E focal, sem transformar o smoke curto em suíte longa
+- validar `audio` e `ai` como perfis opcionais em máquinas limpas, registrando portas ocupadas, modelos exigidos, VRAM e tempo de build
+- acompanhar vulnerabilidades reportadas por `npm audit` no frontend sem confundir esse debt com falhas do runtime local padrão
 
 ## Componentes ativos
 
@@ -307,6 +351,6 @@ Entrar em um ciclo de refatoração com uma única base documental, reduzindo:
 
 1. Rodar o smoke local em cada mudança de compose, Nginx, startup da API ou contrato frontend/API.
 2. Observar o comportamento dos novos `pedagogical_metrics` em uso real e recalibrar os limiares de `retention_band`, `review_pressure` e `recommended_pace` se necessário.
-3. Decidir se vale abrir analytics pedagógico dedicado na API ou manter a projeção atual nos contratos já existentes.
-4. Ampliar a cobertura E2E para Chat Coach e fluxos de troca de modo sem transformar o smoke curto em suíte longa.
-5. Revisar o custo do perfil `audio`/TTS e decidir entre imagem separada, pré-build ou setup sob demanda.
+3. Rodar os specs E2E focais de Chat Coach e troca de modo quando a mudança tocar o shell de sessão, perfil de usuário, WebSocket ou proxy frontend/API.
+4. Validar `audio` e `ai` fora do smoke padrão, preferindo `docker compose --profile ... config --quiet`, builds direcionados e healthchecks só quando portas/modelos/GPU estiverem disponíveis.
+5. Preparar o PR de release local com a lista real de validações executadas, limitações dos perfis opcionais e próximos passos de calibração.

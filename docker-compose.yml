@@ -71,24 +71,27 @@ services:
       DATABASE_URL: postgresql://ftw_user:ftw_password@db:5432/filltheword
       TTS_SERVICE_URL: http://tts:8001
       AUDIO_CACHE_PATH: /audio
-      DEBUG: "true"
-      LINGVIST_TRANSLATIONS_AUTOFILL: "true"
-      LINGVIST_TRANSLATIONS_PROVIDER: "google_http"
-      LINGVIST_TRANSLATIONS_NETWORK_ENABLED: "true"
-      LINGVIST_TRANSLATIONS_TARGET_LANG: "pt"
+      SECRET_KEY: "${SECRET_KEY:-wordbridge-local-dev-secret-not-for-production}"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      DEBUG: "${DEBUG:-true}"
+      STRICT_CONFIG: "${STRICT_CONFIG:-false}"
+      LINGVIST_TRANSLATIONS_AUTOFILL: "${LINGVIST_TRANSLATIONS_AUTOFILL:-true}"
+      LINGVIST_TRANSLATIONS_PROVIDER: "${LINGVIST_TRANSLATIONS_PROVIDER:-google_http}"
+      LINGVIST_TRANSLATIONS_NETWORK_ENABLED: "${LINGVIST_TRANSLATIONS_NETWORK_ENABLED:-true}"
+      LINGVIST_TRANSLATIONS_TARGET_LANG: "${LINGVIST_TRANSLATIONS_TARGET_LANG:-pt}"
       # Chat Coach LLM Configuration
-      CHAT_LLM_PROVIDER: llamacpp
-      CHAT_LLM_BASE_URL: http://llm:8080/v1
-      CHAT_LLM_MODEL: gemma-4-e4b-it
-      CHAT_LLM_STRICT: "true"
+      CHAT_LLM_PROVIDER: "${CHAT_LLM_PROVIDER:-llamacpp}"
+      CHAT_LLM_BASE_URL: "${CHAT_LLM_BASE_URL:-http://llm:8080/v1}"
+      CHAT_LLM_MODEL: "${CHAT_LLM_MODEL:-gemma-4-e4b-it}"
+      CHAT_LLM_STRICT: "${CHAT_LLM_STRICT:-true}"
       # Chat Coach Draft Grammar Configuration
-      CHAT_DRAFT_GRAMMAR_PROVIDER: languagetool
-      CHAT_LANGUAGETOOL_URL: http://languagetool:8010
-      CHAT_DRAFT_SUGGESTIONS_ENABLED: "true"
-      CHAT_DRAFT_SUGGESTIONS_MAX: "8"
-      CHAT_MICRO_EVAL_MIN_INTERVAL_MS: "250"
+      CHAT_DRAFT_GRAMMAR_PROVIDER: "${CHAT_DRAFT_GRAMMAR_PROVIDER:-languagetool}"
+      CHAT_LANGUAGETOOL_URL: "${CHAT_LANGUAGETOOL_URL:-http://languagetool:8010}"
+      CHAT_DRAFT_SUGGESTIONS_ENABLED: "${CHAT_DRAFT_SUGGESTIONS_ENABLED:-true}"
+      CHAT_DRAFT_SUGGESTIONS_MAX: "${CHAT_DRAFT_SUGGESTIONS_MAX:-8}"
+      CHAT_MICRO_EVAL_MIN_INTERVAL_MS: "${CHAT_MICRO_EVAL_MIN_INTERVAL_MS:-250}"
     ports:
-      - "8000:8000"
+      - "${WORDBRIDGE_API_PORT:-8000}:8000"
     volumes:
       - audio_cache:/audio
       - ./api:/app
@@ -114,7 +117,7 @@ services:
       AUDIO_CACHE_PATH: /audio
       MODELS_PATH: /models
     ports:
-      - "8001:8001"
+      - "${WORDBRIDGE_TTS_PORT:-8001}:8001"
     volumes:
       - audio_cache:/audio
       - tts_models:/models
@@ -135,7 +138,7 @@ services:
   llm:
     <<: *llama-cuda-service
     ports:
-      - "8080:8080"  # Internal only (accessible via Docker network)
+      - "${WORDBRIDGE_LLM_PORT:-8080}:8080"  # Internal service stays on 8080
     command: >
       -m /models/model.gguf
       -c 4096
@@ -155,7 +158,7 @@ services:
   llm_chat:
     <<: *llama-cuda-service
     ports:
-      - "8081:8081"
+      - "${WORDBRIDGE_LLM_CHAT_PORT:-8081}:8081"
     command: >
       -m /models/Phi-3-mini-4k-instruct-q4.gguf
       -c 4096
@@ -177,7 +180,7 @@ services:
   llm_teacher:
     <<: *llama-cuda-service
     ports:
-      - "8082:8082"
+      - "${WORDBRIDGE_LLM_TEACHER_PORT:-8082}:8082"
     command: >
       -m /models/qwen2.5-3b-instruct-q4_k_m.gguf
       -c 2048
@@ -199,7 +202,7 @@ services:
     image: erikvl87/languagetool:latest
     restart: unless-stopped
     ports:
-      - "8010:8010"
+      - "${WORDBRIDGE_LANGUAGETOOL_PORT:-8010}:8010"
     environment:
       - LANGUAGETOOL_PORT=8010
       - LANGUAGETOOL_LANGUAGE_TOOL__ANONYMIZED__TEXT__MIN_LENGTH=0
@@ -221,7 +224,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3007:3000"
+      - "${WORDBRIDGE_FRONTEND_PORT:-3007}:3000"
     depends_on:
       api:
         condition: service_healthy
@@ -247,4 +250,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: "${WORDBRIDGE_DOCKER_SUBNET:-172.20.0.0/16}"
