@@ -31,8 +31,9 @@ Use este checklist antes de tirar um PR de release local do modo draft.
 - [ ] `WORDBRIDGE_DB_PORT=55432 docker compose --profile audio config --quiet`
 - [ ] `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai config --quiet`
 - [ ] `docker run --rm wordbridge-coach-tts piper --help >/dev/null`
-- [ ] Validar runtime completo de `audio` somente com `8001` livre.
-- [ ] Validar runtime completo de `ai` somente com modelos GGUF, GPU/CUDA e portas `8080`, `8081`, `8082`, `8010` livres.
+- [ ] Validar runtime completo de `audio`, usando `WORDBRIDGE_TTS_PORT` se `8001` estiver ocupada.
+- [ ] Validar runtime completo de `ai`, usando `WORDBRIDGE_LLM_PORT`, `WORDBRIDGE_LLM_CHAT_PORT`, `WORDBRIDGE_LLM_TEACHER_PORT` e `WORDBRIDGE_LANGUAGETOOL_PORT` quando as portas padrão estiverem ocupadas.
+- [ ] Registrar VRAM livre antes de iniciar LLM local.
 
 ## Calibração
 

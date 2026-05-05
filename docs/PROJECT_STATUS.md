@@ -73,6 +73,7 @@ Arquivos mais importantes para a próxima leitura:
 - `./scripts/frontend_tooling.sh check`: OK em 2026-04-24 depois da criação do smoke e ajustes de runtime; npm audit ainda reporta `13 vulnerabilities (5 moderate, 8 high)`
 - `./scripts/smoke_local.sh`: OK em 2026-04-28 no stack padrão `db/api/frontend`, com build, migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
 - `./scripts/smoke_local.sh`: OK em 2026-05-05 com stack principal simultaneamente ativa; o smoke temporário usou `55433`, `18000`, `13007` e subnet `172.29.0.0/16`, aplicou migrations/seed, validou health/frontend, criou perfil e carregou primeiro card
+- `docker build -t wordbridge-coach-frontend-ci-check -f frontend/Dockerfile frontend`: OK em 2026-05-05 após remover a dependência de `frontend/.env.production` no build containerizado
 - `cd tests/e2e && BASE_URL=http://127.0.0.1:3007 npm run test:ci`: OK em 2026-04-28 contra `db/api/frontend` com `WORDBRIDGE_DB_PORT=55432`, migrations e seed aplicados; `37 passed`, stack derrubada ao final
 - `docker run --rm wordbridge-smoke-api python -c "import importlib.util; assert importlib.util.find_spec('argostranslate') is None"`: OK, confirmando que Argos não está no runtime base
 - `docker compose --profile audio build tts`: OK em 2026-04-28 com runtime Piper-only; build local observado em aproximadamente 25s e imagem `wordbridge-coach-tts` com cerca de 133 MB
@@ -82,6 +83,9 @@ Arquivos mais importantes para a próxima leitura:
 - `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai config --quiet`: OK em 2026-05-05; runtime completo do perfil `ai` continua condicionado a modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA e portas livres
 - `docker run --rm wordbridge-coach-tts piper --help >/dev/null`: OK em 2026-05-05
 - validação runtime completa dos perfis opcionais em 2026-05-05: não executada para não colidir com listeners existentes de outro projeto (`eduassist-api-core` em `8001` e `eduassist-keycloak` em `8080`); `8010`, `8081` e `8082` estavam livres
+- `WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d tts` + `curl -fsS http://127.0.0.1:18101/health`: OK em 2026-05-05; serviço removido após validação
+- `WORDBRIDGE_LANGUAGETOOL_PORT=18110 docker compose --profile ai up -d languagetool` + `curl -fsS http://127.0.0.1:18110/v2/languages`: OK em 2026-05-05; serviço removido após validação
+- LLM local completo em 2026-05-05: não iniciado porque havia apenas cerca de 3.3 GB de VRAM livre com outro LLM ativo; modelos GGUF e GPU foram detectados
 - `docker run --rm wordbridge-coach-tts python -c "from app.main import app; from app.services.tts_service import TTSService; print('tts-app-import-ok')"`: OK em 2026-05-05
 - `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai up -d languagetool` + `curl -fsS http://127.0.0.1:8010/v2/languages`: OK em 2026-05-05; o serviço foi removido após validação
 - precondições `ai` observadas em 2026-05-05: modelos GGUF presentes em `llm_models/` e GPU NVIDIA disponível (`RTX 4070 Laptop GPU`, 8188 MiB); LLM principal ainda bloqueado por porta `8080` ocupada
@@ -91,6 +95,7 @@ Arquivos mais importantes para a próxima leitura:
 - calibração de 2026-05-05: `retention_band=unknown` deixou de gerar `recommended_pace=accelerate`; o export do usuário `demo` passou a `difficulty_signal=on_target`, `recommended_pace=balance` e `recommended_mode=spec4`
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py -q`: OK em 2026-05-05 (`9 passed`)
 - `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`, nova rodada)
+- rodada manual headless em 2026-05-05: criação de perfil, Spec4, Lingvist, retorno para Spec4, abertura do Chat Coach, envio curto e export de calibração pós-sessão; sinais coerentes com erro real (`support_needed/stabilize/lingvist`) e perfil novo (`unknown/balance/spec4`)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py tests/test_llamacpp_provider_sse.py tests/test_chat_text_service.py -q`: OK (`13 passed`)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`14 passed, 1 deselected`)
 - tentativa de rodar `tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py` completo nesta retomada: bloqueada porque o Postgres local em `localhost:5433` não estava ativo; a parte pura da suíte foi validada

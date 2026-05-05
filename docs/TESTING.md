@@ -177,6 +177,11 @@ Portas e subnet do compose podem ser sobrescritos por:
 - `WORDBRIDGE_API_PORT`
 - `WORDBRIDGE_FRONTEND_PORT`
 - `WORDBRIDGE_DOCKER_SUBNET`
+- `WORDBRIDGE_TTS_PORT`
+- `WORDBRIDGE_LLM_PORT`
+- `WORDBRIDGE_LLM_CHAT_PORT`
+- `WORDBRIDGE_LLM_TEACHER_PORT`
+- `WORDBRIDGE_LANGUAGETOOL_PORT`
 
 Para validar Chat Coach completo com IA local:
 
@@ -187,6 +192,7 @@ docker compose --profile ai ps
 ```
 
 O perfil `ai` exige modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA para os serviços `llama.cpp` configurados e portas livres para `8080`, `8081`, `8082` e `8010`. Se uma dessas precondições não estiver disponível, registre a limitação e valide pelo menos `docker compose --profile ai config --quiet`. Na estação usada em 2026-05-05, a porta `8080` estava ocupada por outro projeto, então o runtime completo do perfil não foi iniciado.
+Quando as portas padrão estiverem ocupadas, use `WORDBRIDGE_LLM_PORT`, `WORDBRIDGE_LLM_CHAT_PORT`, `WORDBRIDGE_LLM_TEACHER_PORT` e `WORDBRIDGE_LANGUAGETOOL_PORT` para validar os serviços em portas alternativas. Na estação usada em 2026-05-05, LanguageTool validou em `18110`; o LLM completo não foi iniciado porque havia apenas cerca de 3.3 GB de VRAM livre com outro LLM ativo.
 
 Para validar áudio local, o perfil `audio` usa Piper TTS e mantém modelos no volume `tts_models`:
 
@@ -197,6 +203,7 @@ docker run --rm wordbridge-coach-tts piper --help >/dev/null
 ```
 
 O perfil `audio` publica `8001`; quando a porta já estiver ocupada por outro serviço local, prefira validar build/import/CLI da imagem e registrar a limitação antes de subir o serviço. Na estação usada em 2026-05-05, a porta `8001` estava ocupada por outro projeto, então a validação ficou em `docker compose --profile audio config --quiet` e `docker run --rm wordbridge-coach-tts piper --help >/dev/null`.
+Com `WORDBRIDGE_TTS_PORT`, o runtime completo pode ser validado sem liberar `8001`; na estação usada em 2026-05-05, `WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d tts` + `/health` passou.
 
 ## Calibração pedagógica
 

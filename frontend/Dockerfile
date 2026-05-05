@@ -19,9 +19,6 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
-# Copy environment file for production
-COPY .env.production .env
-
 # Build the application
 RUN npm run build
 

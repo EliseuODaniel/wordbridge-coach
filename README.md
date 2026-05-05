@@ -76,6 +76,16 @@ Se `5432` ja estiver ocupada no host, suba com outra porta para o Postgres local
 WORDBRIDGE_DB_PORT=55432 docker compose up -d --build db api frontend
 ```
 
+As portas publicadas no host também podem ser alteradas por ambiente quando houver colisão local:
+
+```bash
+WORDBRIDGE_DB_PORT=55432 \
+WORDBRIDGE_API_PORT=18000 \
+WORDBRIDGE_FRONTEND_PORT=13007 \
+WORDBRIDGE_DOCKER_SUBNET=172.29.0.0/16 \
+docker compose up -d --build db api frontend
+```
+
 Smoke local automatizado:
 
 ```bash
@@ -83,6 +93,7 @@ Smoke local automatizado:
 ```
 
 Esse smoke usa um projeto Compose temporário, roda migrations/seed, valida API/frontend, cria um perfil e carrega o primeiro card. Por padrão ele derruba a stack e remove os volumes temporários ao terminar.
+Por padrão, ele usa portas e subnet próprios para não colidir com a stack principal já aberta para teste manual.
 
 Backup/restore do banco local:
 
@@ -96,7 +107,14 @@ Os dumps ficam em `backups/`, ignorado pelo Git.
 Fluxo manual com áudio local:
 
 ```bash
-docker compose --profile audio up -d --build
+WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d --build tts
+curl -fsS http://localhost:18101/health
+```
+
+Fluxo manual com stack padrão + áudio:
+
+```bash
+docker compose --profile audio up -d --build db api frontend tts
 docker compose --profile audio exec api alembic upgrade head
 docker compose --profile audio exec api python scripts/seed_data.py
 ```
@@ -104,6 +122,8 @@ docker compose --profile audio exec api python scripts/seed_data.py
 Fluxo manual com IA local:
 
 ```bash
+WORDBRIDGE_LLM_PORT=18180 \
+WORDBRIDGE_LANGUAGETOOL_PORT=18110 \
 docker compose --profile ai up -d --build
 docker compose --profile ai exec api alembic upgrade head
 docker compose --profile ai exec api python scripts/seed_data.py

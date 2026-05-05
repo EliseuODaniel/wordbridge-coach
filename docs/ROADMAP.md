@@ -230,10 +230,11 @@ Prioridade alta:
 
 - [x] sincronizar `docs/PROJECT_STATUS.md` com a Fase 7 fechada e com o ponto real de retomada da branch de release
 - [x] adicionar cobertura E2E focal para inicialização do Chat Coach e troca Spec4/Lingvist
-- [~] validar perfis opcionais `audio` e `ai` separadamente, registrando custos, portas e precondições em vez de misturar isso ao smoke padrão; `audio` validado por config/import/CLI e `ai` por config/LanguageTool/modelos/GPU, com runtime completo ainda bloqueado por portas `8001` e `8080`
+- [~] validar perfis opcionais `audio` e `ai` separadamente, registrando custos, portas e precondições em vez de misturar isso ao smoke padrão; portas opcionais agora são configuráveis, `audio` validou em runtime completo e `ai` validou config/LanguageTool/modelos/GPU, com LLM completo ainda bloqueado por VRAM concorrente
 - [~] usar sessões reais para calibrar limiares de `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode`; protocolo/exportador local criados e primeiro ajuste aplicado para não acelerar perfis com `retention_band=unknown`
 - [x] decidir se a projeção de analytics pedagógico deve virar endpoint público após dados reais de uso
 - [x] preparar checklist de release local com smoke padrão, backup/restore, E2E crítico, status da branch e riscos conhecidos
+- [x] remover dependência de `frontend/.env.production` no build containerizado e deixar o bundle de produção depender de rotas relativas
 
 ## Critérios de sucesso
 
