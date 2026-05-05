@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-05-05 - Manter analytics pedagógico como projeção interna durante a calibração real
+
+Status: aceito
+
+### Contexto
+
+A Fase 8 precisa calibrar `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode` com sessões reais. Já existe uma projeção explícita em `build_pedagogical_analytics_projection()`, derivada de `student_profile_json`, `lesson_frame_json`, snapshots de `chat_lesson_history` e tabelas cruas de review.
+
+Ainda não há evidência de que o produto precise de dashboard longitudinal, consumidor externo ou comparação entre muitos perfis. Criar endpoint/tabela agora aumentaria contrato público antes de sabermos quais cortes analíticos realmente importam.
+
+### Decisão
+
+- manter analytics pedagógico como projeção interna nesta fase
+- usar `api/scripts/export_pedagogy_calibration.py` para coletar snapshots locais de calibração
+- documentar o protocolo em `docs/CALIBRATION.md`
+- só promover endpoint público quando houver necessidade real de histórico por período, comparação entre perfis, dashboard de calibração ou integração externa
+
+### Impacto
+
+- a Fase 8 consegue observar sessões reais sem abrir contrato de API prematuro
+- ajustes de limiar continuam pequenos e testáveis
+- a decisão de endpoint fica baseada em uso real, não em especulação arquitetural
+- futuras mudanças que tornem analytics público devem atualizar `docs/ARCHITECTURE.md`, `docs/TESTING.md`, `docs/PROJECT_STATUS.md` e este arquivo
+
 ## 2026-04-24 - Priorizar confiabilidade do runtime local antes de novas features
 
 Status: aceito

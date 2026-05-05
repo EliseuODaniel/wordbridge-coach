@@ -230,10 +230,10 @@ Prioridade alta:
 
 - [x] sincronizar `docs/PROJECT_STATUS.md` com a Fase 7 fechada e com o ponto real de retomada da branch de release
 - [x] adicionar cobertura E2E focal para inicialização do Chat Coach e troca Spec4/Lingvist
-- [~] validar perfis opcionais `audio` e `ai` separadamente, registrando custos, portas e precondições em vez de misturar isso ao smoke padrão
-- [ ] usar sessões reais para calibrar limiares de `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode`
-- [ ] decidir se a projeção de analytics pedagógico deve virar endpoint público após dados reais de uso
-- [ ] preparar checklist de release local com smoke padrão, backup/restore, E2E crítico, status da branch e riscos conhecidos
+- [~] validar perfis opcionais `audio` e `ai` separadamente, registrando custos, portas e precondições em vez de misturar isso ao smoke padrão; `audio` validado por config/import/CLI e `ai` por config/LanguageTool/modelos/GPU, com runtime completo ainda bloqueado por portas `8001` e `8080`
+- [~] usar sessões reais para calibrar limiares de `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode`; protocolo e exportador local criados em `docs/CALIBRATION.md` e `api/scripts/export_pedagogy_calibration.py`
+- [x] decidir se a projeção de analytics pedagógico deve virar endpoint público após dados reais de uso
+- [x] preparar checklist de release local com smoke padrão, backup/restore, E2E crítico, status da branch e riscos conhecidos
 
 ## Critérios de sucesso
 

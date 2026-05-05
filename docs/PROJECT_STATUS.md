@@ -48,8 +48,11 @@ Arquivos mais importantes para a próxima leitura:
 - `docs/PROJECT_STATUS.md`
 - `docs/ROADMAP.md`
 - `docs/DECISIONS.md`
+- `docs/CALIBRATION.md`
+- `docs/RELEASE_CHECKLIST.md`
 - `frontend/nginx.conf`
 - `api/app/services/chat_profile_service.py`
+- `api/scripts/export_pedagogy_calibration.py`
 - `api/app/services/lingvist_difficulty_service.py`
 - `api/app/services/lingvist_payload_service.py`
 - `api/app/services/card_spec4_service.py`
@@ -78,7 +81,12 @@ Arquivos mais importantes para a próxima leitura:
 - `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai config --quiet`: OK em 2026-05-05; runtime completo do perfil `ai` continua condicionado a modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA e portas livres
 - `docker run --rm wordbridge-coach-tts piper --help >/dev/null`: OK em 2026-05-05
 - validação runtime completa dos perfis opcionais em 2026-05-05: não executada para não colidir com listeners existentes de outro projeto (`eduassist-api-core` em `8001` e `eduassist-keycloak` em `8080`); `8010`, `8081` e `8082` estavam livres
+- `docker run --rm wordbridge-coach-tts python -c "from app.main import app; from app.services.tts_service import TTSService; print('tts-app-import-ok')"`: OK em 2026-05-05
+- `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai up -d languagetool` + `curl -fsS http://127.0.0.1:8010/v2/languages`: OK em 2026-05-05; o serviço foi removido após validação
+- precondições `ai` observadas em 2026-05-05: modelos GGUF presentes em `llm_models/` e GPU NVIDIA disponível (`RTX 4070 Laptop GPU`, 8188 MiB); LLM principal ainda bloqueado por porta `8080` ocupada
 - `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`)
+- `python3 -m py_compile api/scripts/export_pedagogy_calibration.py`: OK em 2026-05-05
+- `WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedagogy_calibration.py --username demo`: OK em 2026-05-05, exportando `calibration_focus`, métricas cruas e projeção interna de analytics
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py tests/test_llamacpp_provider_sse.py tests/test_chat_text_service.py -q`: OK (`13 passed`)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`14 passed, 1 deselected`)
 - tentativa de rodar `tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py` completo nesta retomada: bloqueada porque o Postgres local em `localhost:5433` não estava ativo; a parte pura da suíte foi validada
@@ -244,6 +252,7 @@ Arquivos mais importantes para a próxima leitura:
 - analytics pedagógico permanece sem endpoint/tabela própria nesta fase; `build_pedagogical_analytics_projection()` explicita a projeção atual a partir de JSON de conversa, snapshots de lesson frame e métricas cruas existentes
 - o contrato de configuração agora é versionado em `.env.example`; `.env` continua local/ignorado, compose injeta defaults locais explícitos e staging/produção devem usar `DEBUG=false`, `STRICT_CONFIG=true` e `SECRET_KEY` gerado fora do repositório
 - existe fluxo local de backup/restore do Postgres via `scripts/db_backup.sh` e `scripts/db_restore.sh`; dumps ficam em `backups/`, ignorado pelo Git, e restore exige `--yes`
+- existe protocolo de calibração em `docs/CALIBRATION.md` e checklist de release local em `docs/RELEASE_CHECKLIST.md`
 - a API usa `lifespan` para checks de startup e logs de ciclo de vida, mantendo `run_startup_checks()` testável
 - o runtime base da API deixou de instalar Argos Translate; tradução offline fica opcional via `INSTALL_ARGOS=true`
 - logs mínimos foram adicionados para criação de perfil, seleção de card, turno do Chat Coach e fallback de teacher analysis
@@ -254,6 +263,7 @@ Nesta fase, os hotspots estruturais principais de backend e frontend foram fecha
 
 - revisar a qualidade das métricas pedagógicas com dados de uso real e ajustar limiares de retenção/dificuldade sem perder previsibilidade
 - decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context` após uso real
+- usar `api/scripts/export_pedagogy_calibration.py` depois de sessões reais para comparar sinais exportados com a percepção do aluno antes de alterar limiares
 - manter Chat Coach e troca de modo cobertos por E2E focal, sem transformar o smoke curto em suíte longa
 - validar `audio` e `ai` como perfis opcionais em máquinas limpas, registrando portas ocupadas, modelos exigidos, VRAM e tempo de build
 - acompanhar vulnerabilidades reportadas por `npm audit` no frontend sem confundir esse debt com falhas do runtime local padrão

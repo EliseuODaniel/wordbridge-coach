@@ -191,6 +191,16 @@ docker run --rm wordbridge-coach-tts piper --help >/dev/null
 
 O perfil `audio` publica `8001`; quando a porta já estiver ocupada por outro serviço local, prefira validar build/import/CLI da imagem e registrar a limitação antes de subir o serviço. Na estação usada em 2026-05-05, a porta `8001` estava ocupada por outro projeto, então a validação ficou em `docker compose --profile audio config --quiet` e `docker run --rm wordbridge-coach-tts piper --help >/dev/null`.
 
+## Calibração pedagógica
+
+Depois de uma sessão real, exporte os sinais atuais do usuário:
+
+```bash
+WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedagogy_calibration.py --username demo
+```
+
+Esse export deve ser comparado com a experiência observada antes de ajustar limiares pedagógicos. O protocolo completo fica em `docs/CALIBRATION.md`.
+
 ## Backup e restore local
 
 Antes de uso continuado ou mudanças destrutivas no banco local, gere um dump:
