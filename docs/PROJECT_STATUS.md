@@ -72,6 +72,7 @@ Arquivos mais importantes para a próxima leitura:
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
 - `./scripts/frontend_tooling.sh check`: OK em 2026-04-24 depois da criação do smoke e ajustes de runtime; npm audit ainda reporta `13 vulnerabilities (5 moderate, 8 high)`
 - `./scripts/smoke_local.sh`: OK em 2026-04-28 no stack padrão `db/api/frontend`, com build, migrations, seed, health, frontend, criação de perfil e primeiro card; a stack temporária foi derrubada ao final
+- `./scripts/smoke_local.sh`: OK em 2026-05-05 com stack principal simultaneamente ativa; o smoke temporário usou `55433`, `18000`, `13007` e subnet `172.29.0.0/16`, aplicou migrations/seed, validou health/frontend, criou perfil e carregou primeiro card
 - `cd tests/e2e && BASE_URL=http://127.0.0.1:3007 npm run test:ci`: OK em 2026-04-28 contra `db/api/frontend` com `WORDBRIDGE_DB_PORT=55432`, migrations e seed aplicados; `37 passed`, stack derrubada ao final
 - `docker run --rm wordbridge-smoke-api python -c "import importlib.util; assert importlib.util.find_spec('argostranslate') is None"`: OK, confirmando que Argos não está no runtime base
 - `docker compose --profile audio build tts`: OK em 2026-04-28 com runtime Piper-only; build local observado em aproximadamente 25s e imagem `wordbridge-coach-tts` com cerca de 133 MB
@@ -87,6 +88,9 @@ Arquivos mais importantes para a próxima leitura:
 - `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`)
 - `python3 -m py_compile api/scripts/export_pedagogy_calibration.py`: OK em 2026-05-05
 - `WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedagogy_calibration.py --username demo`: OK em 2026-05-05, exportando `calibration_focus`, métricas cruas e projeção interna de analytics
+- calibração de 2026-05-05: `retention_band=unknown` deixou de gerar `recommended_pace=accelerate`; o export do usuário `demo` passou a `difficulty_signal=on_target`, `recommended_pace=balance` e `recommended_mode=spec4`
+- `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py -q`: OK em 2026-05-05 (`9 passed`)
+- `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`, nova rodada)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_prompt_snapshots.py tests/test_llamacpp_provider_sse.py tests/test_chat_text_service.py -q`: OK (`13 passed`)
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py -k 'not sentence_selection' -q`: OK (`14 passed, 1 deselected`)
 - tentativa de rodar `tests/test_pedagogical_metrics_eval.py tests/test_lingvist_difficulty_service.py` completo nesta retomada: bloqueada porque o Postgres local em `localhost:5433` não estava ativo; a parte pura da suíte foi validada

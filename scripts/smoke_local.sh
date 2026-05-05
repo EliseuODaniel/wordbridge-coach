@@ -3,9 +3,12 @@
 set -euo pipefail
 
 PROJECT_NAME="${WORDBRIDGE_SMOKE_PROJECT:-wordbridge-smoke}"
-DB_PORT="${WORDBRIDGE_DB_PORT:-55432}"
-API_URL="${WORDBRIDGE_API_URL:-http://localhost:8000}"
-FRONTEND_URL="${WORDBRIDGE_FRONTEND_URL:-http://localhost:3007}"
+DB_PORT="${WORDBRIDGE_DB_PORT:-55433}"
+API_PORT="${WORDBRIDGE_API_PORT:-18000}"
+FRONTEND_PORT="${WORDBRIDGE_FRONTEND_PORT:-13007}"
+DOCKER_SUBNET="${WORDBRIDGE_DOCKER_SUBNET:-172.29.0.0/16}"
+API_URL="${WORDBRIDGE_API_URL:-http://localhost:${API_PORT}}"
+FRONTEND_URL="${WORDBRIDGE_FRONTEND_URL:-http://localhost:${FRONTEND_PORT}}"
 KEEP_RUNNING=0
 SKIP_BUILD=0
 
@@ -14,9 +17,12 @@ usage() {
     echo
     echo "Environment overrides:"
     echo "  WORDBRIDGE_SMOKE_PROJECT  Compose project name (default: wordbridge-smoke)"
-    echo "  WORDBRIDGE_DB_PORT        Host Postgres port (default: 55432)"
-    echo "  WORDBRIDGE_API_URL        API URL (default: http://localhost:8000)"
-    echo "  WORDBRIDGE_FRONTEND_URL   Frontend URL (default: http://localhost:3007)"
+    echo "  WORDBRIDGE_DB_PORT        Host Postgres port (default: 55433)"
+    echo "  WORDBRIDGE_API_PORT       Host API port (default: 18000)"
+    echo "  WORDBRIDGE_FRONTEND_PORT  Host frontend port (default: 13007)"
+    echo "  WORDBRIDGE_DOCKER_SUBNET  Compose network subnet (default: 172.29.0.0/16)"
+    echo "  WORDBRIDGE_API_URL        API URL (default: http://localhost:18000)"
+    echo "  WORDBRIDGE_FRONTEND_URL   Frontend URL (default: http://localhost:13007)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +48,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 export WORDBRIDGE_DB_PORT="$DB_PORT"
+export WORDBRIDGE_API_PORT="$API_PORT"
+export WORDBRIDGE_FRONTEND_PORT="$FRONTEND_PORT"
+export WORDBRIDGE_DOCKER_SUBNET="$DOCKER_SUBNET"
 COMPOSE_CMD=(docker compose -p "$PROJECT_NAME")
 
 cleanup() {
@@ -106,7 +115,7 @@ fi
 echo "Preparing clean smoke stack: ${PROJECT_NAME}"
 "${COMPOSE_CMD[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 
-echo "Starting default stack on Postgres host port ${DB_PORT}"
+echo "Starting default stack on ports db=${DB_PORT}, api=${API_PORT}, frontend=${FRONTEND_PORT} and subnet ${DOCKER_SUBNET}"
 if [[ "$SKIP_BUILD" -eq 1 ]]; then
     "${COMPOSE_CMD[@]}" up -d db api frontend
 else

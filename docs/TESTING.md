@@ -158,7 +158,7 @@ Para validar integração local:
 ./scripts/smoke_local.sh
 ```
 
-Esse é o smoke recomendado para o stack padrão. Ele usa `wordbridge-smoke` como projeto Compose temporário, sobe `db/api/frontend`, aplica migrations, roda seed, valida `/health`, valida o frontend, cria um perfil via API e carrega o primeiro card Spec4.
+Esse é o smoke recomendado para o stack padrão. Ele usa `wordbridge-smoke` como projeto Compose temporário, sobe `db/api/frontend`, aplica migrations, roda seed, valida `/health`, valida o frontend, cria um perfil via API e carrega o primeiro card Spec4. Por padrão ele usa portas e subnet próprios (`55433`, `18000`, `13007`, `172.29.0.0/16`) para poder rodar mesmo quando a stack principal está ativa em `55432`, `8000` e `3007`.
 
 Fluxo manual equivalente:
 
@@ -170,6 +170,13 @@ curl -fsS http://localhost:8000/health
 curl -fsS http://localhost:3007 >/dev/null
 WORDBRIDGE_DB_PORT=55432 docker compose down --remove-orphans
 ```
+
+Portas e subnet do compose podem ser sobrescritos por:
+
+- `WORDBRIDGE_DB_PORT`
+- `WORDBRIDGE_API_PORT`
+- `WORDBRIDGE_FRONTEND_PORT`
+- `WORDBRIDGE_DOCKER_SUBNET`
 
 Para validar Chat Coach completo com IA local:
 
@@ -200,6 +207,8 @@ WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedago
 ```
 
 Esse export deve ser comparado com a experiência observada antes de ajustar limiares pedagógicos. O protocolo completo fica em `docs/CALIBRATION.md`.
+
+Na calibração de 2026-05-05, o usuário `demo` sem retenção real exportava `retention_band=unknown` mas ainda recomendava aceleração. O limiar foi ajustado para exigir sinal de retenção antes de `ready_to_push`; com isso o export passou a `difficulty_signal=on_target`, `recommended_pace=balance` e `recommended_mode=spec4`.
 
 ## Backup e restore local
 

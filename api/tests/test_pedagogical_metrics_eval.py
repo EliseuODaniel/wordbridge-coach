@@ -91,6 +91,29 @@ def test_pedagogical_metrics_match_expected_learning_policy(raw_signals, expecte
         assert metrics[key] == value
 
 
+def test_unknown_retention_does_not_accelerate_new_or_unobserved_profiles():
+    """A profile with no accuracy or retention evidence should stay in balance."""
+    metrics = derive_pedagogical_metrics(
+        daily_new_limit=10,
+        accuracy_last_20=None,
+        average_retention=None,
+        due_review_count=0,
+        relearn_queue_count=0,
+        difficult_card_count=0,
+        mature_ratio=None,
+        hint_ratio=None,
+        average_attempts=None,
+        cards_seen_today=0,
+        session_new_ratio=None,
+        preferred_mode="spec4",
+    )
+
+    assert metrics["retention_band"] == "unknown"
+    assert metrics["difficulty_signal"] == "on_target"
+    assert metrics["recommended_pace"] == "balance"
+    assert metrics["recommended_mode"] == "spec4"
+
+
 def test_lingvist_profile_uses_metrics_to_adjust_sentence_difficulty():
     """The same learner phase should adapt based on support or stretch signals."""
     support_profile = get_lingvist_difficulty_profile(

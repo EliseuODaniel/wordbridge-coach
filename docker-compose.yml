@@ -91,7 +91,7 @@ services:
       CHAT_DRAFT_SUGGESTIONS_MAX: "${CHAT_DRAFT_SUGGESTIONS_MAX:-8}"
       CHAT_MICRO_EVAL_MIN_INTERVAL_MS: "${CHAT_MICRO_EVAL_MIN_INTERVAL_MS:-250}"
     ports:
-      - "8000:8000"
+      - "${WORDBRIDGE_API_PORT:-8000}:8000"
     volumes:
       - audio_cache:/audio
       - ./api:/app
@@ -224,7 +224,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3007:3000"
+      - "${WORDBRIDGE_FRONTEND_PORT:-3007}:3000"
     depends_on:
       api:
         condition: service_healthy
@@ -250,4 +250,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: "${WORDBRIDGE_DOCKER_SUBNET:-172.20.0.0/16}"

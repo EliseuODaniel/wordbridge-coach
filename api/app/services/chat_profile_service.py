@@ -177,9 +177,11 @@ def derive_pedagogical_metrics(
     if review_pressure != "high":
         stretch_capacity += 1
 
+    has_retention_signal = retention_score is not None
+
     if support_load >= 3:
         difficulty_signal = "support_needed"
-    elif stretch_capacity >= 4:
+    elif has_retention_signal and stretch_capacity >= 4:
         difficulty_signal = "ready_to_push"
     else:
         difficulty_signal = "on_target"

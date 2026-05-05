@@ -50,3 +50,5 @@ WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedago
 - [ ] Atualizar `docs/PROJECT_STATUS.md` com validações novas e limitações.
 - [ ] Atualizar `docs/ROADMAP.md` se algum item da fase mudou de status.
 - [ ] Pushar branch e atualizar PR.
+
+Nota: `./scripts/smoke_local.sh` usa portas/subnet próprios por padrão (`55433`, `18000`, `13007`, `172.29.0.0/16`) para não colidir com a stack principal deixada ativa para teste manual.
