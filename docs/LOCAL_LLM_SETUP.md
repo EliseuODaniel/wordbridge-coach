@@ -60,10 +60,10 @@ Modo padrão:
 docker compose up -d
 ```
 
-Modo com perfis opcionais de LLM secundária:
+O modo padrão usa `CHAT_LLM_PROVIDER=mock` para manter `db/api/frontend` leve e funcional sem GPU. Para validar o LLM local real:
 
 ```bash
-docker compose --profile optional-llm --profile fastchat up -d
+CHAT_LLM_PROVIDER=llamacpp CHAT_LLM_STRICT=true docker compose --profile ai up -d --build
 ```
 
 ## Verificação

@@ -1,5 +1,29 @@
 # Decisions
 
+## 2026-05-05 - Usar mock como provider padrão do Chat Coach no stack base
+
+Status: aceito
+
+### Contexto
+
+O contrato do runtime padrão é `db/api/frontend`, sem exigir o perfil `ai`. Na validação pós-merge, a API ainda herdava `CHAT_LLM_PROVIDER=llamacpp` e `CHAT_LLM_STRICT=true` como defaults do compose. Com o serviço `llm` desligado, o Chat Coach abria, mas o primeiro turno WebSocket falhava tentando resolver `http://llm:8080`.
+
+Isso contradizia a fronteira operacional da Fase 8: o stack base precisa ser testável sem GPU, sem VRAM livre e sem portas de IA disponíveis. O LLM real continua desejado para a experiência completa, mas precisa ser opt-in junto com o perfil `ai`.
+
+### Decisão
+
+- usar `CHAT_LLM_PROVIDER=mock` e `CHAT_LLM_STRICT=false` como defaults do compose e do `.env.example`
+- exigir `CHAT_LLM_PROVIDER=llamacpp` e `CHAT_LLM_STRICT=true` explicitamente ao validar o perfil `ai`
+- manter `CHAT_LLM_BASE_URL=http://llm:8080/v1` documentado para o runtime real
+- validar o Chat Coach no stack base com WebSocket completo em mock quando o LLM real estiver indisponível
+
+### Impacto
+
+- `docker compose up db api frontend` deixa o Chat Coach funcional para smoke e calibração leve
+- falhas de VRAM, portas ou modelo GGUF deixam de quebrar o fluxo padrão
+- a validação do LLM real fica mais honesta: ela só conta quando o perfil `ai` sobe com provider `llamacpp`
+- docs de setup e teste precisam mostrar o opt-in explícito para IA local
+
 ## 2026-05-05 - Manter analytics pedagógico como projeção interna durante a calibração real
 
 Status: aceito

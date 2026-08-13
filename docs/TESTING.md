@@ -186,12 +186,14 @@ Portas e subnet do compose podem ser sobrescritos por:
 Para validar Chat Coach completo com IA local:
 
 ```bash
+CHAT_LLM_PROVIDER=llamacpp CHAT_LLM_STRICT=true \
 docker compose --profile ai config --quiet
+CHAT_LLM_PROVIDER=llamacpp CHAT_LLM_STRICT=true \
 docker compose --profile ai up -d --build
 docker compose --profile ai ps
 ```
 
-O perfil `ai` exige modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA para os serviços `llama.cpp` configurados e portas livres para `8080`, `8081`, `8082` e `8010`. Se uma dessas precondições não estiver disponível, registre a limitação e valide pelo menos `docker compose --profile ai config --quiet`. Na estação usada em 2026-05-05, a porta `8080` estava ocupada por outro projeto, então o runtime completo do perfil não foi iniciado.
+O stack padrão usa `CHAT_LLM_PROVIDER=mock` para que o Chat Coach continue testável sem IA local. O perfil `ai` exige modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA para os serviços `llama.cpp` configurados, `CHAT_LLM_PROVIDER=llamacpp` e portas livres para `8080`, `8081`, `8082` e `8010`. Se uma dessas precondições não estiver disponível, registre a limitação e valide pelo menos `CHAT_LLM_PROVIDER=llamacpp CHAT_LLM_STRICT=true docker compose --profile ai config --quiet`. Na estação usada em 2026-05-05, a porta `8080` estava ocupada por outro projeto, então o runtime completo do perfil não foi iniciado.
 Quando as portas padrão estiverem ocupadas, use `WORDBRIDGE_LLM_PORT`, `WORDBRIDGE_LLM_CHAT_PORT`, `WORDBRIDGE_LLM_TEACHER_PORT` e `WORDBRIDGE_LANGUAGETOOL_PORT` para validar os serviços em portas alternativas. Na estação usada em 2026-05-05, LanguageTool validou em `18110`; o LLM completo não foi iniciado porque havia apenas cerca de 3.3 GB de VRAM livre com outro LLM ativo.
 
 Para validar áudio local, o perfil `audio` usa Piper TTS e mantém modelos no volume `tts_models`:

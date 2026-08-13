@@ -122,6 +122,8 @@ docker compose --profile audio exec api python scripts/seed_data.py
 Fluxo manual com IA local:
 
 ```bash
+CHAT_LLM_PROVIDER=llamacpp \
+CHAT_LLM_STRICT=true \
 WORDBRIDGE_LLM_PORT=18180 \
 WORDBRIDGE_LANGUAGETOOL_PORT=18110 \
 docker compose --profile ai up -d --build
@@ -132,7 +134,7 @@ docker compose --profile ai exec api python scripts/seed_data.py
 Para áudio e IA local juntos:
 
 ```bash
-docker compose --profile audio --profile ai up -d --build
+CHAT_LLM_PROVIDER=llamacpp CHAT_LLM_STRICT=true docker compose --profile audio --profile ai up -d --build
 docker compose --profile audio --profile ai exec api alembic upgrade head
 docker compose --profile audio --profile ai exec api python scripts/seed_data.py
 ```
@@ -155,7 +157,7 @@ Quando rodar o Vite manualmente dentro de `frontend/`, o proxy de desenvolviment
 WORDBRIDGE_API_PROXY_TARGET=http://localhost:8000 WORDBRIDGE_TTS_PROXY_TARGET=http://localhost:8001 npm run dev
 ```
 
-O stack padrão deve subir sem áudio e sem IA local. TTS e LLM continuam opcionais para preservar memória, VRAM e tempo de build durante testes comuns.
+O stack padrão deve subir sem áudio e sem IA local. TTS e LLM continuam opcionais para preservar memória, VRAM e tempo de build durante testes comuns. No stack padrão, o Chat Coach usa o provider mock; para LLM real, suba o perfil `ai` com `CHAT_LLM_PROVIDER=llamacpp` e `CHAT_LLM_STRICT=true`.
 
 O perfil `audio` usa Piper TTS. Coqui/Torch não fazem parte da imagem local suportada nesta fase.
 

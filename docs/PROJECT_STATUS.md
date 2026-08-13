@@ -81,6 +81,7 @@ Arquivos mais importantes para a próxima leitura:
 - `docker run --rm wordbridge-coach-tts python -c "from app.services.tts_service import TTSService; print('tts import ok')"`: OK
 - `WORDBRIDGE_DB_PORT=55432 docker compose --profile audio config --quiet`: OK em 2026-05-05
 - `WORDBRIDGE_DB_PORT=55432 docker compose --profile ai config --quiet`: OK em 2026-05-05; runtime completo do perfil `ai` continua condicionado a modelos GGUF em `llm_models/`, GPU NVIDIA/CUDA e portas livres
+- `WORDBRIDGE_DB_PORT=55432 docker compose config` agora resolve `CHAT_LLM_PROVIDER=mock` e `CHAT_LLM_STRICT=false` para o stack padrão, mantendo o Chat Coach funcional sem o perfil `ai`
 - `docker run --rm wordbridge-coach-tts piper --help >/dev/null`: OK em 2026-05-05
 - validação runtime completa dos perfis opcionais em 2026-05-05: não executada para não colidir com listeners existentes de outro projeto (`eduassist-api-core` em `8001` e `eduassist-keycloak` em `8080`); `8010`, `8081` e `8082` estavam livres
 - `WORDBRIDGE_TTS_PORT=18101 docker compose --profile audio up -d tts` + `curl -fsS http://127.0.0.1:18101/health`: OK em 2026-05-05; serviço removido após validação
@@ -93,6 +94,8 @@ Arquivos mais importantes para a próxima leitura:
 - `python3 -m py_compile api/scripts/export_pedagogy_calibration.py`: OK em 2026-05-05
 - `WORDBRIDGE_DB_PORT=55432 docker compose exec -T api python scripts/export_pedagogy_calibration.py --username demo`: OK em 2026-05-05, exportando `calibration_focus`, métricas cruas e projeção interna de analytics
 - calibração de 2026-05-05: `retention_band=unknown` deixou de gerar `recommended_pace=accelerate`; o export do usuário `demo` passou a `difficulty_signal=on_target`, `recommended_pace=balance` e `recommended_mode=spec4`
+- rodada de calibração pós-merge em 2026-05-05: três perfis novos passaram por Spec4, Lingvist e Chat Coach via WebSocket em runtime mock (`CHAT_LLM_PROVIDER=mock`, porque o LLM real seguia bloqueado por VRAM/portas). Os exports ficaram coerentes com os cenários: perfil estável (`stable/accelerate/chat`), perfil de suporte (`fragile/stabilize/lingvist`) e perfil misto (`fragile/stabilize/lingvist`); em todos, `projection.needs_dedicated_store=false`.
+- smoke WebSocket do Chat Coach no stack padrão em 2026-05-05: API recriada sem overrides de LLM, provider resolvido como mock e turno `user_message -> assistant_stream_token* -> assistant_done` concluído com sucesso
 - `cd api && TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. .venv/bin/python -m pytest tests/test_pedagogical_metrics_eval.py -q`: OK em 2026-05-05 (`9 passed`)
 - `cd tests/e2e && PATH="$HOME/.local/bin:$PATH" CI=1 BASE_URL=http://127.0.0.1:3007 npx playwright test --config=playwright.ci.config.ts tests/chat-coach.spec.ts tests/mode-switch.spec.ts --project=chromium`: OK em 2026-05-05 (`3 passed`, nova rodada)
 - rodada manual headless em 2026-05-05: criação de perfil, Spec4, Lingvist, retorno para Spec4, abertura do Chat Coach, envio curto e export de calibração pós-sessão; sinais coerentes com erro real (`support_needed/stabilize/lingvist`) e perfil novo (`unknown/balance/spec4`)
@@ -259,7 +262,9 @@ Arquivos mais importantes para a próxima leitura:
 - a suíte pedagógica agora também compara usuários simulados contra o baseline de fase do Lingvist para garantir que suporte/aceleração mudem dificuldade, tamanho de pool e comprimento de sentença em passos previsíveis
 - existe agora também uma suíte de snapshots determinísticos para `teacher_analysis` em `api/tests/test_pedagogical_prompt_snapshots.py`, cobrindo contrato de idioma/scaffolding do prompt e schema strict dos structured outputs
 - analytics pedagógico permanece sem endpoint/tabela própria nesta fase; `build_pedagogical_analytics_projection()` explicita a projeção atual a partir de JSON de conversa, snapshots de lesson frame e métricas cruas existentes
+- a decisão de analytics foi revalidada com exports de calibração pós-merge: mesmo com perfis estável, suporte e misto, a projeção atual continuou suficiente para o ciclo local de revisão pedagógica
 - o contrato de configuração agora é versionado em `.env.example`; `.env` continua local/ignorado, compose injeta defaults locais explícitos e staging/produção devem usar `DEBUG=false`, `STRICT_CONFIG=true` e `SECRET_KEY` gerado fora do repositório
+- o Chat Coach usa mock como provider padrão no stack base; LLM real exige opt-in explícito com `CHAT_LLM_PROVIDER=llamacpp`, `CHAT_LLM_STRICT=true` e perfil `ai`
 - existe fluxo local de backup/restore do Postgres via `scripts/db_backup.sh` e `scripts/db_restore.sh`; dumps ficam em `backups/`, ignorado pelo Git, e restore exige `--yes`
 - existe protocolo de calibração em `docs/CALIBRATION.md` e checklist de release local em `docs/RELEASE_CHECKLIST.md`
 - a API usa `lifespan` para checks de startup e logs de ciclo de vida, mantendo `run_startup_checks()` testável
@@ -270,9 +275,9 @@ Arquivos mais importantes para a próxima leitura:
 
 Nesta fase, os hotspots estruturais principais de backend e frontend foram fechados para a trilha pedagógica principal. O que sobra agora é a Fase 8 de calibração e release local:
 
-- revisar a qualidade das métricas pedagógicas com dados de uso real e ajustar limiares de retenção/dificuldade sem perder previsibilidade
-- decidir se os próximos passos de analytics devem ganhar endpoint próprio ou continuar projetados via `student_profile_json`, `lesson_frame_json` e `learning_context` após uso real
-- usar `api/scripts/export_pedagogy_calibration.py` depois de sessões reais para comparar sinais exportados com a percepção do aluno antes de alterar limiares
+- revisar a qualidade das métricas pedagógicas com sessões humanas de uso continuado e ajustar limiares de retenção/dificuldade apenas se o mesmo desalinhamento se repetir
+- manter analytics projetado via `student_profile_json`, `lesson_frame_json`, `chat_lesson_history` e tabelas cruas até existir necessidade real de dashboard, histórico por período ou consumidor externo
+- continuar usando `api/scripts/export_pedagogy_calibration.py` depois de sessões reais para comparar sinais exportados com a percepção do aluno antes de alterar limiares
 - manter Chat Coach e troca de modo cobertos por E2E focal, sem transformar o smoke curto em suíte longa
 - validar `audio` e `ai` como perfis opcionais em máquinas limpas, registrando portas ocupadas, modelos exigidos, VRAM e tempo de build
 - acompanhar vulnerabilidades reportadas por `npm audit` no frontend sem confundir esse debt com falhas do runtime local padrão

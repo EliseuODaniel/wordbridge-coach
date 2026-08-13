@@ -157,6 +157,7 @@ Notas do baseline:
 - nonagesima sexta microfatia aplicada: formalização do contrato de configuração com `.env.example`, defaults locais explícitos no compose e validação de `ENVIRONMENT`, `DEBUG`, `STRICT_CONFIG` e `SECRET_KEY`
 - nonagesima sétima microfatia aplicada: criação de scripts locais de backup/restore do Postgres (`scripts/db_backup.sh` e `scripts/db_restore.sh`) com dumps ignorados em `backups/` e restore destrutivo protegido por `--yes`
 - nonagesima oitava microfatia aplicada: abertura da Fase 8 de calibração/release local, sincronização de `PROJECT_STATUS.md` e expansão focal de E2E para Chat Coach e troca Spec4/Lingvist
+- nonagesima nona microfatia aplicada: ajuste do provider padrão do Chat Coach para mock no stack base, preservando o fluxo WebSocket sem perfil `ai` e tornando o LLM real opt-in com `CHAT_LLM_PROVIDER=llamacpp`
 
 ## Fase 2: Limpeza estrutural
 
@@ -231,7 +232,8 @@ Prioridade alta:
 - [x] sincronizar `docs/PROJECT_STATUS.md` com a Fase 7 fechada e com o ponto real de retomada da branch de release
 - [x] adicionar cobertura E2E focal para inicialização do Chat Coach e troca Spec4/Lingvist
 - [~] validar perfis opcionais `audio` e `ai` separadamente, registrando custos, portas e precondições em vez de misturar isso ao smoke padrão; portas opcionais agora são configuráveis, `audio` validou em runtime completo e `ai` validou config/LanguageTool/modelos/GPU, com LLM completo ainda bloqueado por VRAM concorrente
-- [~] usar sessões reais para calibrar limiares de `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode`; protocolo/exportador local criados e primeiro ajuste aplicado para não acelerar perfis com `retention_band=unknown`
+- [~] usar sessões reais para calibrar limiares de `retention_band`, `review_pressure`, `recommended_pace` e `recommended_mode`; protocolo/exportador local criados, primeiro ajuste aplicado para não acelerar perfis com `retention_band=unknown` e rodada pós-merge com três perfis confirmou os sinais esperados em runtime mock
+- [x] garantir que o stack padrão mantenha o Chat Coach funcional em mock quando o perfil `ai` e o LLM real estiverem desligados
 - [x] decidir se a projeção de analytics pedagógico deve virar endpoint público após dados reais de uso
 - [x] preparar checklist de release local com smoke padrão, backup/restore, E2E crítico, status da branch e riscos conhecidos
 - [x] remover dependência de `frontend/.env.production` no build containerizado e deixar o bundle de produção depender de rotas relativas
