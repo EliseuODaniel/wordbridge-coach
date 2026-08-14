@@ -4,6 +4,7 @@ import React from 'react';
 import type { CardResponse } from '../services/apiCards';
 import GrammarBadge from './GrammarBadge';
 import WordThemeBadge from './WordThemeBadge';
+import InfoTooltip from './InfoTooltip';
 
 interface CardDisplayProps {
   card: CardResponse;
@@ -25,9 +26,9 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
     const afterGap = sentence.substring(gap.end);
     
     return (
-      <div className="text-2xl md:text-3xl font-medium text-center mb-6" data-testid="card-sentence">
+      <div className="py-6 text-center text-2xl font-medium leading-relaxed tracking-[-0.02em] text-white sm:py-8 md:text-3xl" data-testid="card-sentence">
         <span>{beforeGap}</span>
-        <span className="inline-block min-w-[120px] mx-2 px-4 py-2 border-b-4 border-blue-500 bg-blue-900 rounded-t-lg gap-highlight">
+        <span className="gap-highlight mx-1.5 inline-block min-w-[104px] rounded-lg border-b-2 border-primary-300 bg-primary-400/10 px-3 py-1 text-primary-200">
           ___
         </span>
         <span>{afterGap}</span>
@@ -55,7 +56,7 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
     const totalDots = 4;
 
     return (
-      <div className="flex justify-center gap-2 mb-4">
+      <div className="flex gap-1.5" aria-label={`Memória: ${card.memory_stage}`}>
         {Array.from({ length: totalDots }).map((_, index) => {
           const isFilled = index < filledDots;
           let dotClass = 'memory-dot memory-dot-empty';
@@ -85,47 +86,37 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Memory Indicator */}
-      {renderMemoryIndicator()}
+    <div className="w-full">
+      <article className="surface-panel p-4 sm:p-5" data-testid="study-card">
+        <header className="flex min-h-9 items-center justify-between gap-3 border-b border-white/[0.07] pb-3">
+          <div className="flex items-center gap-3">
+            {renderMemoryIndicator()}
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">memória {card.memory_stage.toLowerCase()}</span>
+          </div>
+          {card.sentence_source && (
+            <InfoTooltip label="Fonte da frase">
+              <strong className="mb-1 block text-white">Fonte</strong>
+              {card.sentence_source}
+            </InfoTooltip>
+          )}
+        </header>
 
-      {/* Card container with improved styling */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-lg mb-6" data-testid="study-card">
-        {/* Sentence with Gap */}
         {renderSentenceWithGap()}
 
-        {/* Grammar Badge above translation */}
-        <div className="text-center mb-3">
-          <GrammarBadge grammarHint={card.grammar_hint} />
+        <div className="border-t border-white/[0.07] pt-3">
+          <p className="truncate text-center text-sm italic text-gray-400" title={card.sentence_translation}>
+            “{card.sentence_translation}”
+          </p>
         </div>
 
-        {/* Word Theme Badge */}
-        <div className="text-center mb-3">
+        <footer className="mt-4 flex flex-wrap items-center gap-2">
+          {card.grammar_hint && <GrammarBadge grammarHint={card.grammar_hint} />}
           <WordThemeBadge wordId={card.word_id} />
-        </div>
-
-        {/* Sentence Source Badge */}
-        {card.sentence_source && (
-          <div className="text-center mb-3">
-            <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-900/30 border border-amber-700/50 rounded-full text-amber-300 text-xs font-medium">
-              📚 {card.sentence_source}
-            </span>
-          </div>
-        )}
-
-        {/* Translation */}
-        <div className="text-center">
-          <span className="text-gray-400 italic text-sm">
-            "{card.sentence_translation}"
-          </span>
-        </div>
-
-        {/* Audio Controls */}
-        <div className="flex justify-center gap-4 mt-4">
+          <span className="flex-1" />
           <button
             onClick={onPlayWordAudio}
             disabled={loadingAudio}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-lg text-gray-200 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-secondary min-h-10 px-3 text-xs"
             title="Play word pronunciation"
             data-testid="audio-word-button"
             aria-label="Play word pronunciation"
@@ -137,7 +128,7 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
               </>
             ) : (
               <>
-                🔊 Word
+                Ouvir palavra
               </>
             )}
           </button>
@@ -145,7 +136,7 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
           <button
             onClick={onPlaySentenceAudio}
             disabled={loadingAudio}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-lg text-gray-200 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn btn-secondary min-h-10 px-3 text-xs"
             title="Play full sentence"
             data-testid="audio-sentence-button"
             aria-label="Play sentence pronunciation"
@@ -157,14 +148,13 @@ const CardDisplay: React.FC<CardDisplayProps> = ({
               </>
             ) : (
               <>
-                🔉 Sentence
+                Ouvir frase
               </>
             )}
           </button>
-        </div>
-      </div>
-
-          </div>
+        </footer>
+      </article>
+    </div>
   );
 };
 

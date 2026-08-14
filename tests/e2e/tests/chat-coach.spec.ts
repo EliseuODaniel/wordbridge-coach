@@ -9,10 +9,10 @@ test.describe('Chat Coach - E2E', () => {
     await page.click('[data-testid="profile-create-start"]');
 
     await expect(page.getByRole('heading', { name: 'Chat Coach' })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByPlaceholder('Type your message... (Enter to send, Shift+Enter for new line)')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await expect(page.getByPlaceholder('Escreva sua mensagem…')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enviar' })).toBeDisabled();
     await expect(page.getByRole('heading', { name: 'Feedback' })).toBeVisible();
-    await expect(page.getByText('Coach memory')).toBeVisible();
+    await expect(page.getByRole('complementary').getByText('Coach memory')).toBeVisible();
   });
 
   test('opens Chat Coach from an existing profile card', async ({ page }) => {
@@ -29,11 +29,11 @@ test.describe('Chat Coach - E2E', () => {
 
     await page.goto('/');
 
-    const profileCard = page.locator('div[data-testid^="profile-card-"]').filter({ hasText: uniqueName });
+    const profileCard = page.locator('[data-testid="profile-card"]').filter({ hasText: uniqueName });
     await expect(profileCard).toBeVisible();
-    await profileCard.getByRole('button').filter({ hasText: 'Chat' }).click();
+    await profileCard.getByRole('button', { name: `Abrir Conversa para ${uniqueName}` }).click();
 
     await expect(page.getByRole('heading', { name: 'Chat Coach' })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: '⚙️' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Abrir configurações do modelo' })).toBeVisible();
   });
 });

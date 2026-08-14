@@ -63,8 +63,8 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-md mx-auto">
-      <div className="flex gap-3">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-xl">
+      <div className="flex gap-2">
         <input
           ref={inputRef}
           type="text"
@@ -72,7 +72,7 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
           onChange={(e) => setAnswer(e.target.value)}
           placeholder={placeholder}
           disabled={isSubmitting}
-          className="input flex-1 text-center text-lg"
+          className="input min-w-0 flex-1 text-center text-base font-medium sm:text-lg"
           autoComplete="off"
           spellCheck={false}
           autoFocus
@@ -82,13 +82,13 @@ const AnswerInput: React.FC<AnswerInputProps> = ({
         <button
           type="submit"
           disabled={!answer.trim() || isSubmitting}
-          className="btn btn-primary px-6"
+          className="btn btn-primary shrink-0 px-5"
           data-testid="answer-submit"
         >
           {isSubmitting ? (
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
           ) : (
-            'Check'
+            'Conferir'
           )}
         </button>
       </div>

@@ -5,6 +5,7 @@ import WordFrequencyInsight from './WordFrequencyInsight';
 import RecentPerformanceChart from './RecentPerformanceChart';
 import ThemeClusterMap from './ThemeClusterMap';
 import ProgressOverTimeChart from './ProgressOverTimeChart';
+import InfoTooltip from './InfoTooltip';
 
 interface InsightsSectionProps {
   userId: string;
@@ -14,20 +15,21 @@ interface InsightsSectionProps {
 }
 
 const InsightsSection: React.FC<InsightsSectionProps> = ({ userId, cardId, wordId, refreshTrigger }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="mt-8 border-t border-gray-700 pt-6">
-      {/* Header with expand/collapse toggle */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-200">
-          Insights for this word & your progress
-        </h2>
+    <section className="mt-5">
+      <div className="surface-soft flex items-center justify-between gap-3 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-sm font-semibold text-gray-200">Insights e progresso</h2>
+          <InfoTooltip label="Sobre os insights">Explore frequência, desempenho recente, temas e evolução ao longo do tempo.</InfoTooltip>
+        </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center space-x-1 text-sm text-gray-400 hover:text-gray-200 transition-colors px-2 py-1 rounded hover:bg-gray-700"
+          className="btn btn-secondary min-h-9 px-3 text-xs"
+          aria-expanded={isExpanded}
         >
-          <span>{isExpanded ? 'Hide insights' : 'Show insights'}</span>
+          <span>{isExpanded ? 'Ocultar' : 'Explorar'}</span>
           <svg
             className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
             fill="none"
@@ -39,27 +41,17 @@ const InsightsSection: React.FC<InsightsSectionProps> = ({ userId, cardId, wordI
         </button>
       </div>
 
-      {/* Insights content */}
       {isExpanded && (
-        <div className="space-y-4">
-          {/* Grid layout for desktop - 2x2, stacked on mobile */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Row 1: WordFrequencyInsight and RecentPerformanceChart */}
+        <div className="mt-3 space-y-4 animate-fade-in">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <WordFrequencyInsight userId={userId} cardId={cardId} wordId={wordId} refreshTrigger={refreshTrigger} />
             <RecentPerformanceChart userId={userId} refreshTrigger={refreshTrigger} />
-
-            {/* Row 2: ThemeClusterMap and ProgressOverTimeChart */}
             <ThemeClusterMap userId={userId} refreshTrigger={refreshTrigger} />
             <ProgressOverTimeChart userId={userId} refreshTrigger={refreshTrigger} />
           </div>
-
-          {/* Mobile note */}
-          <div className="lg:hidden text-center text-xs text-gray-500 mt-4">
-            💡 Tip: For the best experience, view insights on a larger screen
-          </div>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

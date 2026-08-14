@@ -179,7 +179,14 @@ async def test_llamacpp_provider_micro_eval_uses_structured_output():
     def handler(request):
         payload = json.loads(request.content)
         assert payload["response_format"]["type"] == "json_schema"
-        assert payload["response_format"]["schema"]["type"] == "object"
+        schema_config = payload["response_format"]["json_schema"]
+        assert schema_config["name"] == "DraftEvaluationPayload"
+        assert schema_config["strict"] is True
+        assert schema_config["schema"]["type"] == "object"
+        assert schema_config["schema"]["additionalProperties"] is False
+        assert set(schema_config["schema"]["required"]) == set(
+            schema_config["schema"]["properties"]
+        )
         return httpx.Response(
             200,
             json={
@@ -240,6 +247,7 @@ async def test_llamacpp_provider_autocomplete_uses_structured_output():
     def handler(request):
         payload = json.loads(request.content)
         assert payload["response_format"]["type"] == "json_schema"
+        assert payload["response_format"]["json_schema"]["name"] == "AutocompletePayload"
         return httpx.Response(
             200,
             json={

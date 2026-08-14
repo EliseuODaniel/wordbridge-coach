@@ -1,5 +1,7 @@
 /** Session Counter Component */
 
+import InfoTooltip from './InfoTooltip';
+
 interface StatsData {
   cards_total: number;
   new_count: number;
@@ -23,67 +25,37 @@ const SessionCounter: React.FC<SessionCounterProps> = ({ stats, dailyNewLimit = 
   const progressPercent = Math.min(100, (stats.new_cards_today / dailyNewLimit) * 100);
 
   return (
-    <div className="max-w-4xl mx-auto mb-8">
-      <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-100 mb-4 text-center">
-          Session Progress
-        </h2>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {/* Cards Total */}
-          <div className="text-center">
-            <div className="text-2xl font-bold text-primary-400">
-              {stats.cards_total}
-            </div>
-            <div className="text-sm text-gray-400">Total Cards</div>
-          </div>
-
-          {/* New Cards Today */}
-          <div className="text-center">
-            <div className="text-2xl font-bold text-warning-400">
-              {stats.new_cards_today}
-            </div>
-            <div className="text-sm text-gray-400">New Today</div>
-            <div className="text-xs text-gray-500">
-              {newCardsRemaining} remaining
-            </div>
-          </div>
-
-          {/* Accuracy */}
-          <div className="text-center">
-            <div className="text-2xl font-bold text-success-400">
-              {accuracy}%
-            </div>
-            <div className="text-sm text-gray-400">Accuracy</div>
-            <div className="text-xs text-gray-500">
-              {stats.reviews_today} reviews
-            </div>
-          </div>
-
-          {/* Learning Cards */}
-          <div className="text-center">
-            <div className="text-2xl font-bold text-info-400">
-              {stats.learning_count}
-            </div>
-            <div className="text-sm text-gray-400">Learning</div>
-          </div>
+    <section className="surface-card mb-5 px-3 py-3 sm:px-4" data-testid="session-counter" aria-label="Resumo da sessão">
+      <div className="grid grid-cols-2 items-center gap-3 sm:grid-cols-5 sm:divide-x sm:divide-white/[0.07]">
+        <div className="px-2">
+          <div className="text-lg font-semibold tabular-nums text-primary-300">{stats.cards_total}</div>
+          <div className="text-[11px] text-gray-500">cards disponíveis</div>
         </div>
-
-        {/* Progress Bar for New Cards */}
-        <div className="mt-4">
-          <div className="flex justify-between text-sm text-gray-400 mb-1">
-            <span>New Card Progress</span>
-            <span>{stats.new_cards_today}/{dailyNewLimit}</span>
+        <div className="px-2">
+          <div className="text-lg font-semibold tabular-nums text-amber-300">{stats.new_cards_today}</div>
+          <div className="text-[11px] text-gray-500">novos hoje · {newCardsRemaining} restantes</div>
+        </div>
+        <div className="px-2">
+          <div className="text-lg font-semibold tabular-nums text-emerald-300">{accuracy}%</div>
+          <div className="text-[11px] text-gray-500">precisão · {stats.reviews_today} revisões</div>
+        </div>
+        <div className="px-2">
+          <div className="text-lg font-semibold tabular-nums text-cyan-300">{stats.learning_count}</div>
+          <div className="text-[11px] text-gray-500">em aprendizagem</div>
+        </div>
+        <div className="col-span-2 flex items-center gap-3 px-2 sm:col-span-1">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex justify-between text-[10px] text-gray-500"><span>Meta diária</span><span>{stats.new_cards_today}/{dailyNewLimit}</span></div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+              <div className="h-full rounded-full bg-gradient-to-r from-primary-400 to-teal-300 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+            </div>
           </div>
-          <div className="w-full bg-gray-700 rounded-full h-2">
-            <div
-              className="bg-warning-500 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+          <InfoTooltip label="Sobre as métricas da sessão">
+            Os números combinam seu progresso acumulado com a atividade de hoje. A meta diária limita palavras novas sem impedir revisões vencidas.
+          </InfoTooltip>
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 

@@ -2,10 +2,10 @@ import React from 'react';
 
 const ChatCoachLoading: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-gray-900">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
-        <p className="text-gray-400">Loading Chat Coach...</p>
+        <div className="mx-auto mb-4 size-11 animate-spin rounded-full border-2 border-white/10 border-t-primary-400"></div>
+        <p className="text-sm text-gray-400">Preparando o Chat Coach…</p>
       </div>
     </div>
   );

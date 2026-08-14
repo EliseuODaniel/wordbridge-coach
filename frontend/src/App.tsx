@@ -5,10 +5,9 @@ import StudySession from './components/StudySession';
 import LingvistSession from './components/LingvistSession';
 import ChatCoachSession from './components/ChatCoachSession';
 import UserSelection from './components/UserSelection';
+import type { TrainingMode } from './components/trainingModes';
 import { healthApi } from './services/apiHealth';
 import './App.css';
-
-type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
 function getInitialTrainingMode(): TrainingMode {
   const params = new URLSearchParams(window.location.search);
@@ -57,7 +56,7 @@ function App() {
   };
 
   return (
-    <div className="App">
+    <div className="App app-frame">
       {!selectedUserId ? (
         <UserSelection
           onUserSelected={handleUserSelected}
@@ -71,11 +70,16 @@ function App() {
           onModeChange={handleModeSelect}
         />
       ) : trainingMode === 'chat' ? (
-        <ChatCoachSession userId={selectedUserId} onExit={handleExit} />
+        <ChatCoachSession
+          userId={selectedUserId}
+          onExit={handleExit}
+          onModeChange={handleModeSelect}
+        />
       ) : (
         <StudySession
           userId={selectedUserId}
           onModeChange={handleModeSelect}
+          onExit={handleExit}
         />
       )}
     </div>

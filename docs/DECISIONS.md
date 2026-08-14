@@ -2147,3 +2147,48 @@ O projeto já estava pronto para uso local continuado, mas ainda não havia um f
 - usuários locais têm um caminho claro para preservar progresso antes de uso continuado
 - dumps não entram no repositório
 - restore fica disponível, mas protegido contra execução acidental
+
+## 2026-08-14 - Compactar a interface e unificar o shell de aprendizagem
+
+Status: aceito
+
+### Contexto
+
+Os módulos funcionais estavam preservados, mas a interface desperdiçava espaço, repetia explicações longas e apresentava hierarquia visual e navegação diferentes entre Spec4, Lingvist e Chat Coach.
+
+### Decisão
+
+- adotar tokens locais de cor, tipografia, foco e superfície sobre Tailwind, sem adicionar uma biblioteca de componentes
+- usar o mesmo cabeçalho e seletor de modo nas três experiências
+- condensar sinais pedagógicos em painéis de uma linha e mover explicações secundárias para tooltips acessíveis
+- usar grids responsivos para separar atividade e contexto em telas largas e manter o fluxo linear em mobile
+- preservar alvos interativos mínimos, foco visível e preferência por movimento reduzido
+
+### Impacto
+
+- mais conteúdo útil cabe na viewport sem retirar Spec4, Lingvist, Chat Coach, insights ou prática de fala
+- a troca de modo fica previsível dentro da sessão
+- a interface ganha consistência sem nova dependência de frontend
+
+## 2026-08-14 - Manter Qwen2.5 7B como baseline após auditoria local de LLM
+
+Status: aceito
+
+### Contexto
+
+A configuração declarava Gemma 4 E4B, mas o GGUF montado identificava-se como Qwen2.5 7B Instruct. O bind mount continha links para fora do diretório, invisíveis no container, e o perfil `ai` incluía três servidores que não cabiam juntos na RTX 4070 Laptop de 8 GB. Além disso, o formato antigo de `response_format` não ativava a gramática da versão atual do `llama.cpp`.
+
+### Decisão
+
+- tornar `WORDBRIDGE_MODELS_PATH` configurável e montar modelos como somente leitura
+- fazer `ai` iniciar apenas Qwen2.5 7B e deixar Phi-3/Qwen 3B em perfis opcionais explícitos
+- usar flash attention, um slot e o contexto completo de 4.096 tokens
+- atualizar structured output para `json_schema.schema`, com campos obrigatórios e arrays limitados
+- manter Qwen2.5 7B como baseline honesto e registrar Gemma 4 E4B apenas como candidato reprovado nesta rodada
+- adicionar benchmark reproduzível com os prompts reais da aplicação
+
+### Impacto
+
+- Qwen produz cerca de 48–51 tokens/s usando aproximadamente 5,2 GB de VRAM e passou o gate completo em 2 de 3 repetições
+- Gemma 4 E4B foi mais rápido e econômico, mas falhou 3 de 3 rodadas por idioma de feedback e orientação pedagógica inconsistente
+- Qwen3.5 4B passa a ser a próxima candidata, condicionada a GGUF confiável e superioridade no benchmark local

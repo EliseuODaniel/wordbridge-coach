@@ -45,7 +45,7 @@ const WordThemeBadge: React.FC<WordThemeBadgeProps> = ({ wordId, className = '' 
       {themes.map((theme, index) => (
         <span
           key={index}
-          className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-900/50 text-purple-200 border border-purple-700/50"
+          className="status-pill min-h-7 border-violet-400/20 bg-violet-400/10 px-2.5 py-1 text-[11px] text-violet-200"
         >
           {theme}
         </span>

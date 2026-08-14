@@ -6,8 +6,7 @@ import { usersApi, type CreateUserRequest, type UpdateUserRequest } from '../ser
 import { statsService } from '../services/stats';
 import type { Profile, ProfileStats } from './ProfileCard';
 import { buildProfileStats } from './userSelectionConfig';
-
-type TrainingMode = 'spec4' | 'lingvist' | 'chat';
+import type { TrainingMode } from './trainingModes';
 
 interface UseUserSelectionResult {
   deleteConfirm: string | null;
@@ -20,6 +19,7 @@ interface UseUserSelectionResult {
   editingUser: string | null;
   focusedIndex: number | null;
   loading: boolean;
+  profilesLoading: boolean;
   nativeLanguage: string;
   newUsername: string;
   targetLanguage: string;
@@ -57,6 +57,7 @@ export const useUserSelection = (
   const [nativeLanguage, setNativeLanguage] = useState('pt');
   const [wordGoalRank, setWordGoalRank] = useState(100);
   const [loading, setLoading] = useState(false);
+  const [profilesLoading, setProfilesLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editUsername, setEditUsername] = useState('');
   const [editTargetLanguage, setEditTargetLanguage] = useState('en');
@@ -68,9 +69,15 @@ export const useUserSelection = (
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
+    setProfilesLoading(true);
     try {
       setErrorMessage(null);
       const usersFromApi = await usersApi.listUsers();
+      setUsers(usersFromApi.map((user) => ({
+        ...user,
+        stats: { mastered_words: 0, accuracy: 0 } satisfies ProfileStats,
+      })));
+      setProfilesLoading(false);
       const usersWithStats = await Promise.all(
         usersFromApi.map(async (user) => {
           try {
@@ -93,6 +100,8 @@ export const useUserSelection = (
     } catch (error) {
       console.error('Error loading users:', error);
       setErrorMessage(getApiErrorMessage(error, 'Failed to load profiles.'));
+    } finally {
+      setProfilesLoading(false);
     }
   }, []);
 
@@ -242,6 +251,7 @@ export const useUserSelection = (
     editingUser,
     focusedIndex,
     loading,
+    profilesLoading,
     nativeLanguage,
     newUsername,
     targetLanguage,

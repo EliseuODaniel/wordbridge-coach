@@ -48,7 +48,7 @@ class LlamaCppLLMProvider(LLMProvider):
     def __init__(
         self,
         base_url: str,
-        model: str = "gemma-4-e4b-it",
+        model: str = "qwen2.5-7b-instruct",
         timeout: int = 60,
         strict: bool = False
     ):

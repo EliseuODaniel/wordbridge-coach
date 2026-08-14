@@ -3,6 +3,19 @@
 Data de início desta nova fase: 2026-03-23
 Atualização mais recente: 2026-08-14
 
+## Fase 10: Interface compacta e baseline local de LLM
+
+Status: implementado; próxima geração de modelo condicionada a avaliação repetível
+
+- [x] unificar identidade visual e navegação de Spec4, Lingvist e Chat Coach
+- [x] reduzir densidade textual com tooltips acessíveis e contexto pedagógico condensado
+- [x] aproveitar melhor desktop e mobile com grids responsivos e painéis laterais
+- [x] corrigir o contrato de structured output para a API atual do `llama.cpp`
+- [x] medir latência, VRAM e qualidade pedagógica com prompts reais da aplicação
+- [x] impedir que o perfil `ai` carregue três modelos simultaneamente em 8 GB de VRAM
+- [x] alinhar a identidade configurada ao Qwen2.5 7B realmente instalado
+- [ ] avaliar Qwen3.5 4B em GGUF confiável antes de qualquer promoção
+
 ## Fase 9: Núcleo adaptativo baseado em evidência
 
 Status: implementado; calibração longitudinal em andamento

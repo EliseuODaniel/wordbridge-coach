@@ -1,4 +1,5 @@
 import type { ContentContext } from '../services/apiCards';
+import InfoTooltip from './InfoTooltip';
 
 
 interface ContentContextBadgesProps {
@@ -17,17 +18,18 @@ const ContentContextBadges = ({ context }: ContentContextBadgesProps) => {
   ].filter((label): label is string => Boolean(label));
 
   return (
-    <div className="flex flex-wrap gap-2" aria-label="Contexto do conteúdo">
+    <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-3 py-2" aria-label="Contexto do conteúdo">
       {labels.map((label) => (
-        <span key={label} className="px-2.5 py-1 bg-gray-800 border border-gray-700 text-gray-400 text-xs rounded">
+        <span key={label} className="status-pill min-h-6 px-2 py-0.5 text-[11px]">
           {label}
         </span>
       ))}
-      {context.license_name && (
-        <span className="px-2.5 py-1 bg-gray-800 border border-gray-700 text-gray-500 text-xs rounded">
-          {context.license_name}
-        </span>
-      )}
+      <span className="ml-auto" />
+      <InfoTooltip label="Proveniência do conteúdo">
+        <strong className="mb-1 block text-white">Conteúdo revisado</strong>
+        <span className="block">Qualidade: {context.quality_status}. Versão: {context.content_version}.</span>
+        {context.license_name && <span className="mt-1 block text-gray-400">Licença: {context.license_name}</span>}
+      </InfoTooltip>
     </div>
   );
 };

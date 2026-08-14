@@ -59,7 +59,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4 backdrop-blur-sm"
       onClick={handleOverlayClick}
       onKeyDown={handleKeyDown}
       role="dialog"
@@ -67,17 +67,17 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       aria-labelledby="dialog-title"
       aria-describedby="dialog-message"
     >
-      <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full shadow-xl">
+      <div className="surface-panel w-full max-w-sm p-6">
         <h2
           id="dialog-title"
-          className="text-lg font-semibold text-gray-100 mb-3"
+          className="mb-3 text-xl font-semibold text-white"
         >
           {title}
         </h2>
 
         <p
           id="dialog-message"
-          className="text-gray-400 mb-6"
+          className="mb-6 text-sm leading-6 text-gray-300"
         >
           {message}
         </p>
@@ -85,7 +85,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
+            className="btn btn-secondary flex-1"
           >
             {cancelText}
           </button>
@@ -93,10 +93,10 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             onClick={onConfirm}
             className={`
-              flex-1 px-4 py-2 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-opacity-50
+              btn flex-1
               ${variant === 'danger'
-                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500'
-                : 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500'
+                ? 'bg-red-600 text-white hover:bg-red-500'
+                : 'btn-primary'
               }
             `}
           >

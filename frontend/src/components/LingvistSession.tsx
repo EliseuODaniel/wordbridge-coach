@@ -1,4 +1,4 @@
-/** Lingvist Mode Study Session Component */
+/** Compact adaptive cloze study session. */
 
 import React from 'react';
 import InlineGapInput from './InlineGapInput';
@@ -9,14 +9,17 @@ import { useLingvistSession } from './useLingvistSession';
 import SpeakingPractice from './SpeakingPractice';
 import CompetencyPanel from './CompetencyPanel';
 import ContentContextBadges from './ContentContextBadges';
+import SessionHeader from './SessionHeader';
+import InfoTooltip from './InfoTooltip';
+import type { TrainingMode } from './trainingModes';
 
-type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
 interface LingvistSessionProps {
   userId?: string;
   onExit?: () => void;
   onModeChange?: (mode: TrainingMode) => void;
 }
+
 
 const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onModeChange }) => {
   const {
@@ -37,291 +40,155 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onMod
   } = useLingvistSession(userId);
 
   return (
-    <div className="min-h-screen bg-gray-900 py-8">
-      <div className="container mx-auto px-4">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="text-center flex-1">
-            <h1 className="text-4xl font-extrabold text-gray-100 mb-2">
-              Lingvist Mode
-            </h1>
-            <p className="text-gray-500 text-sm">
-              Cloze Deletion • Progressive Hints • Auto-submit
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onModeChange?.('spec4')}
-              className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
-            >
-              Switch to Spec4 🎯
-            </button>
-            <button
-              onClick={onExit}
-              className="px-4 py-2 bg-gray-800 text-gray-400 rounded hover:bg-gray-700 transition text-sm"
-              disabled={isPlayingAudio}
-            >
-              Exit
-            </button>
-          </div>
-        </div>
+    <div className="relative min-h-screen">
+      <SessionHeader
+        activeMode="lingvist"
+        title="Cloze adaptativo"
+        description="Produção escrita • pistas progressivas • áudio"
+        onModeChange={onModeChange}
+        onExit={onExit}
+      />
 
-        {/* Exit Button (removed - now in header) */}
-
-        {/* Main Content */}
+      <main className="relative mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
         {currentCard ? (
-          <div className="space-y-6">
-            {/* Micro Progress Bar */}
-            <div className="bg-gray-800 rounded-lg p-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-gray-400 text-sm">Session Progress</span>
-                <span className="text-gray-100 font-semibold">
-                  {currentCard.micro_progress.current} / {currentCard.micro_progress.total}
-                </span>
+          <div className="space-y-4">
+            <section className="surface-card flex flex-wrap items-center gap-3 px-4 py-3" aria-label="Progresso da sessão">
+              <div className="min-w-0 flex-1">
+                <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] text-gray-500">
+                  <span>Progresso da sessão</span>
+                  <strong className="font-semibold tabular-nums text-gray-300">{currentCard.micro_progress.current} / {currentCard.micro_progress.total}</strong>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-teal-300 to-primary-400 transition-all duration-300"
+                    style={{ width: `${(currentCard.micro_progress.current / currentCard.micro_progress.total) * 100}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                  style={{
-                    width: `${(currentCard.micro_progress.current / currentCard.micro_progress.total) * 100}%`
-                  }}
+              <span className="status-pill whitespace-nowrap">{currentCard.micro_progress.new_words} novas</span>
+              <InfoTooltip label="Sobre o progresso">O microciclo equilibra palavras novas e revisões para manter a sessão curta e previsível.</InfoTooltip>
+            </section>
+
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+              <section className="space-y-4">
+                <article className="surface-panel p-4 sm:p-5">
+                  <header className="flex flex-wrap items-center gap-2 border-b border-white/[0.07] pb-3">
+                    <span className="status-pill border-teal-400/20 bg-teal-400/10 text-teal-200">
+                      {currentCard.grammar_tag_pt !== 'UNK' ? currentCard.grammar_tag_pt : 'palavra'}
+                    </span>
+                    {currentCard.is_new && <span className="status-pill border-emerald-400/20 bg-emerald-400/10 text-emerald-200">nova</span>}
+                    <span className="ml-auto text-[11px] text-gray-500">Digite e pressione Enter</span>
+                  </header>
+
+                  <div className="py-7 sm:py-9">
+                    <InlineGapInput
+                      key={currentCard.card_id}
+                      sentence={currentCard.sentence}
+                      gap={currentCard.gap}
+                      correctAnswer={currentCard.correct_answer}
+                      onSubmit={handleSubmit}
+                      onUserEdit={handleUserEdit}
+                      disabled={isSubmitting || isPlayingAudio}
+                      isCorrect={feedback?.correct === true}
+                      isIncorrect={feedback?.correct === false}
+                    />
+                  </div>
+
+                  <footer className="flex flex-wrap items-center gap-2 border-t border-white/[0.07] pt-3">
+                    <p className="min-w-0 flex-1 truncate text-xs italic text-gray-500" title={currentCard.sentence_translation_pt ?? ''}>
+                      {isTranslationAvailable(currentCard.sentence_translation_pt) ? currentCard.sentence_translation_pt : 'Tradução indisponível'}
+                    </p>
+                    <button onClick={handlePlayWordAudio} className="btn btn-secondary min-h-10 px-3 text-xs" disabled={isPlayingAudio}>Ouvir palavra</button>
+                    <button onClick={handlePlaySentenceAudio} className="btn btn-secondary min-h-10 px-3 text-xs" disabled={isPlayingAudio}>Ouvir frase</button>
+                  </footer>
+                </article>
+
+                <HintPanel
+                  correctAnswer={currentCard.correct_answer}
+                  wordTranslationPt={currentCard.word_translation_pt}
+                  sentenceTranslationPt={currentCard.sentence_translation_pt}
+                  hintLevel={hintLevel}
                 />
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {currentCard.micro_progress.new_words} new words
-              </div>
-            </div>
 
-            <LearningContextPanel context={currentCard.learning_context} />
-
-            <CompetencyPanel competency={currentCard.competency} />
-            <ContentContextBadges context={currentCard.content_context} />
-
-            {/* Grammar Tag & Badges */}
-            <div className="flex gap-2 flex-wrap items-center">
-              {currentCard.grammar_tag_pt !== 'UNK' ? (
-                <span className="px-3 py-1 bg-blue-900 text-blue-200 text-sm rounded flex items-center gap-1">
-                  <span>{currentCard.grammar_tag_pt}</span>
-                  <span className="text-xs">↓</span>
-                </span>
-              ) : (
-                <span className="px-3 py-1 bg-gray-700 text-gray-300 text-sm rounded flex items-center gap-1">
-                  <span>palavra</span>
-                  <span className="text-xs">↓</span>
-                </span>
-              )}
-              {currentCard.is_new && (
-                <span className="px-3 py-1 bg-green-900 text-green-200 text-sm rounded">
-                  New
-                </span>
-              )}
-              {currentCard.sentence_source && (
-                <span className="px-3 py-1 bg-gray-700 text-gray-300 text-sm rounded">
-                  {currentCard.sentence_source}
-                </span>
-              )}
-            </div>
-
-            {/* Card Display with Inline Input */}
-            <div className="bg-gray-800 rounded-lg p-8">
-              {/* Inline Gap Input */}
-              <InlineGapInput
-                key={currentCard.card_id}
-                sentence={currentCard.sentence}
-                gap={currentCard.gap}
-                correctAnswer={currentCard.correct_answer}
-                onSubmit={handleSubmit}
-                onUserEdit={handleUserEdit}
-                disabled={isSubmitting || isPlayingAudio}
-                isCorrect={feedback?.correct === true}
-                isIncorrect={feedback?.correct === false}
-              />
-
-              {/* Source */}
-              {currentCard.sentence_source && (
-                <div className="mt-6 text-xs text-gray-500">
-                  Source: {currentCard.sentence_source}
-                </div>
-              )}
-
-              {/* Audio Buttons (Manual playback) */}
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={handlePlayWordAudio}
-                  className="px-4 py-2 bg-blue-900 text-blue-200 rounded hover:bg-blue-800 transition text-sm flex items-center gap-2"
-                  disabled={isPlayingAudio}
-                >
-                  <span>🔊</span>
-                  <span>Play Word</span>
-                </button>
-                <button
-                  onClick={handlePlaySentenceAudio}
-                  className="px-4 py-2 bg-purple-900 text-purple-200 rounded hover:bg-purple-800 transition text-sm flex items-center gap-2"
-                  disabled={isPlayingAudio}
-                >
-                  <span>🔊</span>
-                  <span>Play Sentence</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Hint Panel */}
-            <HintPanel
-              correctAnswer={currentCard.correct_answer}
-              wordTranslationPt={currentCard.word_translation_pt}
-              sentenceTranslationPt={currentCard.sentence_translation_pt}
-              hintLevel={hintLevel}
-            />
-
-            <SpeakingPractice
-              key={currentCard.card_id}
-              expectedText={currentCard.sentence.replace('___', currentCard.correct_answer)}
-            />
-
-            {/* Translations Panel (Always Visible) */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">🌐</span>
-                <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
-                  Traduções
-                </h3>
-              </div>
-              <div className="space-y-3">
-                {/* Word Translation */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Palavra</div>
-                  <div className="text-base text-gray-100">
-                    {isTranslationAvailable(currentCard.word_translation_pt) ? (
-                      currentCard.word_translation_pt
-                    ) : (
-                      <span className="text-gray-500 italic">Tradução indisponível</span>
-                    )}
-                  </div>
-                </div>
-                {/* Sentence Translation */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Frase</div>
-                  <div className="text-base text-gray-100">
-                    {isTranslationAvailable(currentCard.sentence_translation_pt) ? (
-                      currentCard.sentence_translation_pt
-                    ) : (
-                      <span className="text-gray-500 italic">Tradução indisponível</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Feedback Message */}
-            {feedback && (
-              <div className={`bg-gray-800 rounded-lg p-6 ${
-                feedback.correct ? 'border-l-4 border-green-500' : 'border-l-4 border-red-500'
-              }`}>
-                <div className="flex items-center gap-3">
-                  {feedback.correct ? (
-                    <>
-                      <span className="text-3xl">✅</span>
-                      <div>
-                        <div className="text-green-400 font-semibold text-lg">Correct!</div>
-                        {isPlayingAudio && (
-                          <div className="text-gray-400 text-sm">Playing audio...</div>
-                        )}
+                {feedback && (
+                  <div className={`flex items-center gap-3 rounded-2xl border p-3 ${feedback.correct ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-red-400/25 bg-red-400/10'}`}>
+                    <span className={`inline-flex size-9 shrink-0 items-center justify-center rounded-xl font-bold ${feedback.correct ? 'bg-emerald-400/15 text-emerald-200' : 'bg-red-400/15 text-red-200'}`}>
+                      {feedback.correct ? '✓' : '×'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-semibold ${feedback.correct ? 'text-emerald-100' : 'text-red-100'}`}>
+                        {feedback.correct ? 'Correto!' : 'Tente novamente'}
                       </div>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-3xl">❌</span>
-                      <div>
-                        <div className="text-red-400 font-semibold text-lg">Try again</div>
-                        <div className="text-gray-400 text-sm">
-                          Attempts: {attempts} • Hint level: {hintLevel}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {errorMessage && (
-              <div className="bg-gray-800 rounded-lg p-6 border-l-4 border-yellow-500">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">⚠️</span>
-                  <div>
-                    <div className="text-yellow-400 font-semibold text-lg">Error</div>
-                    <div className="text-gray-400 text-sm">{errorMessage}</div>
+                      {!feedback.correct && <div className="text-xs text-gray-400">Tentativa {attempts} · nível de pista {hintLevel}</div>}
+                    </div>
+                    {isPlayingAudio && <span className="status-pill">reproduzindo áudio</span>}
                   </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* Audio Error Message (non-blocking) */}
-            {audioError && (
-              <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-orange-500">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">🔇</span>
-                  <div>
-                    <div className="text-orange-400 font-semibold text-sm">Audio Error</div>
-                    <div className="text-gray-400 text-xs">{audioError}</div>
+                {errorMessage && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">
+                    <span className="font-bold">!</span><span className="min-w-0 flex-1">{errorMessage}</span>
                   </div>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* Debug Info (hidden in production) */}
-            {import.meta.env.DEV && (
-              <div className="bg-gray-800 rounded-lg p-4 text-xs text-gray-500">
-                <p>correct_answer: <span className="text-gray-300">{currentCard.correct_answer}</span></p>
-                <p>word: <span className="text-gray-300">{currentCard.word}</span></p>
-                <p>hintLevel: <span className="text-gray-300">{hintLevel}</span></p>
-                <p>attempts: <span className="text-gray-300">{attempts}</span></p>
-                <p>isLocked: <span className="text-gray-300">{isInputLocked ? 'yes' : 'no'}</span></p>
-                <p>isPlayingAudio: <span className="text-gray-300">{isPlayingAudio ? 'yes' : 'no'}</span></p>
-              </div>
-            )}
+                {audioError && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-orange-400/20 bg-orange-400/10 p-3 text-xs text-orange-100">
+                    Áudio indisponível nesta tentativa.
+                    <InfoTooltip label="Detalhes do erro de áudio">{audioError}</InfoTooltip>
+                  </div>
+                )}
+
+                <SpeakingPractice
+                  key={currentCard.card_id}
+                  expectedText={currentCard.sentence.replace('___', currentCard.correct_answer)}
+                />
+              </section>
+
+              <aside className="space-y-3 xl:sticky xl:top-24" aria-label="Contexto da atividade">
+                <LearningContextPanel context={currentCard.learning_context} />
+                <CompetencyPanel competency={currentCard.competency} />
+                <ContentContextBadges context={currentCard.content_context} />
+
+                <section className="surface-soft p-3" aria-label="Traduções">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Traduções</h2>
+                    <InfoTooltip label="Sobre as traduções">Use a tradução como apoio de significado, sem tentar reproduzir a estrutura palavra por palavra.</InfoTooltip>
+                  </div>
+                  <dl className="space-y-2 text-sm">
+                    <div className="grid grid-cols-[54px_1fr] gap-2"><dt className="text-xs text-gray-500">Palavra</dt><dd className="truncate text-gray-200">{isTranslationAvailable(currentCard.word_translation_pt) ? currentCard.word_translation_pt : 'Indisponível'}</dd></div>
+                    <div className="grid grid-cols-[54px_1fr] gap-2"><dt className="text-xs text-gray-500">Frase</dt><dd className="line-clamp-2 text-gray-300">{isTranslationAvailable(currentCard.sentence_translation_pt) ? currentCard.sentence_translation_pt : 'Indisponível'}</dd></div>
+                  </dl>
+                </section>
+              </aside>
+
+              {import.meta.env.DEV && (
+                <div className="sr-only" aria-hidden="true">
+                  correct_answer: {currentCard.correct_answer}; word: {currentCard.word}; hintLevel: {hintLevel}; attempts: {attempts}; isLocked: {isInputLocked ? 'yes' : 'no'}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
-          /* Loading State */
-          <div className="text-center py-16">
+          <div className="surface-panel py-20 text-center">
             {errorMessage ? (
               <>
-                {/* Error State */}
-                <div className="text-red-400 mb-4">
-                  <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h8m-4 8h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-100 mb-2">
-                  Failed to Load Card
-                </h3>
-                <p className="text-gray-400 mb-6 max-w-md mx-auto">
-                  {errorMessage}
-                </p>
-                <button
-                  onClick={() => {
-                    handleRetryLoad();
-                  }}
-                  className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition font-semibold"
-                >
-                  🔄 Retry
-                </button>
+                <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-red-400/10 text-xl font-bold text-red-200">!</div>
+                <h2 className="text-lg font-semibold text-white">Não foi possível carregar a atividade</h2>
+                <p className="mx-auto mt-2 max-w-md text-sm text-gray-400">{errorMessage}</p>
+                <button onClick={handleRetryLoad} className="btn btn-primary mt-5">Tentar novamente</button>
               </>
             ) : (
               <>
-                {/* Loading State */}
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                <p className="text-gray-400">
-                  Loading card...
-                </p>
+                <div className="mx-auto mb-5 size-11 animate-spin rounded-full border-2 border-white/10 border-t-primary-400" />
+                <p className="text-sm text-gray-400">Preparando a próxima frase…</p>
               </>
             )}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };
+
 
 export default LingvistSession;

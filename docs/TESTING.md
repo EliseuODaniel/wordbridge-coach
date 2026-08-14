@@ -290,6 +290,17 @@ cd api
 TMPDIR=/home/edann/projects/wordbridge-coach/.tmp_pytest PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test .venv/bin/python -m pytest tests/test_config_runtime.py -q
 ```
 
+## Avaliação do LLM local
+
+O benchmark deve ser executado com o serviço `llm` saudável e o provider real disponível:
+
+```bash
+cd api
+PYTHONPATH=. .venv/bin/python scripts/benchmark_local_llm.py --summary-only
+```
+
+Cada linha informa latência, tokens por segundo, validade do contrato estruturado e checks pedagógicos do caso. O processo retorna código diferente de zero quando qualquer contrato ou check falha. Para comparar outro servidor sem alterar o principal, use `--base-url http://127.0.0.1:PORTA/v1` e repita a rodada pelo menos três vezes. O protocolo e o baseline medido estão em `docs/LOCAL_LLM_SETUP.md`.
+
 ## CI
 
 Existe um baseline inicial de quality gate em `.github/workflows/quality.yml` cobrindo:

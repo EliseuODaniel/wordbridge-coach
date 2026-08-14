@@ -71,12 +71,12 @@ test.describe('Lingvist Mode - E2E', () => {
     // TEST 2: Submit wrong answer - should NOT advance
     await inlineInput.fill('wronganswer123');
     await inlineInput.press('Enter');
-    await page.waitForSelector('text=Try again', { timeout: 3000 });
-    console.log('✅ Wrong answer: "Try again" shown');
+    await page.waitForSelector('text=Tente novamente', { timeout: 3000 });
+    console.log('✅ Wrong answer feedback shown');
 
     // Verify still on same card (card_id in debug hasn't changed)
     const afterErrorText = await page.textContent('body');
-    expect(afterErrorText).toContain('Try again');
+    expect(afterErrorText).toContain('Tente novamente');
     console.log('✅ Stayed on same card after error');
 
     // TEST 2.1: Verify input remains ENABLED after wrong answer (bug fix check)
@@ -92,7 +92,7 @@ test.describe('Lingvist Mode - E2E', () => {
 
     // TEST 2.3: Verify pressing Enter again triggers another submission
     await inlineInput.press('Enter');
-    await page.waitForSelector('text=Try again', { timeout: 3000 });
+    await page.waitForSelector('text=Tente novamente', { timeout: 3000 });
     console.log('✅ Can submit again after wrong answer');
 
     // TEST 2.4: Verify no "Check" button appears (Lingvist uses auto-submit)
@@ -108,26 +108,26 @@ test.describe('Lingvist Mode - E2E', () => {
     }
 
     // TEST 2.6: Verify complete answer hint appears at level 6
-    const answerHint = page.locator('text=Answer').first();
+    const answerHint = page.getByText('Resposta', { exact: true }).first();
     const isAnswerVisible = await answerHint.isVisible().catch(() => false);
     expect(isAnswerVisible).toBeTruthy();
     console.log('✅ Complete answer hint visible after 6 errors');
 
     // TEST 2.5: NEW - Verify hint progression after errors
     // After 2 errors, should show "Length" and "First letter" hints
-    const hintPanel = page.locator('text=Hints').first();
+    const hintPanel = page.getByText('Pistas', { exact: true }).first();
     const isHintVisible = await hintPanel.isVisible().catch(() => false);
     expect(isHintVisible).toBeTruthy();
     console.log('✅ Hint panel visible after errors');
 
     // Check if Length hint is visible
-    const lengthHint = page.locator('text=Length').first();
+    const lengthHint = page.getByText('Tamanho', { exact: true }).first();
     const isLengthVisible = await lengthHint.isVisible().catch(() => false);
     expect(isLengthVisible).toBeTruthy();
     console.log('✅ Length hint visible after errors');
 
     // Check if First letter hint is visible (should appear at level 2)
-    const firstLetterHint = page.locator('text=First letter').first();
+    const firstLetterHint = page.getByText('Primeira letra', { exact: true }).first();
     const isFirstLetterVisible = await firstLetterHint.isVisible().catch(() => false);
     expect(isFirstLetterVisible).toBeTruthy();
     console.log('✅ First letter hint visible after 2nd error');
@@ -143,7 +143,7 @@ test.describe('Lingvist Mode - E2E', () => {
       await inlineInput.press('Enter'); // fallback
 
       // Verify "Correct!" feedback
-      await page.waitForSelector('text=Correct!', { timeout: 2000 });
+      await page.waitForSelector('text=Correto!', { timeout: 2000 });
       console.log('✅ Correct feedback shown');
 
       // Verify input is locked

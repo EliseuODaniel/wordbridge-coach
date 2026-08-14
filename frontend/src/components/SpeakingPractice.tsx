@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import InfoTooltip from './InfoTooltip';
 
 
 interface SpeakingPracticeProps {
@@ -78,39 +79,33 @@ const SpeakingPractice = ({ expectedText }: SpeakingPracticeProps) => {
     if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
   }, []);
 
-  const buttonClass = 'px-4 py-2 rounded text-sm font-semibold transition ' +
+  const buttonClass = 'btn min-h-10 px-3 text-xs ' +
     (isRecording
-      ? 'bg-red-700 text-white hover:bg-red-600'
-      : 'bg-teal-800 text-teal-100 hover:bg-teal-700');
+      ? 'bg-red-600 text-white hover:bg-red-500'
+      : 'border border-teal-400/20 bg-teal-400/10 text-teal-100 hover:bg-teal-400/20');
 
   if (!isExpanded) {
     return (
-      <div className="bg-gray-800 rounded-lg p-5 border border-teal-900 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-teal-300">Prática de fala privada</div>
-          <div className="text-xs text-gray-400 mt-1">
-            Abra depois de concluir o cloze; a frase completa revela a resposta.
-          </div>
-        </div>
+      <div className="surface-soft flex flex-wrap items-center gap-3 p-3">
+        <div className="min-w-0 flex-1 text-sm font-semibold text-teal-200">Prática de fala privada</div>
+        <InfoTooltip label="Sobre a prática de fala">Abra depois de concluir o cloze. A frase completa revela a resposta; o áudio permanece somente neste navegador.</InfoTooltip>
         <button
           type="button"
           onClick={() => setIsExpanded(true)}
-          className="px-4 py-2 rounded text-sm font-semibold transition bg-teal-900 text-teal-100 hover:bg-teal-800"
+          className="btn btn-secondary min-h-10 px-3 text-xs"
         >
-          Revelar frase e praticar
+          Praticar fala
         </button>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-5 border border-teal-900">
+    <div className="surface-soft p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-teal-300">Prática de fala privada</div>
-          <div className="text-xs text-gray-400 mt-1">
-            Leia “{expectedText}”. O áudio fica somente neste navegador e não é enviado nem salvo.
-          </div>
+          <div className="text-sm font-semibold text-teal-200">Leia em voz alta</div>
+          <div className="mt-1 line-clamp-2 text-xs text-gray-400">“{expectedText}”</div>
         </div>
         <button type="button" onClick={isRecording ? stopRecording : startRecording} className={buttonClass}>
           {isRecording ? 'Parar gravação' : 'Gravar leitura'}
@@ -119,9 +114,7 @@ const SpeakingPractice = ({ expectedText }: SpeakingPracticeProps) => {
       {recordingUrl && (
         <div className="mt-4">
           <audio controls src={recordingUrl} className="w-full" aria-label="Sua gravação de leitura" />
-          <div className="text-xs text-gray-400 mt-2">
-            Compare sua gravação com o áudio-modelo da frase e tente novamente.
-          </div>
+          <div className="mt-2 text-xs text-gray-500">Compare com o áudio-modelo e tente novamente.</div>
         </div>
       )}
       {error && <div className="mt-3 text-sm text-amber-300">{error}</div>}

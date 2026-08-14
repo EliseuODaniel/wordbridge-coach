@@ -1,14 +1,15 @@
 #!/bin/bash
 # Download GGUF model for Chat Coach LLM with multi-file support
 #
-# Usage: ./scripts/download_model.sh [model_id]
-#   model_id: Optional. Defaults to ggml-org/gemma-4-E4B-it-GGUF
+# Usage: ./scripts/download_model.sh [model_id] [model_dir]
+#   model_id: Optional. Defaults to Qwen/Qwen2.5-7B-Instruct-GGUF
+#   model_dir: Optional. Defaults to WORDBRIDGE_MODELS_PATH or llm_models
 
 set -euo pipefail
 
 # Configuration
-MODEL_ID="${1:-ggml-org/gemma-4-E4B-it-GGUF}"
-MODEL_DIR="llm_models"
+MODEL_ID="${1:-Qwen/Qwen2.5-7B-Instruct-GGUF}"
+MODEL_DIR="${2:-${WORDBRIDGE_MODELS_PATH:-llm_models}}"
 MODEL_LINK="${MODEL_DIR}/model.gguf"
 PREFERRED_QUANT="q4_k_m"
 FALLBACK_QUANT="q4_0"
@@ -57,7 +58,7 @@ echo "$MODEL_FILES" | nl
 SELECTED_PATTERN=""
 for quant in "$PREFERRED_QUANT" "$FALLBACK_QUANT"; do
     # Check if all parts of this quantization exist
-    PATTERN=$(echo "$MODEL_FILES" | grep -i "${quant}\\.gguf$" | head -1 || true)
+    PATTERN=$(echo "$MODEL_FILES" | grep -Ei "${quant}(-00001-of-[0-9]+)?\\.gguf$" | head -1 || true)
 
     if [ -n "$PATTERN" ]; then
         # Extract base pattern (e.g., "qwen2.5-7b-instruct-q4_k_m")

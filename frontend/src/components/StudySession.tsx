@@ -10,15 +10,16 @@ import LearningContextPanel from './LearningContextPanel';
 import CompetencyPanel from './CompetencyPanel';
 import ContentContextBadges from './ContentContextBadges';
 import { useStudySession } from './useStudySession';
-
-type TrainingMode = 'spec4' | 'lingvist' | 'chat';
+import SessionHeader from './SessionHeader';
+import type { TrainingMode } from './trainingModes';
 
 interface StudySessionProps {
   userId?: string;
   onModeChange?: (mode: TrainingMode) => void;
+  onExit?: () => void;
 }
 
-const StudySession: React.FC<StudySessionProps> = ({ userId, onModeChange }) => {
+const StudySession: React.FC<StudySessionProps> = ({ userId, onModeChange, onExit }) => {
   const {
     attempts,
     currentCard,
@@ -34,31 +35,16 @@ const StudySession: React.FC<StudySessionProps> = ({ userId, onModeChange }) => 
   } = useStudySession(userId);
 
   
-return (
-    <div className="min-h-screen bg-gray-900 py-8">
-      <div className="container mx-auto px-4" data-testid="study-container">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="text-center flex-1">
-            <h1 className="text-4xl font-extrabold text-gray-100 mb-2">
-              WordBridge Coach
-            </h1>
-            <p className="text-gray-500 text-sm">
-              Spec4 Mode • Multiple Choice Training
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => onModeChange?.('lingvist')}
-              className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition text-sm"
-            >
-              Switch to Lingvist ✍️
-            </button>
-          </div>
-        </div>
-
-        {/* Session Counter */}
+  return (
+    <div className="relative min-h-screen">
+      <SessionHeader
+        activeMode="spec4"
+        title="Revisão guiada"
+        description="Recuperação ativa • repetição espaçada • contexto"
+        onModeChange={onModeChange}
+        onExit={onExit}
+      />
+      <main className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8" data-testid="study-container">
         {stats && settings && (
           <SessionCounter
             stats={stats}
@@ -66,68 +52,56 @@ return (
           />
         )}
 
-        {/* Main Content */}
         {currentCard ? (
-          <div className="space-y-8">
-            <LearningContextPanel context={currentCard.learning_context} />
-            <CompetencyPanel competency={currentCard.competency} />
-            <ContentContextBadges context={currentCard.content_context} />
-
-            {/* Card Display */}
-            <CardDisplay
-              card={currentCard}
-              onPlayWordAudio={handlePlayWordAudio}
-              onPlaySentenceAudio={handlePlaySentenceAudio}
-              loadingAudio={loadingAudio}
-            />
-
-            {/* Answer Input and Feedback */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Answer Input - Always visible */}
-              <AnswerInput
-                key={`${currentCard.card_id}:${feedback?.correct ? 'resolved' : 'active'}`}
-                onSubmit={handleSubmit}
-                isSubmitting={isSubmitting}
-                placeholder="Type the missing word..."
-                feedback={feedback ? {
-                  correct: feedback.correct,
-                  correctAnswer: feedback.correct_answer
-                } : null}
-                cardId={currentCard?.card_id}
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="space-y-5">
+              <CardDisplay
+                card={currentCard}
+                onPlayWordAudio={handlePlayWordAudio}
+                onPlaySentenceAudio={handlePlaySentenceAudio}
+                loadingAudio={loadingAudio}
               />
-
-              {/* Feedback Message - Visible when available */}
+              <div className="surface-card p-4 sm:p-5">
+                <p className="mb-3 text-center text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Complete a lacuna</p>
+                <AnswerInput
+                  key={`${currentCard.card_id}:${feedback?.correct ? 'resolved' : 'active'}`}
+                  onSubmit={handleSubmit}
+                  isSubmitting={isSubmitting}
+                  placeholder="Digite a palavra que falta"
+                  feedback={feedback ? {
+                    correct: feedback.correct,
+                    correctAnswer: feedback.correct_answer
+                  } : null}
+                  cardId={currentCard?.card_id}
+                />
+              </div>
               {feedback && (
                 <FeedbackMessage
-                  feedback={{
-                    correct: feedback.correct,
-                    correctAnswer: feedback.correct_answer,
-                    sentenceFull: feedback.sentence_full,
-                    quality: feedback.quality,
-                    nextReview: feedback.next_review_at,
-                  }}
+                  feedback={{ correct: feedback.correct, correctAnswer: feedback.correct_answer, sentenceFull: feedback.sentence_full, quality: feedback.quality, nextReview: feedback.next_review_at }}
                   hint={currentCard.grammar_hint}
                   attempts={attempts}
                 />
               )}
-            </div>
+            </section>
+
+            <aside className="space-y-4 xl:sticky xl:top-28" aria-label="Contexto pedagógico">
+              <LearningContextPanel context={currentCard.learning_context} />
+              <CompetencyPanel competency={currentCard.competency} />
+              <ContentContextBadges context={currentCard.content_context} />
+            </aside>
           </div>
         ) : (
-          /* Loading State */
-          <div className="text-center py-16">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-400">
-              {isSubmitting ? 'Loading your next card...' : 'No cards available. Please try refreshing.'}
+          <div className="surface-panel py-20 text-center">
+            <div className="mx-auto mb-5 size-11 animate-spin rounded-full border-2 border-white/10 border-t-primary-400" />
+            <p className="text-gray-300">
+              {isSubmitting ? 'Preparando a próxima atividade…' : 'Nenhuma atividade disponível agora.'}
             </p>
             {isSubmitting && (
-              <p className="text-gray-500 text-sm mt-2">
-                Checking with server...
-              </p>
+              <p className="mt-2 text-sm text-gray-500">Consultando seu progresso…</p>
             )}
           </div>
         )}
 
-        {/* Insights Section - Added below the main practice area */}
         <div data-testid="insights-container">
           <InsightsSection
             userId={userId!}
@@ -137,11 +111,10 @@ return (
           />
         </div>
 
-        {/* Keyboard Shortcuts Help */}
-        <div className="text-center mt-8 text-sm text-gray-400">
-          <p>Press <kbd className="px-2 py-1 bg-gray-700 text-gray-100 rounded">Enter</kbd> to submit answer</p>
+        <div className="mt-8 text-center text-xs text-gray-500">
+          <p>Pressione <kbd className="mx-1 rounded-md border border-white/10 bg-white/[0.05] px-2 py-1 font-mono text-gray-300">Enter</kbd> para conferir</p>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

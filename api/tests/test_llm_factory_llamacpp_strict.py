@@ -83,7 +83,7 @@ def test_factory_llamacpp_default_model():
 
         # Should use default model
         assert isinstance(provider, LlamaCppLLMProvider)
-        assert provider.model == "gemma-4-e4b-it"
+        assert provider.model == "qwen2.5-7b-instruct"
 
 
 def test_factory_llamacpp_strict_false():

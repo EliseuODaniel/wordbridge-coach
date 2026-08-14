@@ -7,9 +7,11 @@ test.describe('User Profile Management', () => {
 
   test('displays profile selection screen', async ({ page }) => {
     // Check main elements using data-testid when available
-    await expect(page.locator('h1')).toContainText('WordBridge Coach');
-    await expect(page.locator('text=Bridge cards, cloze practice and chat coaching in one local trainer')).toBeVisible();
-    await expect(page.locator('h2')).toContainText('Choose Your Profile');
+    await expect(page.getByText('WordBridge', { exact: true })).toBeVisible();
+    await expect(page.getByText('language coach', { exact: true })).toBeVisible();
+    await expect(page.locator('h1')).toContainText('Faça cada palavra encontrar o seu lugar.');
+    await expect(page.getByText('Vocabulário, contexto e conversação em uma experiência local')).toBeVisible();
+    await expect(page.locator('h2')).toContainText('Escolha seu perfil');
 
     // Check that profile creation form is visible
     await expect(page.locator('[data-testid="profile-create-name"]')).toBeVisible();
@@ -25,7 +27,7 @@ test.describe('User Profile Management', () => {
     await page.click('[data-testid="profile-goal-100"]');
 
     // Ensure target language is English (default)
-    await expect(page.locator('text=I want to learn:')).toBeVisible();
+    await expect(page.getByText('Idioma que quero aprender')).toBeVisible();
     await expect(page.locator('[data-testid="profile-target-en"]')).toBeVisible();
 
     // Submit form
@@ -96,15 +98,15 @@ test.describe('User Profile Management', () => {
     const description = page.locator('[data-testid="profile-goal-description"]');
 
     await expect(goal100).toHaveAttribute('aria-pressed', 'true');
-    await expect(description).toContainText('First high-frequency vocabulary target');
+    await expect(description).toContainText('Primeiro marco com palavras de alta frequência');
 
     await goal500.click();
     await expect(goal500).toHaveAttribute('aria-pressed', 'true');
-    await expect(description).toContainText('Broader high-frequency vocabulary target');
+    await expect(description).toContainText('Base prática para situações cotidianas');
 
     await goal1500.click();
     await expect(goal1500).toHaveAttribute('aria-pressed', 'true');
-    await expect(description).toContainText('Everyday vocabulary expansion');
+    await expect(description).toContainText('Expansão do vocabulário de uso diário');
   });
 
   test('native language dropdown works', async ({ page }) => {
@@ -127,7 +129,7 @@ test.describe('User Profile Management', () => {
     await page.waitForTimeout(1000);
 
     // Look for existing profiles section
-    const existingProfiles = page.locator('text=Select an existing profile:');
+    const existingProfiles = page.getByText('Continuar estudando');
 
     // Check if profiles section is displayed
     if (await existingProfiles.isVisible()) {
@@ -224,8 +226,8 @@ test.describe('User Profile Management', () => {
     await expect(page.locator('[data-testid="profile-create-name"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-create-start"]')).toBeVisible();
 
-    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('First high-frequency vocabulary target');
+    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Primeiro marco com palavras de alta frequência');
     await page.click('[data-testid="profile-goal-5000"]');
-    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Extended vocabulary target');
+    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Vocabulário avançado e mais expressivo');
   });
 });

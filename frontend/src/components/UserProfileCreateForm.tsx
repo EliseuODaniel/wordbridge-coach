@@ -28,14 +28,16 @@ const UserProfileCreateForm: React.FC<UserProfileCreateFormProps> = ({
   onWordGoalRankChange,
 }) => {
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-5">
       <div>
+        <label htmlFor="profile-name" className="mb-2 block text-sm font-medium text-gray-300">Como devemos chamar você?</label>
         <input
+          id="profile-name"
           type="text"
           value={newUsername}
           onChange={(event) => onUsernameChange(event.target.value)}
-          placeholder="Enter your name"
-          className="w-full px-4 py-3 bg-gray-700 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 placeholder-gray-500"
+          placeholder="Seu nome ou apelido"
+          className="input w-full"
           disabled={loading}
           autoComplete="name"
           data-testid="profile-create-name"
@@ -43,25 +45,25 @@ const UserProfileCreateForm: React.FC<UserProfileCreateFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-400 mb-2">
-          I want to learn:
+        <label className="mb-2 block text-sm font-medium text-gray-300">
+          Idioma que quero aprender
         </label>
-        <div className="flex gap-2 bg-gray-700 rounded-lg p-1">
+        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-gray-950/35 p-1.5">
           {TARGET_LANGUAGES.map((lang) => (
             <button
               key={lang.code}
               type="button"
               onClick={() => onTargetLanguageChange(lang.code)}
               className={`
-                flex-1 px-3 py-2 rounded-md font-medium transition-all duration-200 text-sm
+                min-h-11 rounded-xl px-3 py-2 font-semibold transition duration-200 text-sm
                 ${targetLanguage === lang.code
-                  ? 'bg-primary-600 text-white shadow-sm'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-600'
+                  ? 'bg-primary-500 text-white shadow-glow'
+                  : 'text-gray-400 hover:bg-white/[0.06] hover:text-white'
                 }
               `}
               data-testid={`profile-target-${lang.code}`}
             >
-              <span className="mr-2">{lang.flag}</span>
+              <span className="mr-2 rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] tracking-wider">{lang.flag}</span>
               {lang.name}
             </button>
           ))}
@@ -69,13 +71,14 @@ const UserProfileCreateForm: React.FC<UserProfileCreateFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-400 mb-2">
-          My native language:
+        <label htmlFor="profile-native-language" className="mb-2 block text-sm font-medium text-gray-300">
+          Meu idioma nativo
         </label>
         <select
+          id="profile-native-language"
           value={nativeLanguage}
           onChange={(event) => onNativeLanguageChange(event.target.value)}
-          className="w-full px-4 py-2 bg-gray-700 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 border border-gray-600"
+          className="input w-full appearance-none"
           disabled={loading}
           data-testid="profile-native-lang"
         >
@@ -88,20 +91,20 @@ const UserProfileCreateForm: React.FC<UserProfileCreateFormProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-400 mb-2">
-          My vocabulary goal:
+        <label className="mb-2 block text-sm font-medium text-gray-300">
+          Meta inicial de vocabulário
         </label>
-        <div className="bg-gray-700 rounded-lg p-3 border border-gray-600" data-testid="profile-goal-options">
-          <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-white/[0.07] bg-gray-950/35 p-3" data-testid="profile-goal-options">
+          <div className="grid grid-cols-3 gap-2">
             {VOCABULARY_GOALS.map((goal) => (
               <button
                 key={goal.rank}
                 type="button"
                 onClick={() => onWordGoalRankChange(goal.rank)}
-                className={`px-3 py-2 text-sm rounded transition-colors ${
+                className={`min-h-10 rounded-xl px-2 py-2 text-sm font-semibold transition ${
                   wordGoalRank === goal.rank
-                    ? 'bg-blue-600 text-white font-medium'
-                    : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                    ? 'bg-primary-500 text-white shadow-glow'
+                    : 'bg-white/[0.045] text-gray-400 hover:bg-white/[0.08] hover:text-gray-200'
                 }`}
                 disabled={loading}
                 aria-pressed={wordGoalRank === goal.rank}
@@ -111,7 +114,7 @@ const UserProfileCreateForm: React.FC<UserProfileCreateFormProps> = ({
               </button>
             ))}
           </div>
-          <div className="mt-2 text-xs text-gray-400 text-center" data-testid="profile-goal-description">
+          <div className="mt-3 min-h-5 text-center text-xs text-gray-400" data-testid="profile-goal-description">
             {VOCABULARY_GOALS.find((goal) => goal.rank === wordGoalRank)?.description}
           </div>
         </div>
@@ -120,16 +123,16 @@ const UserProfileCreateForm: React.FC<UserProfileCreateFormProps> = ({
       <button
         type="submit"
         disabled={!newUsername.trim() || loading}
-        className="w-full px-4 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+        className="btn btn-primary w-full"
         data-testid="profile-create-start"
       >
         {loading ? (
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-            Creating Profile...
+            Criando perfil...
           </div>
         ) : (
-          'Create & Start Learning'
+          'Criar perfil e começar'
         )}
       </button>
     </form>

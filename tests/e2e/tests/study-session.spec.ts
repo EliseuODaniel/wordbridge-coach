@@ -291,9 +291,8 @@ test.describe('Study Session (Spec4)', () => {
     );
 
     // Either should have dark mode styling
-    const isDark = bodyBg.includes('rgb(17, 24, 39)') || // gray-900
-                  bodyBg.includes('rgb(31, 41, 55)') || // gray-800
-                  hasDarkModeClass;
+    const rgb = bodyBg.match(/\d+/g)?.slice(0, 3).map(Number) ?? [];
+    const isDark = (rgb.length === 3 && Math.max(...rgb) < 80) || hasDarkModeClass;
 
     expect(isDark).toBeTruthy();
   });

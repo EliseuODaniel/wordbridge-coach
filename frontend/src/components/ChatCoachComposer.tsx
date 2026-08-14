@@ -1,6 +1,7 @@
 import React from 'react';
 
 import ScoreBar from './ScoreBar';
+import InfoTooltip from './InfoTooltip';
 
 interface ChatCoachComposerProps {
   barScore: number;
@@ -24,9 +25,9 @@ const ChatCoachComposer: React.FC<ChatCoachComposerProps> = ({
   onSendMessage,
 }) => {
   return (
-    <div className="border-t border-gray-700 bg-gray-800 px-4 py-4 flex-shrink-0">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-3">
+    <div className="flex-shrink-0 border-t border-white/[0.07] bg-gray-900/90 px-3 py-3 backdrop-blur-xl sm:px-4">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-2">
           <ScoreBar score={barScore} size="md" />
         </div>
 
@@ -36,9 +37,9 @@ const ChatCoachComposer: React.FC<ChatCoachComposerProps> = ({
             value={draftText}
             onChange={onDraftChange}
             onKeyDown={onKeyDown}
-            placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
-            className="w-full px-4 py-3 bg-gray-700 text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-            rows={3}
+            placeholder="Escreva sua mensagem…"
+            className="input w-full resize-none pb-11 pr-24 text-sm leading-6"
+            rows={2}
             autoFocus
           />
 
@@ -57,15 +58,15 @@ const ChatCoachComposer: React.FC<ChatCoachComposerProps> = ({
           <button
             onClick={onSendMessage}
             disabled={!draftText.trim() || isStreaming}
-            className="absolute bottom-3 right-3 px-4 py-1.5 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="btn btn-primary absolute bottom-2.5 right-2.5 min-h-9 px-4 text-xs"
           >
-            Send
+            Enviar
           </button>
         </div>
 
-        <p className="text-xs text-gray-500 mt-2">
-          💡 Type to see real-time feedback • Press Enter to send • Tab accepts ghost suggestions
-        </p>
+        <div className="mt-1.5 flex justify-end">
+          <InfoTooltip label="Atalhos do chat">Enter envia · Shift+Enter cria uma linha · Tab aceita a sugestão fantasma.</InfoTooltip>
+        </div>
       </div>
     </div>
   );

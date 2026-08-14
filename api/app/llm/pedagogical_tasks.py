@@ -25,6 +25,7 @@ class PedagogicalIssue(BaseModel):
     )
     suggestions: list[str] = Field(
         default_factory=list,
+        max_length=3,
         description="Up to three short suggested fixes or better options.",
     )
 
@@ -34,12 +35,12 @@ class DraftEvaluationPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    grammar_score: float = Field(..., ge=0, le=100)
-    spelling_score: float = Field(..., ge=0, le=100)
-    naturalness_score: float = Field(..., ge=0, le=100)
-    lesson_alignment_score: float = Field(..., ge=0, le=100)
-    top_issues: list[PedagogicalIssue] = Field(default_factory=list)
-    suggested_next_words: list[str] = Field(default_factory=list)
+    grammar_score: float = Field(..., ge=0, le=100, description="Grammar accuracy from 0 to 100.")
+    spelling_score: float = Field(..., ge=0, le=100, description="Spelling accuracy from 0 to 100.")
+    naturalness_score: float = Field(..., ge=0, le=100, description="Naturalness from 0 to 100.")
+    lesson_alignment_score: float = Field(..., ge=0, le=100, description="Alignment with the lesson goal from 0 to 100.")
+    top_issues: list[PedagogicalIssue] = Field(default_factory=list, max_length=3)
+    suggested_next_words: list[str] = Field(default_factory=list, max_length=3)
     micro_tip: str = Field(
         default="",
         description="A brief cognitive hint to help the learner improve the draft.",
@@ -91,21 +92,24 @@ class TeacherAnalysisPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rewrite: str = Field(default="")
-    corrections: list[TeacherCorrection] = Field(default_factory=list)
+    corrections: list[TeacherCorrection] = Field(default_factory=list, max_length=3)
     teacher_summary: str = Field(
         ...,
         description="Main formative feedback message for the learner.",
     )
     strengths: list[str] = Field(
         default_factory=list,
+        max_length=3,
         description="What the learner already did well in this turn.",
     )
     focus_areas: list[str] = Field(
         default_factory=list,
+        max_length=3,
         description="Small set of concrete next focus areas.",
     )
     next_practice: list[str] = Field(
         default_factory=list,
+        max_length=3,
         description="Two or three short targeted drills or prompts.",
     )
     reflection_question: str = Field(
@@ -150,8 +154,9 @@ def build_micro_eval_messages(
                 "Pedagogy rules:\n"
                 "- Prefer scaffolding over giving the full answer.\n"
                 "- Max 3 issues.\n"
+                "- All four scores use a 0-100 scale; 100 means fully accurate or aligned.\n"
                 "- Use highlight_text only when it is an exact substring of the draft.\n"
-                "- Keep suggestions short and actionable.\n"
+                "- Keep each suggestions list to at most 3 distinct, correct, actionable options.\n"
                 "- Use self_check_prompt to help the learner notice the issue themselves.\n"
                 "- Use encouragement only when grounded in the learner's actual attempt.\n"
                 f"- explanations, micro_tip, self_check_prompt, and encouragement must be in {feedback_language}.\n"
@@ -246,10 +251,20 @@ def build_teacher_analysis_messages(
 
 
 def build_llamacpp_response_format(model: Type[BaseModel]) -> dict[str, Any]:
-    """Build llama.cpp-compatible response_format config."""
+    """Build the current OpenAI-compatible llama.cpp response format.
+
+    llama.cpp expects ``json_schema.schema`` for ``type=json_schema``. Older
+    servers accepted a top-level ``schema`` key but did not necessarily apply
+    the grammar, which made malformed pedagogical payloads look successful at
+    the HTTP boundary.
+    """
     return {
         "type": "json_schema",
-        "schema": model.model_json_schema(),
+        "json_schema": {
+            "name": model.__name__,
+            "strict": True,
+            "schema": _strict_object_schema(model.model_json_schema()),
+        },
     }
 
 

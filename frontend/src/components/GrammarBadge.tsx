@@ -9,7 +9,7 @@ interface GrammarBadgeProps {
 
 const GrammarBadge: React.FC<GrammarBadgeProps> = ({ grammarHint, className = '' }) => {
   return (
-    <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-200 border border-gray-600 ${className}`}>
+    <div className={`status-pill min-h-7 px-2.5 py-1 text-[11px] ${className}`}>
       {grammarHint}
     </div>
   );

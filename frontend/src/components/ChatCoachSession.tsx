@@ -7,13 +7,15 @@ import ChatCoachMessagePane from './ChatCoachMessagePane';
 import { useChatCoachSession } from './useChatCoachSession';
 import { LLMSettingsPanel } from './LLMSettingsPanel';
 import AnalysisPanel from './AnalysisPanel';
+import type { TrainingMode } from './trainingModes';
 
 interface ChatCoachSessionProps {
   userId: string;
   onExit: () => void;
+  onModeChange?: (mode: TrainingMode) => void;
 }
 
-const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) => {
+const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit, onModeChange }) => {
   const {
     barScore,
     closeSettings,
@@ -51,18 +53,36 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
     return <ChatCoachLoading />;
   }
 
+  const renderAnalysis = () => (
+    <AnalysisPanel
+      draftText={draftText}
+      issues={issues}
+      micro_tip={microTip}
+      self_check_prompt={selfCheckPrompt}
+      encouragement={encouragement}
+      suggested_next_words={suggestedNextWords}
+      topic={topic}
+      intent={intent}
+      rewrite={rewrite}
+      lessonFrame={lessonFrame}
+      studentProfile={studentProfile}
+      teacherAnalysis={teacherAnalysis}
+    />
+  );
+
   return (
-    <div className="fixed inset-0 bg-gray-900 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-gray-900">
       <ChatCoachHeader
         title={title}
         onOpenSettings={openSettings}
         onExit={handleExitClick}
+        onModeChange={onModeChange}
       />
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatCoachMessagePane
             messages={messages}
             isStreaming={isStreaming}
@@ -71,6 +91,11 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
             messageListRef={messageListRef}
             onJumpToLatest={handleJumpToLatest}
           />
+
+          <details className="mx-3 mb-2 rounded-xl border border-white/[0.07] bg-white/[0.03] lg:hidden">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-300">Feedback de escrita</summary>
+            <div className="max-h-56 overflow-y-auto border-t border-white/[0.07] p-3">{renderAnalysis()}</div>
+          </details>
 
           <ChatCoachComposer
             barScore={barScore}
@@ -85,22 +110,9 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit }) =
         </div>
 
         {/* Analysis sidebar */}
-        <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto p-4 min-h-0">
-          <AnalysisPanel
-            draftText={draftText}
-            issues={issues}
-            micro_tip={microTip}
-            self_check_prompt={selfCheckPrompt}
-            encouragement={encouragement}
-            suggested_next_words={suggestedNextWords}
-            topic={topic}
-            intent={intent}
-            rewrite={rewrite}
-            lessonFrame={lessonFrame}
-            studentProfile={studentProfile}
-            teacherAnalysis={teacherAnalysis}
-          />
-        </div>
+        <aside className="hidden min-h-0 w-[19rem] overflow-y-auto border-l border-white/[0.07] bg-gray-800/65 p-3 backdrop-blur-xl lg:block">
+          {renderAnalysis()}
+        </aside>
       </div>
 
       {/* LLM Settings Panel */}

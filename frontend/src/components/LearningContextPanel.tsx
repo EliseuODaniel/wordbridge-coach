@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type { LearningContext } from '../services/apiCards';
+import InfoTooltip from './InfoTooltip';
 
 interface LearningContextPanelProps {
   context?: LearningContext | null;
@@ -18,74 +19,34 @@ const LearningContextPanel: React.FC<LearningContextPanelProps> = ({
   }
 
   return (
-    <div
-      className={`bg-slate-900 border border-slate-700 rounded-lg p-4 ${className}`}
+    <section
+      className={`surface-soft flex items-center gap-3 p-3 ${className}`}
       data-testid="learning-context-panel"
     >
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div>
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Learning focus</p>
-          <h3 className="text-sm font-semibold text-slate-100">{context.current_focus}</h3>
-        </div>
-        <span className="px-2 py-1 bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded">
-          {context.cefr_level} • {humanize(context.support_level)}
-        </span>
+      <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-200">
+        <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16ZM20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Foco atual</p>
+        <h3 className="truncate text-sm font-semibold text-gray-100">{context.current_focus}</h3>
       </div>
-
-      <div className="space-y-3">
-        <div>
-          <p className="text-xs text-slate-400 mb-1">Objetivo da sessão</p>
-          <p className="text-sm text-slate-100">{context.session_goal}</p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <span className="px-2 py-1 bg-cyan-900 bg-opacity-30 border border-cyan-700 text-cyan-200 text-xs rounded">
-            Topic: {context.topic}
+      <span className="status-pill min-h-7 whitespace-nowrap px-2">{context.cefr_level} · {humanize(context.support_level)}</span>
+      <InfoTooltip label="Detalhes do foco pedagógico">
+        <strong className="mb-1 block text-white">Objetivo da sessão</strong>
+        <span className="block">{context.session_goal}</span>
+        <span className="mt-2 block text-gray-400">Tema: {context.topic} · feedback em {context.feedback_language}</span>
+        <span className="mt-2 block">{context.why_this_now}</span>
+        {(context.retention_signal || context.review_pressure || context.recommended_pace) && (
+          <span className="mt-2 block text-primary-200">
+            {context.retention_signal && `Retenção: ${humanize(context.retention_signal)}`}
+            {context.review_pressure && ` · Revisões: ${humanize(context.review_pressure)}`}
+            {context.recommended_pace && ` · Ritmo: ${humanize(context.recommended_pace)}`}
           </span>
-          <span className="px-2 py-1 bg-teal-900 bg-opacity-30 border border-teal-700 text-teal-200 text-xs rounded">
-            Feedback: {context.feedback_language}
-          </span>
-        </div>
-
-        {(context.retention_signal || context.review_pressure || context.difficulty_signal || context.recommended_pace || context.next_mode_hint) && (
-          <div>
-            <p className="text-xs text-slate-400 mb-1">Adaptive signals</p>
-            <div className="flex flex-wrap gap-2">
-              {context.retention_signal && (
-                <span className="px-2 py-1 bg-emerald-900/30 border border-emerald-700 text-emerald-200 text-xs rounded">
-                  Retention: {humanize(context.retention_signal)}
-                </span>
-              )}
-              {context.review_pressure && (
-                <span className="px-2 py-1 bg-amber-900/30 border border-amber-700 text-amber-200 text-xs rounded">
-                  Review load: {humanize(context.review_pressure)}
-                </span>
-              )}
-              {context.difficulty_signal && (
-                <span className="px-2 py-1 bg-rose-900/30 border border-rose-700 text-rose-200 text-xs rounded">
-                  Difficulty: {humanize(context.difficulty_signal)}
-                </span>
-              )}
-              {context.recommended_pace && (
-                <span className="px-2 py-1 bg-indigo-900/30 border border-indigo-700 text-indigo-200 text-xs rounded">
-                  Pace: {humanize(context.recommended_pace)}
-                </span>
-              )}
-              {context.next_mode_hint && (
-                <span className="px-2 py-1 bg-fuchsia-900/30 border border-fuchsia-700 text-fuchsia-200 text-xs rounded">
-                  Next best mode: {humanize(context.next_mode_hint)}
-                </span>
-              )}
-            </div>
-          </div>
         )}
-
-        <div>
-          <p className="text-xs text-slate-400 mb-1">Por que este modo agora</p>
-          <p className="text-xs text-slate-200 leading-relaxed">{context.why_this_now}</p>
-        </div>
-      </div>
-    </div>
+      </InfoTooltip>
+    </section>
   );
 };
 

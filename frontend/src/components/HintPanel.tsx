@@ -62,83 +62,61 @@ const HintPanel: React.FC<HintPanelProps> = ({
   }
 
   return (
-    <div className="bg-gray-750 border border-gray-600 rounded-lg p-4 space-y-3">
-      <div className="text-xs text-gray-400 font-semibold uppercase tracking-wide">
-        Hints
+    <section className="surface-soft p-3">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">
+        Pistas
       </div>
+      <div className="flex flex-wrap gap-2">
 
       {/* Level 1: Length Mask */}
       {showLengthMask && (
-        <div className="flex items-start gap-2">
-          <span className="text-yellow-400 text-sm">📏</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Length</div>
-            <div className="text-sm font-mono text-gray-200 tracking-widest">{lengthMask}</div>
-          </div>
+        <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.06] px-3 py-2">
+          <div className="text-[10px] text-amber-200/70">Tamanho</div>
+          <div className="font-mono text-xs tracking-widest text-gray-200">{lengthMask}</div>
         </div>
       )}
 
       {/* Level 2: First Letter */}
       {showFirstLetter && (
-        <div className="flex items-start gap-2">
-          <span className="text-green-400 text-sm">🔤</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">First letter</div>
-            <div className="text-sm font-mono text-gray-200 tracking-widest">{firstLetterHint}</div>
-          </div>
+        <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] px-3 py-2">
+          <div className="text-[10px] text-emerald-200/70">Primeira letra</div>
+          <div className="font-mono text-xs tracking-widest text-gray-200">{firstLetterHint}</div>
         </div>
       )}
 
       {/* Level 3: Reveal Letters */}
       {showRevealedLetters && (
-        <div className="flex items-start gap-2">
-          <span className="text-purple-400 text-sm">✨</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Reveal</div>
-            <div className="text-sm font-mono text-gray-200 tracking-widest">{revealedLetters}</div>
-          </div>
+        <div className="rounded-xl border border-violet-400/15 bg-violet-400/[0.06] px-3 py-2">
+          <div className="text-[10px] text-violet-200/70">Revelação</div>
+          <div className="font-mono text-xs tracking-widest text-gray-200">{revealedLetters}</div>
         </div>
       )}
 
       {/* Level 4: Word Translation */}
       {showWordTranslation && (
-        <div className="flex items-start gap-2">
-          <span className="text-blue-400 text-sm">📝</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Word (PT)</div>
-            <div className="text-sm text-gray-200">
-              {wordTranslationPt || <span className="text-gray-500 italic">Tradução indisponível</span>}
-            </div>
-          </div>
+        <div className="max-w-48 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.06] px-3 py-2">
+          <div className="text-[10px] text-cyan-200/70">Palavra em PT</div>
+          <div className="truncate text-xs text-gray-200">{wordTranslationPt || <span className="italic text-gray-500">Indisponível</span>}</div>
         </div>
       )}
 
       {/* Level 5: Sentence Translation */}
       {showSentenceTranslation && (
-        <div className="flex items-start gap-2">
-          <span className="text-orange-400 text-sm">🌐</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Sentence (PT)</div>
-            <div className="text-sm text-gray-200">
-              {sentenceTranslationPt || <span className="text-gray-500 italic">Tradução indisponível</span>}
-            </div>
-          </div>
+        <div className="max-w-72 rounded-xl border border-orange-400/15 bg-orange-400/[0.06] px-3 py-2">
+          <div className="text-[10px] text-orange-200/70">Frase em PT</div>
+          <div className="truncate text-xs text-gray-200">{sentenceTranslationPt || <span className="italic text-gray-500">Indisponível</span>}</div>
         </div>
       )}
 
       {/* Level 6: Complete Answer */}
       {showCompleteAnswer && (
-        <div className="flex items-start gap-2">
-          <span className="text-red-400 text-sm">💡</span>
-          <div className="flex-1">
-            <div className="text-xs text-gray-400 mb-1">Answer</div>
-            <div className="text-sm font-mono font-bold text-gray-100 tracking-widest">
-              {correctAnswer}
-            </div>
-          </div>
+        <div className="rounded-xl border border-red-400/20 bg-red-400/[0.07] px-3 py-2">
+          <div className="text-[10px] text-red-200/70">Resposta</div>
+          <div className="font-mono text-xs font-bold tracking-widest text-gray-100">{correctAnswer}</div>
         </div>
       )}
-    </div>
+      </div>
+    </section>
   );
 };
 

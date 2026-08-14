@@ -36,29 +36,30 @@ const UserProfileEditModal: React.FC<UserProfileEditModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
-        <h3 className="text-lg font-semibold text-gray-100 mb-4">
-          Edit Profile
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title">
+      <div className="surface-panel max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7">
+        <p className="eyebrow">Configurações</p>
+        <h3 id="edit-profile-title" className="mb-6 mt-1 text-xl font-semibold text-white">
+          Editar perfil
         </h3>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">
-              Profile Name
+            <label className="mb-2 block text-sm font-medium text-gray-300">
+              Nome do perfil
             </label>
             <input
               type="text"
               value={editUsername}
               onChange={(event) => onUsernameChange(event.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 text-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="input w-full"
               disabled={editLoading}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">
-              Target Language:
+            <label className="mb-2 block text-sm font-medium text-gray-300">
+              Idioma de estudo
             </label>
             <div className="grid grid-cols-2 gap-2">
               {TARGET_LANGUAGES.map((lang) => (
@@ -66,13 +67,13 @@ const UserProfileEditModal: React.FC<UserProfileEditModalProps> = ({
                   key={lang.code}
                   type="button"
                   onClick={() => onTargetLanguageChange(lang.code)}
-                  className={`px-3 py-2 text-sm rounded font-medium transition-colors ${
+                  className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                     editTargetLanguage === lang.code
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                      ? 'bg-primary-500 text-white shadow-glow'
+                      : 'border border-white/[0.08] bg-white/[0.04] text-gray-300 hover:bg-white/[0.08]'
                   }`}
                 >
-                  <span className="mr-1">{lang.flag}</span>
+                  <span className="mr-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px]">{lang.flag}</span>
                   {lang.name}
                 </button>
               ))}
@@ -80,13 +81,13 @@ const UserProfileEditModal: React.FC<UserProfileEditModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">
-              Native Language:
+            <label className="mb-2 block text-sm font-medium text-gray-300">
+              Idioma nativo
             </label>
             <select
               value={editNativeLanguage}
               onChange={(event) => onNativeLanguageChange(event.target.value)}
-              className="w-full px-3 py-2 bg-gray-600 text-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="input w-full"
               disabled={editLoading}
             >
               {NATIVE_LANGUAGES.map((lang) => (
@@ -98,20 +99,20 @@ const UserProfileEditModal: React.FC<UserProfileEditModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">
-              My vocabulary goal:
+            <label className="mb-2 block text-sm font-medium text-gray-300">
+              Meta de vocabulário
             </label>
-            <div className="bg-gray-700 rounded-lg p-3 border border-gray-600">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-white/[0.07] bg-gray-950/35 p-3">
+              <div className="grid grid-cols-3 gap-2">
                 {VOCABULARY_GOALS.map((goal) => (
                   <button
                     key={goal.rank}
                     type="button"
                     onClick={() => onWordGoalRankChange(goal.rank)}
-                    className={`px-3 py-2 text-sm rounded transition-colors ${
+                    className={`min-h-10 rounded-xl px-2 py-2 text-sm font-semibold transition ${
                       editWordGoalRank === goal.rank
-                        ? 'bg-blue-600 text-white font-medium'
-                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                        ? 'bg-primary-500 text-white shadow-glow'
+                        : 'bg-white/[0.04] text-gray-400 hover:bg-white/[0.08]'
                     }`}
                     disabled={editLoading}
                   >
@@ -119,7 +120,7 @@ const UserProfileEditModal: React.FC<UserProfileEditModalProps> = ({
                   </button>
                 ))}
               </div>
-              <div className="mt-2 text-xs text-gray-400 text-center">
+              <div className="mt-3 text-center text-xs text-gray-400">
                 {VOCABULARY_GOALS.find((goal) => goal.rank === editWordGoalRank)?.description}
               </div>
             </div>
@@ -130,16 +131,16 @@ const UserProfileEditModal: React.FC<UserProfileEditModalProps> = ({
           <button
             onClick={onSave}
             disabled={!editUsername.trim() || editLoading}
-            className="flex-1 px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="btn btn-primary flex-1"
           >
-            {editLoading ? 'Saving...' : 'Save Changes'}
+            {editLoading ? 'Salvando...' : 'Salvar alterações'}
           </button>
           <button
             onClick={onCancel}
             disabled={editLoading}
-            className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 disabled:opacity-50 transition-colors"
+            className="btn btn-secondary flex-1"
           >
-            Cancel
+            Cancelar
           </button>
         </div>
       </div>

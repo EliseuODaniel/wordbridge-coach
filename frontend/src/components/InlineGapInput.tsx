@@ -90,7 +90,7 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap items-baseline gap-1 text-xl text-gray-100 leading-relaxed">
+    <div className="flex flex-wrap items-baseline justify-center gap-1 text-xl leading-relaxed text-gray-100 sm:text-2xl">
       {/* Text before gap */}
       <span>{beforeGap}</span>
 
@@ -104,17 +104,17 @@ const InlineGapInput: React.FC<InlineGapInputProps> = ({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className={`
-          inline-block px-2 py-1 mx-1 rounded border-b-2 bg-transparent
+          mx-1 inline-block rounded-lg border border-white/10 border-b-2 bg-white/[0.035] px-2 py-1
           text-center font-semibold transition-all duration-200
           focus:outline-none focus:ring-0
           ${
             disabled
               ? isCorrect
-                ? 'border-green-500 text-green-400'
+                ? 'border-emerald-400 text-emerald-300'
                 : isIncorrect
-                  ? 'border-red-500 text-red-400'
+                  ? 'border-red-400 text-red-300'
                   : 'border-gray-500 text-gray-100'
-              : 'border-gray-500 text-gray-100 focus:border-primary-500'
+              : 'border-gray-600 text-gray-100 focus:border-primary-400'
           }
           ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
