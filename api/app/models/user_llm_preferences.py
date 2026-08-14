@@ -30,14 +30,14 @@ class UserLLMPreferences(BaseModel):
     chat_model_profile = Column(
         String(100),
         nullable=False,
-        default="qwen2.5-7b-instruct"
+        default="qwen3.5-9b"
     )
 
     # Teacher model: used for teacher analysis JSON (non-streaming)
     teacher_model_profile = Column(
         String(100),
         nullable=False,
-        default="qwen2.5-7b-instruct"
+        default="qwen3.5-9b"
     )
 
     # Note: id, created_at, updated_at are inherited from BaseModel

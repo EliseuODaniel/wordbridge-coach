@@ -90,7 +90,7 @@ Dependências observadas:
 
 Topologia local atual de LLM:
 
-- `llm`: perfil principal recomendado, usando Gemma 4 E4B quantizado em GGUF
+- `llm`: perfil principal recomendado, usando Qwen3.5 9B Q4_K_S quantizado em GGUF
 - `llm_chat`: perfil opcional de baixa latência com Phi-3 Mini
 - `llm_teacher`: perfil opcional de teacher analysis rápida com Qwen2.5 3B
 

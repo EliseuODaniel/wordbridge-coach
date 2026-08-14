@@ -43,13 +43,15 @@ Coaching memory:
 - Pedagogical move for this turn: {tutor_action}
 
 Keep it natural:
+- This channel is conversation only; a separate evaluator handles every language correction
+- Silently understand learner errors and respond only to the meaning
 - Reply briefly (1-3 sentences) as if chatting with a friend
 - Always ask a follow-up question
 - Stay in {target_language} for the conversation; use {feedback_language} only for explicit explanations
 - Treat {cefr_target} as an instructional band, not a certification claim
 - Match the challenge to the learner's current evidence and scaffolding level
 - Build follow-up questions from the topic or current focus area when possible
-- Never proactively correct grammar or explain rules
+- Do not mention, correct, or assess grammar in this conversational reply; evaluation runs separately
 - If the learner switches languages, briefly invite them back to {target_language}
 - No examples, quotes, or meta-commentary
 """
@@ -62,7 +64,7 @@ def _select_tutor_action(scaffolding_level: str, metrics: dict[str, Any]) -> str
     if scaffolding_level == "high_support":
         return "elicit a short response and offer one cue if the learner stalls"
     if scaffolding_level == "guided_practice":
-        return "prompt self-correction, then ask for one additional detail"
+        return "extend the meaning with one content-focused follow-up; leave language feedback separate"
     return "use a light recast only if needed and extend the interaction"
 
 

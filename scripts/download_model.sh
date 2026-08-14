@@ -2,16 +2,16 @@
 # Download GGUF model for Chat Coach LLM with multi-file support
 #
 # Usage: ./scripts/download_model.sh [model_id] [model_dir]
-#   model_id: Optional. Defaults to Qwen/Qwen2.5-7B-Instruct-GGUF
+#   model_id: Optional. Defaults to unsloth/Qwen3.5-9B-GGUF
 #   model_dir: Optional. Defaults to WORDBRIDGE_MODELS_PATH or llm_models
 
 set -euo pipefail
 
 # Configuration
-MODEL_ID="${1:-Qwen/Qwen2.5-7B-Instruct-GGUF}"
+MODEL_ID="${1:-unsloth/Qwen3.5-9B-GGUF}"
 MODEL_DIR="${2:-${WORDBRIDGE_MODELS_PATH:-llm_models}}"
 MODEL_LINK="${MODEL_DIR}/model.gguf"
-PREFERRED_QUANT="q4_k_m"
+PREFERRED_QUANT="q4_k_s"
 FALLBACK_QUANT="q4_0"
 
 # Colors
@@ -61,7 +61,7 @@ for quant in "$PREFERRED_QUANT" "$FALLBACK_QUANT"; do
     PATTERN=$(echo "$MODEL_FILES" | grep -Ei "${quant}(-00001-of-[0-9]+)?\\.gguf$" | head -1 || true)
 
     if [ -n "$PATTERN" ]; then
-        # Extract base pattern (e.g., "qwen2.5-7b-instruct-q4_k_m")
+        # Extract base pattern (e.g., "Qwen3.5-9B-Q4_K_S")
         if echo "$PATTERN" | grep -q "00001-of-"; then
             BASE_PATTERN=$(echo "$PATTERN" | sed 's/-00001-of-[^.]*\.gguf//')
             SELECTED_PATTERN="${BASE_PATTERN}"

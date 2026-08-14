@@ -68,7 +68,7 @@ def get_llm_provider_from_env() -> LLMProvider:
             logger.warning(f"{msg}, falling back to MockLLMProvider")
             return MockLLMProvider()
 
-        model = os.getenv("CHAT_LLM_MODEL", "qwen2.5-7b-instruct")
+        model = os.getenv("CHAT_LLM_MODEL", "qwen3.5-9b")
         timeout = int(os.getenv("CHAT_OPENAI_TIMEOUT_S", "60"))
 
         logger.info(
@@ -160,7 +160,7 @@ def get_llm_provider_for_profile(profile_id: str) -> LLMProvider:
     Each profile has its own service_url, enabling multi-model routing.
 
     Args:
-        profile_id: Profile ID (e.g., "qwen2.5-7b-instruct", "phi-3-mini-4k-instruct")
+        profile_id: Profile ID (e.g., "qwen3.5-9b", "phi-3-mini-4k-instruct")
 
     Returns:
         LLMProvider instance configured for the specified profile

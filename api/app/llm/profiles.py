@@ -28,19 +28,19 @@ class LLMProfile(BaseModel):
 # Available LLM profiles
 # Each profile maps to a specific llama.cpp service (llm, llm_chat, llm_teacher)
 LLM_PROFILES: Dict[str, LLMProfile] = {
-    "qwen2.5-7b-instruct": LLMProfile(
-        id="qwen2.5-7b-instruct",
-        name="Qwen2.5 7B Instruct",
+    "qwen3.5-9b": LLMProfile(
+        id="qwen3.5-9b",
+        name="Qwen3.5 9B",
         provider="llamacpp",
-        model="qwen2.5-7b-instruct",
+        model="qwen3.5-9b",
         service_url="http://llm:8080",
         context_window=4096,
         supports_streaming=True,
         supports_json=True,
-        estimated_vram="5.2GB",
-        quality_tier="medium",
+        estimated_vram="5.7GB",
+        quality_tier="high",
         speed_tier="medium",
-        description="Qwen2.5 7B Q4_K_M validated on the local 8GB VRAM setup"
+        description="Qwen3.5 9B Q4_K_S selected by the local pedagogical quality benchmark"
     ),
     "phi-3-mini-4k-instruct": LLMProfile(
         id="phi-3-mini-4k-instruct",
@@ -73,8 +73,8 @@ LLM_PROFILES: Dict[str, LLMProfile] = {
 }
 
 # Default profiles (used when user has no preference set)
-DEFAULT_CHAT_PROFILE = "qwen2.5-7b-instruct"
-DEFAULT_TEACHER_PROFILE = "qwen2.5-7b-instruct"
+DEFAULT_CHAT_PROFILE = "qwen3.5-9b"
+DEFAULT_TEACHER_PROFILE = "qwen3.5-9b"
 
 
 def get_profile(profile_id: str) -> LLMProfile:
@@ -82,7 +82,7 @@ def get_profile(profile_id: str) -> LLMProfile:
     Get LLM profile by ID.
 
     Args:
-        profile_id: Profile identifier (e.g., "qwen2.5-7b-instruct")
+        profile_id: Profile identifier (e.g., "qwen3.5-9b")
 
     Returns:
         LLMProfile object

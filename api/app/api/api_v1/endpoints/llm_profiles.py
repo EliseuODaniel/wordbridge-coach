@@ -89,7 +89,7 @@ async def get_my_llm_preferences(
     Get current user's LLM preferences.
 
     Returns the selected models for chat and teacher analysis.
-    If user has no preferences set, returns defaults (qwen2.5-7b-instruct for both).
+    If user has no preferences set, returns defaults (qwen3.5-9b for both).
     """
     # Convert user_id string to UUID
     if user_id:

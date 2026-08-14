@@ -2192,3 +2192,29 @@ A configuração declarava Gemma 4 E4B, mas o GGUF montado identificava-se como 
 - Qwen produz cerca de 48–51 tokens/s usando aproximadamente 5,2 GB de VRAM e passou o gate completo em 2 de 3 repetições
 - Gemma 4 E4B foi mais rápido e econômico, mas falhou 3 de 3 rodadas por idioma de feedback e orientação pedagógica inconsistente
 - Qwen3.5 4B passa a ser a próxima candidata, condicionada a GGUF confiável e superioridade no benchmark local
+
+## 2026-08-14 - Promover Qwen3.5 9B após avaliação pedagógica ampliada
+
+Status: aceito; substitui a decisão de baseline imediatamente anterior
+
+### Contexto
+
+O benchmark anterior tinha poucos casos e não distinguia suficientemente validade de schema, qualidade semântica, idioma de feedback, falsos positivos e resistência a instruções inseridas no texto do aluno. A RTX 4070 Laptop de 8 GB também permitia avaliar modelos maiores que 4B sem recorrer a CPU offload.
+
+### Decisão
+
+- comparar Qwen2.5 7B, Qwen3.5 4B, Qwen3.5 9B e Ministral 3 8B com os mesmos prompts, schemas, contexto de 4.096 tokens e quantização Q4
+- promover Qwen3.5 9B Q4_K_S como perfil local de chat e análise do professor
+- executar o Qwen3.5 com `--reasoning off`, flash attention e um slot
+- remover Qwen2.5 7B da lista de perfis selecionáveis e migrar preferências persistidas para o novo default
+- tratar conteúdo do aluno como não confiável nos prompts, exigir ausência de issues em frases corretas e normalizar sugestões duplicadas na borda Pydantic
+- manter o benchmark ampliado e seus testes como parte do repositório
+
+### Evidência e impacto
+
+- Qwen3.5 9B manteve 18/18 contratos estruturados válidos na comparação bruta e obteve o melhor resultado qualitativo global
+- Qwen3.5 4B foi mais rápido e usou menos VRAM, mas falhou mais vezes em idioma, semântica e falsos positivos
+- Ministral 3 8B consumiu mais VRAM e frequentemente atingiu o limite de geração antes de fechar o JSON
+- o modelo promovido usa aproximadamente 5,6 GB de VRAM e gera cerca de 35–36 tokens/s, preservando margem operacional no hardware local
+- após o hardening, 8/9 cenários passaram diretamente e o nono passou ao aplicar a normalização de borda que remove melhorias opcionais rotuladas pelo modelo como erro; o chat também passou três repetições isoladas
+- a troca privilegia qualidade pedagógica; análises JSON extensas têm latência maior que no 4B e devem permanecer limitadas a payloads curtos

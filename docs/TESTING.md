@@ -296,10 +296,11 @@ O benchmark deve ser executado com o serviço `llm` saudável e o provider real 
 
 ```bash
 cd api
-PYTHONPATH=. .venv/bin/python scripts/benchmark_local_llm.py --summary-only
+PYTHONPATH=. .venv/bin/python scripts/evaluate_local_llm_candidates.py \
+  --runs 2 --summary-only --json-output /tmp/wordbridge-llm-eval.json
 ```
 
-Cada linha informa latência, tokens por segundo, validade do contrato estruturado e checks pedagógicos do caso. O processo retorna código diferente de zero quando qualquer contrato ou check falha. Para comparar outro servidor sem alterar o principal, use `--base-url http://127.0.0.1:PORTA/v1` e repita a rodada pelo menos três vezes. O protocolo e o baseline medido estão em `docs/LOCAL_LLM_SETUP.md`.
+Cada linha informa latência, tokens por segundo, validade do contrato estruturado e checks pedagógicos do caso. O processo retorna código diferente de zero quando qualquer contrato ou check falha. Para comparar outro servidor sem alterar o principal, use `--base-url http://127.0.0.1:PORTA/v1`; preserve o relatório com `--json-output` e compare ao menos duas rodadas sob a mesma configuração. O protocolo e o baseline medido estão em `docs/LOCAL_LLM_SETUP.md`.
 
 ## CI
 

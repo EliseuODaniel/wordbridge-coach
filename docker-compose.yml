@@ -82,7 +82,7 @@ services:
       # Chat Coach LLM Configuration
       CHAT_LLM_PROVIDER: "${CHAT_LLM_PROVIDER:-mock}"
       CHAT_LLM_BASE_URL: "${CHAT_LLM_BASE_URL:-http://llm:8080/v1}"
-      CHAT_LLM_MODEL: "${CHAT_LLM_MODEL:-qwen2.5-7b-instruct}"
+      CHAT_LLM_MODEL: "${CHAT_LLM_MODEL:-qwen3.5-9b}"
       CHAT_LLM_STRICT: "${CHAT_LLM_STRICT:-false}"
       # Chat Coach Draft Grammar Configuration
       CHAT_DRAFT_GRAMMAR_PROVIDER: "${CHAT_DRAFT_GRAMMAR_PROVIDER:-languagetool}"
@@ -147,6 +147,7 @@ services:
       --n-gpu-layers 999
       --flash-attn on
       --parallel 1
+      --reasoning off
     profiles:
       - ai
     healthcheck:

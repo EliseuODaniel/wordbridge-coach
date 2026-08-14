@@ -6,7 +6,7 @@ Data de referência: 2026-08-14
 
 Em 2026-08-14, o frontend também recebeu uma refatoração visual responsiva e compacta: shell único para os três modos, hierarquia tipográfica consistente, navegação por modo dentro da sessão, painéis de contexto condensados e explicações secundárias em tooltips acessíveis. A entrada agora usa perfis progressivamente carregados e organiza modo, perfil e criação sem bloquear a primeira pintura pelas estatísticas.
 
-Na mesma rodada, o runtime de LLM foi auditado no hardware real. O arquivo principal era Qwen2.5 7B embora a configuração o identificasse como Gemma; links externos de GGUF também ficavam quebrados dentro do bind mount e o perfil `ai` tentava reservar três modelos em 8 GB de VRAM. A identidade foi corrigida, o mount tornou-se configurável, o perfil passou a subir apenas o modelo principal e o contrato de JSON Schema foi atualizado para o formato atual do `llama.cpp`. O Qwen permanece como baseline após comparação repetida com Gemma 4 E4B; detalhes e comando reproduzível estão em `docs/LOCAL_LLM_SETUP.md`.
+Na mesma rodada, o runtime de LLM foi auditado e comparado no hardware real. Qwen2.5 7B, Qwen3.5 4B, Qwen3.5 9B e Ministral 3 8B foram exercitados com os prompts e schemas da aplicação. O Qwen3.5 9B foi promovido por entregar a melhor qualidade pedagógica, manter todos os contratos estruturados válidos e caber com folga na RTX 4070 Laptop de 8 GB. O runtime usa raciocínio desativado para as interações curtas, e o benchmark ampliado permanece reproduzível em `docs/LOCAL_LLM_SETUP.md`.
 
 Em 2026-08-14, a aplicação recebeu um núcleo de aprendizagem baseado em evidência sem remover os módulos existentes. Spec4 e Lingvist agora compartilham competência explícita, contexto de conteúdo e observações normalizadas; Chat Coach mantém a memória longitudinal e deixou de apresentar uma estimativa de nível derivada apenas de rank como certificação. SM-2 segue produtivo e FSRS 6 opera em sombra até existir calibração longitudinal real.
 
@@ -171,7 +171,7 @@ Arquivos mais importantes para a próxima leitura:
 - API principal em FastAPI com rotas de cards, stats, settings, users, insights, chat e perfis de LLM
 - frontend React com seleção de usuário e três modos de treino
 - serviço TTS separado
-- compose local com stack padrão reduzida para banco, API e frontend; perfil `audio` habilita TTS local e perfil `ai` habilita Gemma 4 E4B, LanguageTool e perfis opcionais de LLM secundária
+- compose local com stack padrão reduzida para banco, API e frontend; perfil `audio` habilita TTS local e perfil `ai` habilita Qwen3.5 9B, LanguageTool e perfis opcionais de LLM secundária
 - suíte de testes backend e uma suíte E2E Playwright Chromium validada contra o stack padrão `db/api/frontend`
 
 ### Áreas que precisam de atenção

@@ -14,22 +14,22 @@ class LLMProfileResponse(BaseModel):
     """Response schema for a single LLM profile"""
     model_config = ConfigDict(json_schema_extra={
         "example": {
-            "id": "qwen2.5-7b-instruct",
-            "name": "Qwen2.5 7B Instruct",
+            "id": "qwen3.5-9b",
+            "name": "Qwen3.5 9B",
             "provider": "llamacpp",
-            "model": "qwen2.5-7b-instruct",
+            "model": "qwen3.5-9b",
             "service_url": "http://llm:8080",
             "context_window": 4096,
             "supports_streaming": True,
             "supports_json": True,
-            "estimated_vram": "5.2GB",
-            "quality_tier": "medium",
+            "estimated_vram": "5.7GB",
+            "quality_tier": "high",
             "speed_tier": "medium",
-            "description": "Qwen2.5 7B Q4_K_M validated for llama.cpp"
+            "description": "Qwen3.5 9B Q4_K_S selected by the local pedagogical benchmark"
         }
     })
 
-    id: str = Field(..., description="Profile ID (e.g., 'qwen2.5-7b-instruct')")
+    id: str = Field(..., description="Profile ID (e.g., 'qwen3.5-9b')")
     name: str = Field(..., description="Human-readable name")
     provider: str = Field(..., description="Provider type (llamacpp, openai_http, mock)")
     model: str = Field(..., description="Model identifier")
@@ -57,8 +57,8 @@ class UserLLMPreferencesResponse(BaseModel):
         "example": {
             "id": "660e8400-e29b-41d4-a716-446655440000",
             "user_id": "550e8400-e29b-41d4-a716-446655440000",
-            "chat_model_profile": "qwen2.5-7b-instruct",
-            "teacher_model_profile": "qwen2.5-7b-instruct",
+            "chat_model_profile": "qwen3.5-9b",
+            "teacher_model_profile": "qwen3.5-9b",
             "created_at": "2025-12-26T15:00:00Z",
             "updated_at": "2025-12-26T15:00:00Z"
         }
@@ -75,7 +75,7 @@ class UserLLMPreferencesUpdate(BaseModel):
     """Request schema for PUT /api/v1/users/me/llm-preferences"""
     model_config = ConfigDict(json_schema_extra={
         "example": {
-            "chat_model_profile": "qwen2.5-7b-instruct",
+            "chat_model_profile": "qwen3.5-9b",
             "teacher_model_profile": "qwen2.5-3b-instruct"
         }
     })

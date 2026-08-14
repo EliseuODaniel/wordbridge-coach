@@ -34,6 +34,8 @@ def test_build_chat_system_prompt_uses_lesson_frame_defaults():
     assert "Review pressure: medium" in prompt
     assert "No examples, quotes, or meta-commentary" in prompt
     assert "instructional band, not a certification claim" in prompt
+    assert "a separate evaluator handles every language correction" in prompt
+    assert "respond only to the meaning" in prompt
 
 
 def test_build_chat_system_prompt_does_not_hardcode_english():
@@ -48,7 +50,8 @@ def test_build_chat_system_prompt_does_not_hardcode_english():
     assert "expert French tutor" in prompt
     assert "Stay in French" in prompt
     assert "encourage them to use English" not in prompt
-    assert "prompt self-correction" in prompt
+    assert "content-focused follow-up" in prompt
+    assert "leave language feedback separate" in prompt
 
 
 def test_build_chat_generation_config_filters_stop_sequences():

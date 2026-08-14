@@ -13,6 +13,7 @@ from app.llm.pedagogical_tasks import (
     build_llamacpp_response_format,
     build_micro_eval_messages,
     build_teacher_analysis_messages,
+    normalize_draft_evaluation,
 )
 from app.llm.provider_base import LLMProvider
 from app.llm.mock_provider import MockLLMProvider
@@ -48,7 +49,7 @@ class LlamaCppLLMProvider(LLMProvider):
     def __init__(
         self,
         base_url: str,
-        model: str = "qwen2.5-7b-instruct",
+        model: str = "qwen3.5-9b",
         timeout: int = 60,
         strict: bool = False
     ):
@@ -290,7 +291,7 @@ class LlamaCppLLMProvider(LLMProvider):
         Evaluate a learner draft with structured pedagogical feedback.
         """
         try:
-            return await self._request_structured_output(
+            payload = await self._request_structured_output(
                 messages=build_micro_eval_messages(
                     context=context,
                     lesson_frame=lesson_frame,
@@ -301,6 +302,7 @@ class LlamaCppLLMProvider(LLMProvider):
                 temperature=0.1,
                 max_tokens=700,
             )
+            return normalize_draft_evaluation(payload, draft)
         except Exception as error:
             logger.warning("micro_eval structured output failed, falling back to Mock: %s", error)
             return await self._mock.micro_eval(context, lesson_frame, draft, student_profile)
