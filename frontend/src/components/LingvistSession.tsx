@@ -6,6 +6,9 @@ import HintPanel from './HintPanel';
 import LearningContextPanel from './LearningContextPanel';
 import { isTranslationAvailable } from './lingvistSessionHelpers';
 import { useLingvistSession } from './useLingvistSession';
+import SpeakingPractice from './SpeakingPractice';
+import CompetencyPanel from './CompetencyPanel';
+import ContentContextBadges from './ContentContextBadges';
 
 type TrainingMode = 'spec4' | 'lingvist' | 'chat';
 
@@ -92,6 +95,9 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onMod
 
             <LearningContextPanel context={currentCard.learning_context} />
 
+            <CompetencyPanel competency={currentCard.competency} />
+            <ContentContextBadges context={currentCard.content_context} />
+
             {/* Grammar Tag & Badges */}
             <div className="flex gap-2 flex-wrap items-center">
               {currentCard.grammar_tag_pt !== 'UNK' ? (
@@ -166,6 +172,11 @@ const LingvistSession: React.FC<LingvistSessionProps> = ({ userId, onExit, onMod
               wordTranslationPt={currentCard.word_translation_pt}
               sentenceTranslationPt={currentCard.sentence_translation_pt}
               hintLevel={hintLevel}
+            />
+
+            <SpeakingPractice
+              key={currentCard.card_id}
+              expectedText={currentCard.sentence.replace('___', currentCard.correct_answer)}
             />
 
             {/* Translations Panel (Always Visible) */}

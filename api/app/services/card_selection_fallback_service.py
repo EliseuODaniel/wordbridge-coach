@@ -22,6 +22,8 @@ def find_any_eligible_card(
         .filter(
             Card.is_active == True,
             Word.language_id == target_language_id,
+            Sentence.text.like("%___%"),
+            Sentence.quality_status.in_(("approved", "literary")),
         )
         .join(
             WordFrequency,

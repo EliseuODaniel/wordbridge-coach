@@ -149,6 +149,8 @@ def test_lingvist_sentence_selection_prefers_easier_sentence_early_and_richer_se
         source_type=SourceType.CORPUS,
         difficulty=4,
         source_title="Pride and Prejudice",
+        quality_status="literary",
+        license_name="Public Domain",
     )
     db_session.add(harder_sentence)
     db_session.commit()

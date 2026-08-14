@@ -18,6 +18,10 @@ Use este checklist antes de tirar um PR de release local do modo draft.
 ## Backend e frontend
 
 - [ ] Backend focal proporcional ao escopo tocado.
+- [ ] Validar `alembic upgrade head` em banco descartável e confirmar o head esperado.
+- [ ] Em banco com uso real: gerar backup antes da migration e só então executar `alembic upgrade head`.
+- [ ] Rodar `python scripts/seed_curated_content.py` para disponibilizar o pacote contemporâneo revisado de forma idempotente.
+- [ ] Se `seed_data.py --reset` for necessário, usar somente banco descartável ou gerar backup antes; o comando recria o currículo e o progresso ligado a ele.
 - [ ] `./scripts/frontend_tooling.sh check` quando UI, tipos ou serviços frontend mudarem.
 - [ ] `bash -n scripts/db_backup.sh scripts/db_restore.sh` quando scripts operacionais forem tocados.
 

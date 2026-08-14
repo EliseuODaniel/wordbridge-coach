@@ -33,6 +33,18 @@ class ReviewEvent(BaseModel):
     previous_interval = Column(Integer, nullable=True)
     new_interval = Column(Integer, nullable=True)
     session_id = Column(UUID(as_uuid=True), nullable=True)  # Study session ID
+
+    mode = Column(String(24), nullable=False, default="spec4")
+    task_type = Column(String(40), nullable=False, default="gap_recall")
+    modality = Column(String(32), nullable=False, default="reading_writing")
+    scaffold_level = Column(String(24), nullable=False, default="independent")
+    was_independent = Column(Boolean, nullable=False, default=True)
+    policy_version = Column(String(40), nullable=False, default="pedagogy-policy-v1")
+    scheduler_shadow_version = Column(String(40), nullable=True)
+    fsrs_predicted_recall = Column(Float, nullable=True)
+    fsrs_next_review_at = Column(DateTime, nullable=True)
+    fsrs_interval_days = Column(Float, nullable=True)
+    fsrs_review_log_json = Column(JSON, nullable=True)
     
     # Relationships - Temporarily disabled to fix seed
     user = relationship("User", back_populates="review_events")

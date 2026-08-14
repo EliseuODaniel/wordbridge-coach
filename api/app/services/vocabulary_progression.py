@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, desc
 
 from app.models import (
-    User, Word, Sentence, WordSentence, ReviewEvent,
+    User, Word, Sentence, WordSentence, ReviewEvent, Card,
     UserFrequencyProgress, UserSessionStats, WordFrequency, Language
 )
-from app.models.sentence import SourceType
+from app.core.time import utc_now
+from app.services.content_quality_service import validate_cloze_content
 from app.services.lingvist_difficulty_service import (
     choose_sentence_for_lingvist,
     get_lingvist_difficulty_profile,
@@ -105,10 +106,18 @@ class VocabularyProgressionService:
         ).all()
 
         all_sentences = {s.id: s for s in sentences_via_direct + sentences_via_mapping}
+        word = self.db.query(Word).filter(Word.id == word_id).first()
+        if not word:
+            return None
+        all_sentences = {
+            sentence_id: sentence
+            for sentence_id, sentence in all_sentences.items()
+            if validate_cloze_content(sentence, word).valid
+        }
         candidate_sentence_ids = list(all_sentences.keys())
 
         if not candidate_sentence_ids:
-            return self._create_fallback_sentence(word_id)
+            return None
 
         if exclude_card_id:
             from app.models import Card
@@ -184,39 +193,6 @@ class VocabularyProgressionService:
 
         import random
         return random.choice(list(all_sentences.values()))
-
-    def _create_fallback_sentence(self, word_id: str) -> Sentence:
-        """Create a fallback sentence when no sentence exists for a word"""
-        word = self.db.query(Word).filter(Word.id == word_id).first()
-        if not word:
-            raise ValueError(f"Word {word_id} not found")
-
-        # Create a basic sentence
-        basic_sentence = Sentence(
-            text=f"This is a sentence with the word {word.text}.",
-            translation=f"Esta é uma frase com a palavra {word.text}.",
-            word_id=word_id,
-            language_id=word.language_id,
-            type="sentence",  # Legacy column
-            gap_start=len("This is a sentence with the word "),
-            gap_end=len("This is a sentence with the word ") + len(word.text),
-            source_type=SourceType.GENERATED
-        )
-
-        self.db.add(basic_sentence)
-        self.db.commit()
-        self.db.refresh(basic_sentence)
-
-        # Create WordSentence mapping
-        mapping = WordSentence(
-            word_id=word_id,
-            sentence_id=basic_sentence.id,
-            is_primary=True
-        )
-        self.db.add(mapping)
-        self.db.commit()
-
-        return basic_sentence
 
     def get_next_new_word_rank(self, user_id: str, progress: UserFrequencyProgress) -> Optional[int]:
         """
@@ -338,30 +314,38 @@ class VocabularyProgressionService:
         if not candidates:
             raise ValueError("No review candidates provided")
 
-        scored_words = []
-        for word in candidates:
-            score = self._calculate_review_score(user_id, word)
-            scored_words.append((score, word))
+        candidate_ids = [word.id for word in candidates]
+        review_rows = (
+            self.db.query(ReviewEvent, Sentence.word_id)
+            .join(Card, ReviewEvent.card_id == Card.id)
+            .join(Sentence, Card.sentence_id == Sentence.id)
+            .filter(
+                ReviewEvent.user_id == user_id,
+                Sentence.word_id.in_(candidate_ids),
+            )
+            .order_by(ReviewEvent.created_at.asc())
+            .all()
+        )
+        reviews_by_word = {word_id: [] for word_id in candidate_ids}
+        for review, word_id in review_rows:
+            reviews_by_word.setdefault(word_id, []).append(review)
+
+        scored_words = [
+            (self._calculate_review_score(reviews_by_word.get(word.id, [])), word)
+            for word in candidates
+        ]
 
         # Sort by score (highest first) and return the best
         scored_words.sort(key=lambda x: x[0], reverse=True)
         return scored_words[0][1]
 
-    def _calculate_review_score(self, user_id: str, word: Word) -> float:
+    @staticmethod
+    def _calculate_review_score(reviews: list[ReviewEvent]) -> float:
         """
         Calculate review score for a word based on overdue, accuracy, and error streak
         Implements the scoring algorithm from Spec4
         """
         from datetime import timedelta
-
-        # Get review statistics for this word
-        from app.models import Card
-        reviews = self.db.query(ReviewEvent).join(Card).join(Sentence).filter(
-            and_(
-                ReviewEvent.user_id == user_id,
-                Sentence.word_id == word.id
-            )
-        ).all()
 
         if not reviews:
             return 1.0  # Neutral score for never-reviewed words
@@ -373,19 +357,20 @@ class VocabularyProgressionService:
 
         # Calculate wrong streak (consecutive wrong answers)
         wrong_streak = 0
-        for review in reversed(reviews):
+        ordered_reviews = sorted(reviews, key=lambda review: review.created_at)
+        for review in reversed(ordered_reviews):
             if not review.was_correct:
                 wrong_streak += 1
             else:
                 break
 
         # Calculate overdue days (simplified - would use actual SRS scheduling)
-        last_review = max(reviews, key=lambda r: r.created_at)
-        overdue_days = max(0, (datetime.now() - last_review.created_at).days)
+        last_review = ordered_reviews[-1]
+        days_since_review = max(0, (utc_now() - last_review.created_at).days)
 
         # Calculate final score
         error_bonus = 1 - accuracy
-        score = 0.6 * overdue_days + 0.3 * error_bonus + 0.1 * wrong_streak
+        score = 0.6 * days_since_review + 0.3 * error_bonus + 0.1 * wrong_streak
 
         return score
 

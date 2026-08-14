@@ -145,7 +145,7 @@ def build_micro_eval_messages(
         {
             "role": "system",
             "content": (
-                "You are an expert English tutor generating formative feedback for one learner draft. "
+                f"You are an expert {target_language} tutor generating formative feedback for one learner draft. "
                 "Return only structured JSON. Keep feedback short, specific, and didactic.\n"
                 "Pedagogy rules:\n"
                 "- Prefer scaffolding over giving the full answer.\n"
@@ -184,7 +184,7 @@ def build_autocomplete_messages(
         {
             "role": "system",
             "content": (
-                "You are an English tutor producing a ghost suggestion while the learner types. "
+                f"You are a {target_language} tutor producing a ghost suggestion while the learner types. "
                 "Return only structured JSON.\n"
                 "Rules:\n"
                 "- ghost_suggestion must be 1 to 6 words.\n"
@@ -220,7 +220,7 @@ def build_teacher_analysis_messages(
         {
             "role": "system",
             "content": (
-                "You are an expert English teacher reviewing one student message after a live chat turn. "
+                f"You are an expert {target_language} teacher reviewing one student message after a live chat turn. "
                 "Return only structured JSON.\n"
                 "Pedagogy rules:\n"
                 "- Do not overwhelm the learner.\n"

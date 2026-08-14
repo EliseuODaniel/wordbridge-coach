@@ -57,6 +57,8 @@ def get_due_review_candidates(
             Word.language_id == target_language_id,
             UserCardState.next_review_at <= utc_now(),
             UserCardState.status.in_([MemoryStage.LEARNING, MemoryStage.REVIEW, MemoryStage.MATURE]),
+            Sentence.text.like("%___%"),
+            Sentence.quality_status.in_(("approved", "literary")),
         )
     )
 
@@ -88,6 +90,8 @@ def get_due_relearn_candidate(db, user_id: str, exclude_card_id=None):
             UserCardState.user_id == user_id,
             UserCardState.is_relearn == True,
             UserCardState.relearn_due <= utc_now(),
+            Sentence.text.like("%___%"),
+            Sentence.quality_status.in_(("approved", "literary")),
         )
     )
 

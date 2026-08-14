@@ -51,6 +51,9 @@ def test_build_lingvist_card_response_uses_enrichment_dependencies(monkeypatch):
         text="The ___ is here.",
         translation="O livro esta aqui.",
         source_title="source",
+        quality_status="approved",
+        gap_start=4,
+        gap_end=7,
     )
 
     monkeypatch.setattr(
@@ -82,6 +85,14 @@ def test_build_lingvist_card_response_uses_enrichment_dependencies(monkeypatch):
             "why_this_now": "High-frequency cloze practice to stabilize the target pattern before freer use.",
         },
     )
+    monkeypatch.setattr(
+        lingvist_payload_service,
+        "build_card_competency_context",
+        lambda db, user_id, card: {
+            "code": "en.lexical.high_frequency",
+            "name": "High-frequency vocabulary in context",
+        },
+    )
 
     autofill_calls = []
 
@@ -107,3 +118,5 @@ def test_build_lingvist_card_response_uses_enrichment_dependencies(monkeypatch):
     assert payload.audio_word_url.endswith("lang=fr")
     assert payload.micro_progress.current == 1
     assert payload.learning_context.current_focus == "Use past simple after yesterday"
+    assert payload.competency["code"] == "en.lexical.high_frequency"
+    assert payload.content_context["validation_status"] == "valid"

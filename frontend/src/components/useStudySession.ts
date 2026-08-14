@@ -180,6 +180,10 @@ export const useStudySession = (userId?: string): UseStudySessionResult => {
         {
           answer,
           response_time_ms: responseTime,
+          attempts: attempts + 1,
+          hints_used: 0,
+          mode: 'spec4',
+          task_type: 'gap_recall',
         },
         userId
       );
@@ -227,7 +231,7 @@ export const useStudySession = (userId?: string): UseStudySessionResult => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [clearPendingNextCardTimeout, currentCard, isSubmitting, loadStats, scheduleNextCardLoad, startTime, userId]);
+  }, [attempts, clearPendingNextCardTimeout, currentCard, isSubmitting, loadStats, scheduleNextCardLoad, startTime, userId]);
 
   const handlePlayWordAudio = useCallback(async () => {
     await playAudioUrl(currentCard?.audio_word_url);

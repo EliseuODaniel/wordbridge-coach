@@ -68,7 +68,7 @@ class CardSelectionService:
         *,
         is_new: bool,
         exclude_card_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, Any]]:
         """Proxy card payload assembly for extracted resolution services."""
         return _build_selected_card_service(
             self,

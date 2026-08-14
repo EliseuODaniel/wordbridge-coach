@@ -9,6 +9,10 @@ Aplicação local para treino de vocabulário com cards, cloze, repetição espa
 - serviço TTS em `tts/`
 - stack local via `docker-compose.yml`
 - modos de uso no frontend: estudo principal, Lingvist e Chat Coach
+- competências explícitas com descritores `can-do`, evidência longitudinal e estimativas instrucionais honestas
+- conteúdo contemporâneo curado e versionado, com validação de proveniência e qualidade
+- SM-2 em produção com FSRS 6 executado em modo sombra para comparação segura
+- prática de fala privada no navegador, sem upload ou persistência do áudio
 - integrações locais com `llama.cpp` e LanguageTool
 
 ## Documentação oficial
@@ -68,6 +72,12 @@ Fluxo manual equivalente:
 docker compose up -d --build db api frontend
 docker compose exec -T api alembic upgrade head
 docker compose exec -T api python scripts/seed_data.py
+```
+
+Para carregar somente o pacote contemporâneo revisado depois das migrations:
+
+```bash
+docker compose exec -T api python scripts/seed_curated_content.py
 ```
 
 Se `5432` ja estiver ocupada no host, suba com outra porta para o Postgres local:

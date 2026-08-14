@@ -1,10 +1,10 @@
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.api.api_v1.endpoints import chat as chat_endpoint
 from app.services import chat_runtime_service
-from app.core.database import SessionLocal
 from app.main import app
 from app.models import ChatConversation, ChatLessonHistory, ChatMessage, Language, User
 
@@ -66,8 +66,8 @@ class FakeTeacherProvider:
         }
 
 
-def test_chat_websocket_user_message_flow(db, monkeypatch):
-    session = SessionLocal()
+def test_chat_websocket_user_message_flow(db_session, monkeypatch):
+    session = db_session
     code_seed = uuid.uuid4().hex
     native_suffix = code_seed[0]
     target_suffix = next(char for char in code_seed[1:] if char != native_suffix)
@@ -108,7 +108,11 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
     session.add_all([native_language, target_language, user, conversation])
     session.commit()
     conversation_id = conversation.id
-    session.close()
+
+    def test_session_factory():
+        return Session(bind=db_session.connection())
+
+    monkeypatch.setattr(chat_endpoint, "websocket_session_factory", test_session_factory)
 
     monkeypatch.setattr(
         chat_runtime_service,
@@ -182,7 +186,7 @@ def test_chat_websocket_user_message_flow(db, monkeypatch):
         }
         assert "Longitudinal learner profile" in teacher_analysis["session_summary"]
 
-        verify_session = SessionLocal()
+        verify_session = test_session_factory()
         try:
             persisted_messages = (
                 verify_session.query(ChatMessage)

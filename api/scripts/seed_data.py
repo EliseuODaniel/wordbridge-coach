@@ -10,7 +10,7 @@ import uuid
 import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 # Add the parent directory to the path to import app modules
 sys.path.append('/app')
@@ -18,12 +18,31 @@ sys.path.append('/app')
 from app.core.database import SessionLocal
 # Import ALL models to ensure proper SQLAlchemy mapping
 from app.models import (
-    Language, Word, Sentence, Card, Deck, User, UserCardState, ReviewEvent
+    Card,
+    ChatConversation,
+    Deck,
+    Language,
+    LearnerSkillState,
+    PedagogicalObservation,
+    ReviewEvent,
+    Sentence,
+    SentenceSkill,
+    User,
+    UserCardState,
+    UserDailyStats,
+    UserFrequencyProgress,
+    UserLLMPreferences,
+    UserSessionStats,
+    UserThemeStats,
+    UserWordStats,
+    Word,
+    WordSentence,
+    WordThemeMapping,
 )
 from app.models.user_card_state import MemoryStage
 from app.models.word_frequency import WordFrequency
 from app.models.word_theme import WordTheme
-from app.models.word_theme_mapping import WordThemeMapping
+from app.services.curated_content_seed_service import seed_curated_english_content
 
 
 def create_languages(db: Session):
@@ -869,6 +888,8 @@ def create_sentences(db: Session, words: list, lang_ids: dict):
         word_lemma = sent_data['word_lemma']
         # Remove word_lemma from dict for Sentence creation
         sentence_data = {k: v for k, v in sent_data.items() if k != 'word_lemma'}
+        sentence_data['gap_start'] = sentence_data['text'].index('___')
+        sentence_data['gap_end'] = sentence_data['gap_start'] + 3
 
         word = next((w for w in words if w.lemma == word_lemma), None)
 
@@ -1159,17 +1180,50 @@ def create_user_card_states(db: Session, user: User, cards: list):
 
 
 def cleanup_existing_data(db: Session):
-    """Clean up existing seed data to avoid duplicates"""
+    """Reset curriculum data and the disposable demo account before seeding."""
     print("Cleaning up existing seed data...")
 
-    # Delete in reverse order of dependencies
+    demo_user = db.query(User).filter(User.username == "demo").one_or_none()
+
+    # Curriculum and curriculum-derived state are reset globally because cards,
+    # sentences, and words are recreated below. Delete dependants first so the
+    # operation remains valid with foreign-key enforcement enabled.
+    db.query(PedagogicalObservation).delete()
+    db.query(LearnerSkillState).delete()
     db.query(UserCardState).delete()
-    db.query(ReviewEvent).delete()  # Must delete before Card
+    db.query(ReviewEvent).delete()
+    db.query(UserWordStats).delete()
+    db.query(SentenceSkill).delete()
+    db.query(WordSentence).delete()
+    db.query(WordThemeMapping).delete()
     db.query(Card).delete()
     db.query(Sentence).delete()
     db.query(Word).delete()
     db.query(Deck).delete()
-    db.query(User).filter(User.username == "demo").delete()
+
+    # Keep real user identities and their unrelated chat history intact. The
+    # demo account is disposable and is recreated by this script.
+    if demo_user is not None:
+        demo_user_id = demo_user.id
+        db.query(UserLLMPreferences).filter(
+            UserLLMPreferences.user_id == demo_user_id
+        ).delete(synchronize_session=False)
+        db.query(ChatConversation).filter(
+            ChatConversation.user_id == demo_user_id
+        ).delete(synchronize_session=False)
+        db.query(UserDailyStats).filter(
+            UserDailyStats.user_id == demo_user_id
+        ).delete(synchronize_session=False)
+        db.query(UserFrequencyProgress).filter(
+            UserFrequencyProgress.user_id == demo_user_id
+        ).delete(synchronize_session=False)
+        db.query(UserSessionStats).filter(
+            UserSessionStats.user_id == demo_user_id
+        ).delete(synchronize_session=False)
+        db.query(UserThemeStats).filter(
+            UserThemeStats.user_id == demo_user_id
+        ).delete(synchronize_session=False)
+        db.delete(demo_user)
 
     db.commit()
     print("Cleaned up existing seed data")
@@ -1390,7 +1444,7 @@ def build_sentence_index(sentence_bank_path: str, max_sentences_per_token: int =
         return dict(index)
 
 
-def create_gap_in_sentence(sentence: str, word: str) -> Tuple[str, int, int]:
+def create_gap_in_sentence(sentence: str, word: str) -> Optional[Tuple[str, int, int]]:
     """
     Create gap in sentence by replacing first occurrence of word with ___.
 
@@ -1408,75 +1462,15 @@ def create_gap_in_sentence(sentence: str, word: str) -> Tuple[str, int, int]:
     match = pattern.search(sentence)
 
     if not match:
-        # Word not found, append at end (fallback)
-        gapped = f"{sentence} ___"
-        gap_start = len(sentence) + 1
-        gap_end = gap_start + 3
-        return gapped, gap_start, gap_end
+        return None
 
     # Replace with gap
     gap_start = match.start()
-    gap_end = match.end()
-    gapped = sentence[:gap_start] + "___" + sentence[gap_end:]
+    original_end = match.end()
+    gap_end = gap_start + 3
+    gapped = sentence[:gap_start] + "___" + sentence[original_end:]
 
     return gapped, gap_start, gap_end
-
-
-def generate_smart_templates(word: str, count: int, part_of_speech: str = 'UNK') -> List[Tuple[str, int, int]]:
-    """
-    Generate improved template sentences based on word category.
-
-    Fallback when sentence bank doesn't have enough sentences for a word.
-
-    Args:
-        word: Target word
-        count: Number of templates to generate
-        part_of_speech: Grammatical category (if known)
-
-    Returns:
-        List of tuples (sentence, gap_start, gap_end)
-    """
-    templates = []
-
-    # Determine word category (simple heuristic)
-    word_lower = word.lower()
-
-    # Articles
-    if word_lower in ['the', 'a', 'an']:
-        templates.append((f"The {word} was here.", 4, 4 + len(word)))
-        templates.append((f"I saw {word} thing.", 6, 6 + len(word)))
-
-    # Prepositions
-    elif word_lower in ['to', 'of', 'in', 'on', 'at', 'by', 'with', 'from']:
-        templates.append((f"I went {word} the house.", 7, 7 + len(word)))
-        templates.append((f"The book is {word} the table.", 15, 15 + len(word)))
-
-    # Pronouns
-    elif word_lower in ['he', 'she', 'it', 'they', 'we', 'you', 'i']:
-        templates.append((f"{word.capitalize()} is here today.", 0, len(word)))
-        templates.append((f"I saw {word} yesterday.", 6, 6 + len(word)))
-
-    # Conjunctions
-    elif word_lower in ['and', 'but', 'or', 'nor', 'so', 'yet']:
-        templates.append((f"I like tea {word} coffee.", 13, 13 + len(word)))
-        templates.append((f"Day {word} night.", 4, 4 + len(word)))
-
-    # Common verbs
-    elif word_lower in ['be', 'have', 'do', 'say', 'go', 'get', 'make']:
-        templates.append((f"I {word} here every day.", 2, 2 + len(word)))
-        templates.append((f"They {word} to work.", 5, 5 + len(word)))
-
-    # Default: noun-like
-    else:
-        templates.append((f"The {word} is here.", 4, 4 + len(word)))
-        templates.append((f"I see a {word}.", 7, 7 + len(word)))
-        templates.append((f"This is my {word}.", 11, 11 + len(word)))
-
-    # If we need more templates than available, repeat with variation
-    while len(templates) < count:
-        templates.append(templates[len(templates) % len(templates)])
-
-    return templates[:count]
 
 
 def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: int = 10000):
@@ -1602,9 +1596,10 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
 
                     # Create gap
                     original_sentence = entry['text']
-                    gapped_sentence, gap_start, gap_end = create_gap_in_sentence(
-                        original_sentence, wf.word
-                    )
+                    gap_result = create_gap_in_sentence(original_sentence, wf.word)
+                    if gap_result is None:
+                        continue
+                    gapped_sentence, gap_start, gap_end = gap_result
 
                     # Skip if this gapped text was already used for this word
                     if gapped_sentence in used_gapped_texts:
@@ -1658,118 +1653,23 @@ def create_10k_vocabulary(db: Session, lang_ids: dict, decks: list, max_rank: in
                     db.flush()
                     created_cards.append(card)
 
-            # If we didn't get enough sentences from bank, fill with templates
-            while sentences_created_for_word < sentence_count:
-                # Use smart templates (no source metadata)
-                template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
-                template_sentence, gap_start, gap_end = template_info
-
-                # Skip duplicate
-                if template_sentence in used_gapped_texts:
-                    # Try next template
-                    template_info = generate_smart_templates(f"{wf.word}_alt", 1, 'UNK')[0]
-                    template_sentence, gap_start, gap_end = template_info
-
-                    if template_sentence in used_gapped_texts:
-                        # Give up, move to next word
-                        break
-
-                # Check if already exists
-                existing = db.query(Sentence).filter(
-                    Sentence.word_id == word.id,
-                    Sentence.text == template_sentence
-                ).first()
-
-                if existing:
-                    continue
-
-                # Create sentence with NO source (template)
-                sentence = Sentence(
-                    id=uuid.uuid4(),
-                    text=template_sentence,
-                    translation="",
-                    word_id=word.id,
-                    language_id=lang_ids['en'],
-                    type='example',
-                    difficulty=word.difficulty,
-                    gap_start=gap_start,
-                    gap_end=gap_end,
-                    source_title=None,  # Template: no source
-                    source_author=None,
-                    source_ref=None
-                )
-                db.add(sentence)
-                db.flush()
-                created_sentences.append(sentence)
-
-                used_gapped_texts.add(template_sentence)
-                sentences_created_for_word += 1
-
-                # Create Card
-                card = Card(
-                    id=uuid.uuid4(),
-                    sentence_id=sentence.id,
-                    deck_id=default_deck.id,
-                    grammar_hint='',
-                    difficulty=word.difficulty,
-                    gap_start=sentence.gap_start,
-                    gap_end=sentence.gap_end,
-                    is_active=True
-                )
-                db.add(card)
-                db.flush()
-                created_cards.append(card)
+            # Missing corpus evidence is preferable to a grammatically unsafe
+            # generated placeholder. Curated imports can add a card later.
         else:
-            # No sentence bank or rank > 2000: use smart templates
-            for i in range(sentence_count):
-                template_info = generate_smart_templates(wf.word, 1, 'UNK')[0]
-                template_sentence, gap_start, gap_end = template_info
-
-                # Check if already exists (idempotency)
-                existing = db.query(Sentence).filter(
-                    Sentence.word_id == word.id,
-                    Sentence.text == template_sentence
-                ).first()
-
-                if existing:
-                    continue
-
-                # Create sentence with NO source (template)
-                sentence = Sentence(
-                    id=uuid.uuid4(),
-                    text=template_sentence,
-                    translation="",
-                    word_id=word.id,
-                    language_id=lang_ids['en'],
-                    type='example',
-                    difficulty=word.difficulty,
-                    gap_start=gap_start,
-                    gap_end=gap_end,
-                    source_title=None,
-                    source_author=None,
-                    source_ref=None
-                )
-                db.add(sentence)
-                db.flush()
-                created_sentences.append(sentence)
-
-                # Create Card
-                card = Card(
-                    id=uuid.uuid4(),
-                    sentence_id=sentence.id,
-                    deck_id=default_deck.id,
-                    grammar_hint='',
-                    difficulty=word.difficulty,
-                    gap_start=sentence.gap_start,
-                    gap_end=sentence.gap_end,
-                    is_active=True
-                )
-                db.add(card)
-                db.flush()
-                created_cards.append(card)
+            # Do not create unreviewed placeholder sentences for uncovered
+            # words. Words remain available for future licensed imports.
+            continue
 
         if len(created_words) % 1000 == 0:
             print(f"  Processed {len(created_words)} words...")
+
+    curated_sentences, curated_cards = seed_curated_english_content(
+        db,
+        language_id=lang_ids["en"],
+        deck=default_deck,
+    )
+    created_sentences.extend(curated_sentences)
+    created_cards.extend(curated_cards)
 
     db.commit()
     print(f"✅ Created {len(created_words)} words, {len(created_sentences)} sentences, {len(created_cards)} cards")
@@ -1819,6 +1719,13 @@ def main():
             sentences = create_sentences(db, words, lang_ids)
             decks = create_decks(db, lang_ids)
             cards = create_cards(db, sentences, decks)
+            curated_sentences, curated_cards = seed_curated_english_content(
+                db,
+                language_id=lang_ids["en"],
+                deck=decks[0],
+            )
+            sentences.extend(curated_sentences)
+            cards.extend(curated_cards)
 
         # Always create demo user and user states
         demo_user = create_demo_user(db)

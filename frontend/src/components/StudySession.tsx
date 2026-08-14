@@ -7,6 +7,8 @@ import FeedbackMessage from './FeedbackMessage';
 import SessionCounter from './SessionCounter';
 import InsightsSection from './InsightsSection';
 import LearningContextPanel from './LearningContextPanel';
+import CompetencyPanel from './CompetencyPanel';
+import ContentContextBadges from './ContentContextBadges';
 import { useStudySession } from './useStudySession';
 
 type TrainingMode = 'spec4' | 'lingvist' | 'chat';
@@ -68,6 +70,8 @@ return (
         {currentCard ? (
           <div className="space-y-8">
             <LearningContextPanel context={currentCard.learning_context} />
+            <CompetencyPanel competency={currentCard.competency} />
+            <ContentContextBadges context={currentCard.content_context} />
 
             {/* Card Display */}
             <CardDisplay

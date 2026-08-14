@@ -96,15 +96,15 @@ test.describe('User Profile Management', () => {
     const description = page.locator('[data-testid="profile-goal-description"]');
 
     await expect(goal100).toHaveAttribute('aria-pressed', 'true');
-    await expect(description).toContainText('Basic conversations');
+    await expect(description).toContainText('First high-frequency vocabulary target');
 
     await goal500.click();
     await expect(goal500).toHaveAttribute('aria-pressed', 'true');
-    await expect(description).toContainText('Elementary level');
+    await expect(description).toContainText('Broader high-frequency vocabulary target');
 
     await goal1500.click();
     await expect(goal1500).toHaveAttribute('aria-pressed', 'true');
-    await expect(description).toContainText('Intermediate level');
+    await expect(description).toContainText('Everyday vocabulary expansion');
   });
 
   test('native language dropdown works', async ({ page }) => {
@@ -224,8 +224,8 @@ test.describe('User Profile Management', () => {
     await expect(page.locator('[data-testid="profile-create-name"]')).toBeVisible();
     await expect(page.locator('[data-testid="profile-create-start"]')).toBeVisible();
 
-    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Basic conversations');
+    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('First high-frequency vocabulary target');
     await page.click('[data-testid="profile-goal-5000"]');
-    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Fluent conversations');
+    await expect(page.locator('[data-testid="profile-goal-description"]')).toContainText('Extended vocabulary target');
   });
 });

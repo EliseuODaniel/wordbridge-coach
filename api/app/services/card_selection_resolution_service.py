@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from sqlalchemy import and_, func
 
-from app.models import Word, WordFrequency
+from app.models import Sentence, Word, WordFrequency
 from app.services.lingvist_difficulty_service import choose_frequency_ordered_new_word
 from app.services.card_selection_fallback_service import (
     find_any_eligible_card as _find_any_eligible_card_service,
@@ -29,7 +29,7 @@ def build_selected_card(
     *,
     is_new: bool,
     exclude_card_id: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """Resolve sentence, build payload, and record the card in session stats."""
     sentence = selector.progression_service.get_sentence_for_word(
         user_id,
@@ -37,6 +37,8 @@ def build_selected_card(
         exclude_card_id,
         use_lingvist_profile=selector._get_user_mode(user_id) == 'lingvist',
     )
+    if sentence is None:
+        return None
     card_context = selector._build_card_context(user_id, word, sentence, is_new=is_new)
     selector.progression_service.record_card_shown(user_id, is_new_card=is_new)
     return card_context
@@ -58,6 +60,11 @@ def get_random_new_card(
 
     if user_mode == 'lingvist':
         profile = selector.progression_service.get_lingvist_difficulty_profile(user_id)
+        has_eligible_sentence = selector.db.query(Sentence.id).filter(
+            Sentence.word_id == Word.id,
+            Sentence.text.like("%___%"),
+            Sentence.quality_status.in_(("approved", "literary")),
+        ).exists()
         query = selector.db.query(Word, WordFrequency.rank).join(
             WordFrequency,
             and_(
@@ -65,6 +72,8 @@ def get_random_new_card(
                 WordFrequency.language_code == target_lang.code,
                 WordFrequency.rank <= max_rank,
             ),
+        ).filter(
+            has_eligible_sentence,
         ).order_by(WordFrequency.rank.asc(), Word.id.asc())
 
         excluded_word_id = selector._get_excluded_word_id(exclude_card_id)
@@ -92,6 +101,11 @@ def get_random_new_card(
         if word is None:
             return None
     else:
+        has_eligible_sentence = selector.db.query(Sentence.id).filter(
+            Sentence.word_id == Word.id,
+            Sentence.text.like("%___%"),
+            Sentence.quality_status.in_(("approved", "literary")),
+        ).exists()
         query = selector.db.query(Word).join(
             WordFrequency,
             and_(
@@ -99,6 +113,8 @@ def get_random_new_card(
                 WordFrequency.language_code == target_lang.code,
                 WordFrequency.rank <= max_rank,
             ),
+        ).filter(
+            has_eligible_sentence,
         )
 
         excluded_word_id = selector._get_excluded_word_id(exclude_card_id)

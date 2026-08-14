@@ -23,6 +23,10 @@ from app.models.chat_conversation import ChatConversation
 from app.models.chat_message import ChatMessage, MessageRole
 from app.models.chat_lesson_history import ChatLessonHistory
 from app.models.user_llm_preferences import UserLLMPreferences
+from app.models.learning_skill import LearningSkill
+from app.models.sentence_skill import SentenceSkill
+from app.models.learner_skill_state import LearnerSkillState
+from app.models.pedagogical_observation import PedagogicalObservation
 
 __all__ = [
     "BaseModel",
@@ -49,4 +53,8 @@ __all__ = [
     "MessageRole",
     "ChatLessonHistory",
     "UserLLMPreferences",
+    "LearningSkill",
+    "SentenceSkill",
+    "LearnerSkillState",
+    "PedagogicalObservation",
 ]

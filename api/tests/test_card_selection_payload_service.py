@@ -53,6 +53,7 @@ def test_build_card_context_payload_preserves_existing_card_and_source(
     card = sample_cards["en_book"]
     sentence = card.sentence
     sentence.source_title = "Dracula"
+    card.gap_end = 99
     db_session.commit()
 
     payload = build_card_context_payload(
@@ -66,3 +67,4 @@ def test_build_card_context_payload_preserves_existing_card_and_source(
     assert payload["card_id"] == str(card.id)
     assert payload["sentence_source"] == "Dracula"
     assert payload["is_new"] is False
+    assert payload["gap"] == {"start": 15, "end": 18}

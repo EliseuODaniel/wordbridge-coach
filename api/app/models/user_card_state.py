@@ -1,6 +1,6 @@
 """UserCardState model for SRS SM-2 algorithm"""
 
-from sqlalchemy import Column, Integer, Float, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import Column, Integer, Float, ForeignKey, DateTime, Enum, Boolean, JSON, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -33,6 +33,14 @@ class UserCardState(BaseModel):
     correct_reviews = Column(Integer, default=0, nullable=False)
     is_relearn = Column(Boolean, default=False, nullable=False)
     relearn_due = Column(DateTime, nullable=True)
+
+    # FSRS 6 runs in shadow mode until real delayed-recall evidence justifies
+    # replacing the production SM-2 schedule.
+    fsrs_card_json = Column(JSON, nullable=True)
+    fsrs_last_retrievability = Column(Float, nullable=True)
+    fsrs_next_review_at = Column(DateTime, nullable=True)
+    fsrs_interval_days = Column(Float, nullable=True)
+    scheduler_shadow_version = Column(String(40), nullable=True)
 
     # Relationships - Temporarily disabled to fix seed
     user = relationship("User", back_populates="card_states")

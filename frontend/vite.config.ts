@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-import { createDevProxy } from './viteProxy'
+import { createDevProxy } from './viteProxy.ts'
 
 // https://vite.dev/config/
 export default defineConfig({

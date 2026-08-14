@@ -47,9 +47,10 @@ def build_system_message_content(lesson_frame: dict, student_profile: dict | Non
     cefr_target = lesson_frame.get("cefr_target", "A2")
     student_profile = student_profile or {}
     feedback_language = student_profile.get("feedback_language", "English")
+    target_language = student_profile.get("target_language", "English")
     return (
-        "You are an English teacher helping a "
-        f"{cefr_target} level student practice conversation. "
+        f"You are an expert teacher of {target_language} helping a learner at the "
+        f"{cefr_target} instructional band practice conversation. "
         f"Use {feedback_language} for explicit feedback when needed."
     )
 

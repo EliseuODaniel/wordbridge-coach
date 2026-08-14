@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 from app.models import Card, Deck
 from app.services.lingvist_payload_service import get_user_target_language_code
+from app.services.content_quality_service import cloze_gap_bounds
 
 
 def ensure_active_card_for_sentence(db, sentence, word):
@@ -54,6 +55,7 @@ def ensure_active_card_for_sentence(db, sentence, word):
 def build_card_context_payload(db, user_id: str, word, sentence, is_new: bool):
     """Build the stable card context dict used by selection flows."""
     card = ensure_active_card_for_sentence(db, sentence, word)
+    gap_start, gap_end = cloze_gap_bounds(sentence)
     lang_code = get_user_target_language_code(db, user_id)
     audio_word_url, audio_sentence_url = build_audio_urls(card.id, word.text or "", sentence.text or "", lang_code)
 
@@ -64,8 +66,8 @@ def build_card_context_payload(db, user_id: str, word, sentence, is_new: bool):
         "word": word.text,
         "sentence": sentence.text or "",
         "gap": {
-            "start": card.gap_start or 0,
-            "end": card.gap_end or 0,
+            "start": gap_start,
+            "end": gap_end,
         },
         "sentence_translation": sentence.translation or "",
         "grammar_hint": card.grammar_hint or "",

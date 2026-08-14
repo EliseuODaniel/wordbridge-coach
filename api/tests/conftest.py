@@ -275,13 +275,14 @@ def sample_sentences(db_session, sample_languages, sample_words) -> Dict[str, Se
             text="The book is ___ there.",
             translation="O livro está lá.",
             grammar_hint="adverb - location",
-            gap_start=13,
-            gap_end=16,
+            gap_start=12,
+            gap_end=15,
             language_id=sample_languages['en'].id,
             word_id=en_there_word.id,
             type="FILL_IN_THE_GAP",  # Required field
             source_type=SourceType.CORPUS,  # Required field
-            difficulty=1  # Required field
+            difficulty=1,  # Required field
+            quality_status="approved",
         )
         db_session.add(sentence)
         sentences["en_there"] = sentence
@@ -294,13 +295,14 @@ def sample_sentences(db_session, sample_languages, sample_words) -> Dict[str, Se
             text="I am reading a ___.",
             translation="Estou lendo um livro.",
             grammar_hint="noun - object",
-            gap_start=16,
-            gap_end=19,
+            gap_start=15,
+            gap_end=18,
             language_id=sample_languages['en'].id,
             word_id=en_book_word.id,
             type="FILL_IN_THE_GAP",  # Required field
             source_type=SourceType.CORPUS,  # Required field
-            difficulty=1  # Required field
+            difficulty=1,  # Required field
+            quality_status="approved",
         )
         db_session.add(sentence)
         sentences["en_book"] = sentence
@@ -319,7 +321,8 @@ def sample_sentences(db_session, sample_languages, sample_words) -> Dict[str, Se
             word_id=fr_word.id,
             type="FILL_IN_THE_GAP",  # Required field
             source_type=SourceType.CORPUS,  # Required field
-            difficulty=1  # Required field
+            difficulty=1,  # Required field
+            quality_status="approved",
         )
         db_session.add(sentence)
         sentences["fr_livre"] = sentence

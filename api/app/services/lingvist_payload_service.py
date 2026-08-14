@@ -15,6 +15,8 @@ from app.models.user_card_state import MemoryStage
 from app.models.user_session_stats import UserSessionStats
 from app.schemas.lingvist import LingvistCardResponse, MicroProgress
 from app.services.chat_profile_service import load_cross_mode_learning_context
+from app.services.competency_service import build_card_competency_context
+from app.services.content_quality_service import cloze_gap_bounds, content_context, validate_cloze_content
 
 
 def get_user_target_language_code(db: Session, user_id: str, default: str = "en") -> str:
@@ -155,6 +157,14 @@ def build_lingvist_card_response(
     lang_code = get_user_target_language_code(db, user_id)
     audio_word_url, audio_sentence_url = build_relative_audio_urls(card, word, sentence, lang_code)
     learning_context = load_cross_mode_learning_context(db, user_id, mode="lingvist")
+    competency = build_card_competency_context(db, user_id=user_id, card=card)
+    validation = validate_cloze_content(sentence, word)
+    gap_start, gap_end = cloze_gap_bounds(sentence)
+    item_content_context = {
+        **content_context(sentence),
+        "validation_status": "valid" if validation.valid else "invalid",
+        "validation_issues": list(validation.issues),
+    }
 
     return LingvistCardResponse(
         card_id=str(card.id),
@@ -162,7 +172,7 @@ def build_lingvist_card_response(
         sentence_id=str(sentence.id),
         word=word.text,
         sentence=sentence.text or "",
-        gap={"start": card.gap_start or 0, "end": card.gap_end or 0},
+        gap={"start": gap_start, "end": gap_end},
         correct_answer=word.text,
         grammar_tag_pt=grammar_tag_pt,
         word_translation_pt=word_translation_pt,
@@ -173,4 +183,6 @@ def build_lingvist_card_response(
         audio_word_url=audio_word_url,
         audio_sentence_url=audio_sentence_url,
         learning_context=learning_context,
+        competency=competency,
+        content_context=item_content_context,
     )

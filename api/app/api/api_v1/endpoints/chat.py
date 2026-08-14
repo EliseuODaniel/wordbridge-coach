@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.schemas.chat import (
     ChatConversationCreate,
     ChatConversationResponse,
@@ -95,6 +95,7 @@ CHAT_DRAFT_GRAMMAR_PROVIDER = os.getenv("CHAT_DRAFT_GRAMMAR_PROVIDER", "heuristi
 CHAT_LANGUAGETOOL_URL = os.getenv("CHAT_LANGUAGETOOL_URL", "http://languagetool:8010")
 
 router = APIRouter()
+websocket_session_factory = SessionLocal
 
 # Initialize LLM provider from environment variables (supports Mock, OpenAI, LlamaCpp)
 llm_provider = get_llm_provider_from_env()
@@ -303,12 +304,11 @@ async def chat_websocket(websocket: WebSocket, conversation_id: str):
     - user_message → assistant_stream_token* → assistant_done
     - ping → pong
     """
-    from app.core.database import SessionLocal
     await run_chat_websocket_session(
         websocket=websocket,
         conversation_id=conversation_id,
         deps=build_chat_websocket_session_deps(
-            session_factory=SessionLocal,
+            session_factory=websocket_session_factory,
             build_runtime=build_chat_websocket_runtime,
             make_handlers=lambda: build_chat_websocket_handlers(_chat_handler_deps),
             route_event=route_websocket_event,

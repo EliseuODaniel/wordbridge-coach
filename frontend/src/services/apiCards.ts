@@ -30,6 +30,7 @@ export interface CardResponse {
   card_id: string;
   word_id: string;
   sentence_id: string;
+  word: string;
   sentence: string;
   gap: Gap;
   sentence_translation: string;
@@ -40,6 +41,8 @@ export interface CardResponse {
   audio_sentence_url: string;
   sentence_source?: string | null;
   learning_context?: LearningContext | null;
+  competency?: CompetencyContext | null;
+  content_context: ContentContext;
 }
 
 export interface MicroProgress {
@@ -65,6 +68,33 @@ export interface LingvistCardResponse {
   audio_word_url: string;
   audio_sentence_url: string;
   learning_context?: LearningContext | null;
+  competency?: CompetencyContext | null;
+  content_context: ContentContext;
+}
+
+export interface CompetencyContext {
+  code: string;
+  name: string;
+  framework: string;
+  framework_level: string;
+  modality: string;
+  can_do_descriptor: string;
+  mastery_probability: number;
+  confidence: number;
+  observation_count: number;
+  proficiency_claim: string;
+}
+
+export interface ContentContext {
+  cefr_level?: string | null;
+  register?: string | null;
+  domain?: string | null;
+  quality_status: string;
+  content_version: string;
+  is_contemporary: boolean;
+  license_name?: string | null;
+  validation_status: string;
+  validation_issues: string[];
 }
 
 export interface AnswerRequest {
@@ -72,6 +102,9 @@ export interface AnswerRequest {
   response_time_ms: number;
   attempts?: number;
   hints_used?: number;
+  mode?: 'spec4' | 'lingvist';
+  task_type?: 'gap_recall' | 'cloze_completion';
+  session_id?: string;
 }
 
 export interface AnswerResponse {
@@ -80,6 +113,16 @@ export interface AnswerResponse {
   sentence_full: string;
   quality: number;
   next_review_at: string;
+  competency?: CompetencyContext | null;
+  scheduler_shadow?: {
+    version: string;
+    predicted_recall_before?: number | null;
+    retrievability_after: number;
+    next_review_at: string;
+    interval_days: number;
+    production_scheduler: string;
+    shadow_scheduler: string;
+  } | null;
 }
 
 const buildCardQueryParams = (userId?: string, excludeCardId?: string): CardQueryParams => {

@@ -159,6 +159,8 @@ def score_sentence_candidate(
     difficulty = int(getattr(sentence, "difficulty", profile.target_sentence_difficulty) or profile.target_sentence_difficulty)
     source_type = getattr(sentence, "source_type", SourceType.CORPUS)
     source_title = getattr(sentence, "source_title", None)
+    quality_status = str(getattr(sentence, "quality_status", "unreviewed") or "unreviewed")
+    is_contemporary = bool(getattr(sentence, "is_contemporary", False))
 
     score = 0.0
 
@@ -193,6 +195,16 @@ def score_sentence_candidate(
 
     if source_title:
         score += 2.0
+    if quality_status == "approved":
+        score += 8.0
+    elif quality_status == "literary":
+        score += 1.0
+    elif quality_status == "needs_review":
+        score -= 12.0
+    elif quality_status == "rejected":
+        score -= 1000.0
+    if is_contemporary:
+        score += 5.0
 
     punctuation_marks = sum(1 for mark in ",?!;:" if mark in (getattr(sentence, "text", "") or ""))
     if punctuation_marks:

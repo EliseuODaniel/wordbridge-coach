@@ -33,6 +33,22 @@ def test_build_chat_system_prompt_uses_lesson_frame_defaults():
     assert "Retention signal: building" in prompt
     assert "Review pressure: medium" in prompt
     assert "No examples, quotes, or meta-commentary" in prompt
+    assert "instructional band, not a certification claim" in prompt
+
+
+def test_build_chat_system_prompt_does_not_hardcode_english():
+    prompt = build_chat_system_prompt(
+        {"cefr_target": "A2", "topic": "travel", "learning_goal": "directions"},
+        {
+            "target_language": "French",
+            "feedback_language": "Portuguese",
+            "scaffolding_level": "guided_practice",
+        },
+    )
+    assert "expert French tutor" in prompt
+    assert "Stay in French" in prompt
+    assert "encourage them to use English" not in prompt
+    assert "prompt self-correction" in prompt
 
 
 def test_build_chat_generation_config_filters_stop_sequences():

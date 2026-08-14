@@ -1,6 +1,6 @@
 # Architecture
 
-Data de referência: 2026-04-24
+Data de referência: 2026-08-14
 
 ## Visão geral
 
@@ -146,6 +146,30 @@ Topologia operacional padrão:
 8. `VocabularyProgressionService` reaproveita esses sinais para ajustar o perfil Lingvist antes de escolher dificuldade de sentença, faixa de comprimento e pool de lookahead
 
 ## Estado pedagógico compartilhado
+
+O núcleo pedagógico normalizado separa quatro conceitos:
+
+- `learning_skill`: catálogo versionado de competências, modalidade e descritor observável
+- `sentence_skill`: mapeamento auditável entre item e competência, explícito no conteúdo curado ou inferido conservadoramente no legado
+- `pedagogical_observation`: evento bruto da atividade, incluindo modo, tarefa, acerto, suporte, tentativas e latência
+- `learner_skill_state`: projeção interpretável da evidência, com domínio estimado, confiança, independência e próxima prática
+
+Os cards Spec4 e Lingvist projetam a mesma competência e o mesmo contexto de conteúdo. A faixa CEFR exibida é instrucional e nunca é apresentada como certificação. A API não expõe um endpoint público de perfil de competências enquanto não existir autenticação e autorização por usuário.
+
+### Scheduling
+
+- SM-2 continua sendo a fonte de verdade do agendamento em produção.
+- `fsrs==6.3.0` calcula estado, retrievability e próximo intervalo em modo sombra por evento.
+- a telemetria FSRS é persistida no estado do card e no evento de revisão, mas não altera a fila do aluno.
+- a promoção de FSRS exige dados reais de recordação atrasada, comparação de calibração e plano de rollback; testes sintéticos não satisfazem esse gate.
+
+### Conteúdo e fala
+
+- itens cloze precisam ter exatamente uma lacuna, offsets coerentes, contexto mínimo, palavra-alvo e status `approved` ou `literary` antes de entrar na sessão
+- placeholders gerados automaticamente deixaram de ser criados; ausência de corpus válido resulta em ausência de card, não em frase inventada
+- o pacote `contemporary-en-v1` é autoral, idempotente, versionado e inclui domínio, faixa instrucional, licença e competência
+- literatura em domínio público continua disponível, marcada separadamente de inglês contemporâneo
+- a prática de fala usa `MediaRecorder` local, permite reprodução e descarta o áudio ao sair; ASR/upload permanece fora da API enquanto não houver autenticação, consentimento e política de retenção
 
 - `student_profile_json` guarda sinais longitudinais, idioma de feedback, scaffolding, `pedagogical_state` e `pedagogical_metrics`
 - `lesson_frame_json` guarda o objetivo adaptativo do turno atual (`learning_goal`, `expected_intent`, `primary_focus`, `lesson_stage`, `success_criteria`) e um bloco `diagnostics`

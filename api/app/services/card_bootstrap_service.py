@@ -109,6 +109,10 @@ def create_sample_data_if_needed(db: Session) -> None:
                 difficulty=1,
                 gap_start=4,
                 gap_end=7,
+                quality_status="approved",
+                license_name="MIT (project-authored)",
+                content_version="bootstrap-v1",
+                is_contemporary=True,
             )
             db.add(sentence)
             db.flush()
@@ -120,7 +124,7 @@ def create_sample_data_if_needed(db: Session) -> None:
                 grammar_hint="Use the word for the object you read",
                 difficulty=1,
                 gap_start=4,
-                gap_end=6,
+                gap_end=7,
                 is_active=True,
             )
             db.add(card)

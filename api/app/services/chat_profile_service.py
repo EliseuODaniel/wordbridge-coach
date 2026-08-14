@@ -337,26 +337,12 @@ def _contains_any(text: str, candidates: tuple[str, ...]) -> bool:
 
 
 def estimate_cefr_level(word_goal_rank: int, accuracy_last_20: float | None) -> str:
-    """Infer an approximate CEFR level from vocabulary goal and recent accuracy."""
-    if word_goal_rank <= 500:
-        base_index = 0
-    elif word_goal_rank <= 1500:
-        base_index = 1
-    elif word_goal_rank <= 3000:
-        base_index = 2
-    elif word_goal_rank <= 5000:
-        base_index = 3
-    else:
-        base_index = 4
+    """Return a safe instructional default, never a vocabulary-derived claim.
 
-    accuracy = _normalize_accuracy(accuracy_last_20)
-    if accuracy is not None:
-        if accuracy < 0.55:
-            base_index = max(0, base_index - 1)
-        elif accuracy > 0.9 and base_index < 4:
-            base_index += 1
-
-    return ["A1", "A2", "B1", "B2", "C1"][base_index]
+    This function stays temporarily for call-site compatibility while
+    multi-skill observations become the source of proficiency evidence.
+    """
+    return "A2"
 
 
 def determine_scaffolding_level(
@@ -771,6 +757,11 @@ def build_student_profile(
             "cefr_level",
             estimate_cefr_level(word_goal_rank, accuracy_last_20),
         ),
+        "proficiency_basis": (
+            seed_profile.get("proficiency_basis")
+            or ("persisted_instructional_band" if seed_profile.get("cefr_level") else "unassessed_instructional_default")
+        ),
+        "cefr_certified": False,
         "common_errors": common_errors,
         "strengths": strengths,
         "weaknesses": weaknesses,

@@ -1,5 +1,7 @@
 """Focused tests for vocabulary progression language-aware behavior."""
 
+from datetime import timedelta
+from types import SimpleNamespace
 import uuid
 
 from app.models import (
@@ -10,8 +12,56 @@ from app.models import (
     WordFrequency,
 )
 from app.models.sentence import SourceType
+from app.core.time import utc_now
 
 from app.services.vocabulary_progression import VocabularyProgressionService
+
+
+def test_review_score_uses_ordered_history_without_per_word_queries():
+    now = utc_now()
+    reviews = [
+        SimpleNamespace(created_at=now - timedelta(days=1), was_correct=False),
+        SimpleNamespace(created_at=now - timedelta(days=4), was_correct=True),
+        SimpleNamespace(created_at=now - timedelta(days=2), was_correct=False),
+    ]
+
+    score = VocabularyProgressionService._calculate_review_score(reviews)
+
+    assert score > 0.7
+    assert VocabularyProgressionService._calculate_review_score([]) == 1.0
+
+
+def test_missing_valid_cloze_does_not_generate_unsafe_fallback(db_session, sample_languages):
+    word = Word(
+        id=str(uuid.uuid4()),
+        text="placeholder",
+        lemma="placeholder",
+        part_of_speech="noun",
+        difficulty=1,
+        language_id=sample_languages["en"].id,
+        frequency_rank=999,
+    )
+    invalid_sentence = Sentence(
+        id=str(uuid.uuid4()),
+        text="This sentence has no gap.",
+        translation="Esta frase não tem lacuna.",
+        gap_start=0,
+        gap_end=0,
+        language_id=sample_languages["en"].id,
+        word_id=word.id,
+        type="FILL_IN_THE_GAP",
+        source_type=SourceType.GENERATED,
+        difficulty=1,
+        quality_status="needs_review",
+    )
+    db_session.add_all([word, invalid_sentence])
+    db_session.commit()
+    before_count = db_session.query(Sentence).filter(Sentence.word_id == word.id).count()
+
+    selected = VocabularyProgressionService(db_session).get_sentence_for_word("unused-user", word.id)
+
+    assert selected is None
+    assert db_session.query(Sentence).filter(Sentence.word_id == word.id).count() == before_count
 
 
 def test_get_next_new_word_rank_respects_target_language(

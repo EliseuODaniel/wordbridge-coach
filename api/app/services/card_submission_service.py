@@ -12,6 +12,12 @@ from app.services.card_answer_service import (
 from app.services.card_progress_service import apply_post_answer_updates
 from app.services.card_response_service import resolve_request_user_id
 from app.services.sm2 import SM2Algorithm
+from app.services.competency_service import (
+    build_card_competency_context,
+    record_card_observation,
+)
+from app.services.content_quality_service import validate_cloze_content
+from app.services.fsrs_shadow_service import apply_fsrs_shadow
 
 
 def get_validated_card_or_404(db, card_id: str):
@@ -40,6 +46,16 @@ def get_validated_card_or_404(db, card_id: str):
             },
         )
 
+    content_validation = validate_cloze_content(card.sentence, card.sentence.word)
+    if not content_validation.valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "Content failed pedagogical validation",
+                "issues": list(content_validation.issues),
+            },
+        )
+
     return card
 
 
@@ -49,10 +65,12 @@ def evaluate_answer_submission(card, answer_data: AnswerRequest) -> dict:
     sentence_full = card.sentence.text.replace("___", correct_answer, 1)
     sentence_id = str(card.sentence.id)
 
+    word_features = card.sentence.word.features if isinstance(card.sentence.word.features, dict) else {}
+    accepted_answers = word_features.get("accepted_answers", [])
     is_correct, normalized_correct = SM2Algorithm.validate_answer(
         user_answer=answer_data.answer,
         correct_answer=correct_answer,
-        synonyms=["tome"],
+        synonyms=accepted_answers if isinstance(accepted_answers, list) else [],
     )
     quality = SM2Algorithm.calculate_quality_from_response(
         was_correct=is_correct,
@@ -110,6 +128,20 @@ def submit_card_answer(db, *, card_id: str, answer_data: AnswerRequest, user_id=
     )
     db.add(review_event)
 
+    scheduler_shadow = apply_fsrs_shadow(
+        user_card_state,
+        review_event,
+        quality=evaluation["quality"],
+        response_time_ms=answer_data.response_time_ms,
+    )
+    record_card_observation(
+        db,
+        user_id=resolved_user_id,
+        card=card,
+        answer_data=answer_data,
+        was_correct=evaluation["is_correct"],
+    )
+
     apply_sm2_result(
         user_card_state,
         sm2_payload["sm2_result"],
@@ -133,10 +165,18 @@ def submit_card_answer(db, *, card_id: str, answer_data: AnswerRequest, user_id=
         db.rollback()
         raise
 
+    competency = build_card_competency_context(
+        db,
+        user_id=resolved_user_id,
+        card=card,
+    )
+
     return build_answer_response(
         is_correct=evaluation["is_correct"],
         correct_answer=evaluation["correct_answer"],
         sentence_full=evaluation["sentence_full"],
         quality=evaluation["quality"],
         next_review_at=sm2_payload["sm2_result"]["next_review_at"],
+        competency=competency,
+        scheduler_shadow=scheduler_shadow,
     )

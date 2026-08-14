@@ -1,5 +1,42 @@
 # Decisions
 
+## 2026-08-14 - Atualizar o toolchain frontend e separar dependências de build
+
+Status: aceito
+
+O frontend passa a usar Vite 8 com o plugin React compatível, mantém ferramentas de build em `devDependencies` e remove `react-router-dom`, que não possuía consumidor no código. O lockfile é a fonte reprodutível para CI e containers por meio de `npm ci`; a promoção foi aceita somente após lint, typecheck, build, smoke e suíte Chromium completa sem regressões, além de auditoria npm sem vulnerabilidades conhecidas.
+
+## 2026-08-14 - Adotar competências explícitas, conteúdo governado e FSRS em sombra
+
+Status: aceito
+
+### Contexto
+
+O produto combinava três experiências úteis, mas inferia nível principalmente de rank de vocabulário, registrava pouca informação sobre o suporte usado e podia criar frases artificiais sem garantia pedagógica. Trocar o scheduler diretamente para FSRS sem dados longitudinais reais também criaria uma aparência de precisão sem validação.
+
+### Decisão
+
+- normalizar competência, mapeamento de item, observação e estado do aluno em tabelas separadas
+- registrar evidência de Spec4 e Lingvist com tarefa, modo, tentativas, hints e independência
+- mostrar domínio/confiança como estimativa instrucional, nunca como certificação
+- manter SM-2 produtivo e executar a implementação oficial `fsrs==6.3.0` em sombra
+- entregar somente conteúdo `approved` ou `literary`, impedir conteúdo inválido de entrar nas filas e não gerar placeholders automaticamente
+- versionar um pequeno corpus contemporâneo autoral como contrato inicial de ingestão
+- manter gravações de fala somente no browser; qualquer upload/ASR requer antes autenticação, consentimento e retenção explícita
+
+### Impacto
+
+- os três módulos existentes continuam ativos e compartilham contexto pedagógico mais consistente
+- decisões futuras de scheduler e conteúdo passam a ter telemetria e gate de promoção auditáveis
+- a ausência de um item revisado pode reduzir temporariamente a cobertura, mas não produz exemplos gramaticalmente duvidosos
+- um perfil público de competências e análise automática de voz permanecem intencionalmente fora da superfície sem autenticação
+
+## 2026-08-14 - Não ampliar implicitamente exclusões de dados do usuário
+
+Status: pendente de autorização explícita
+
+As novas tabelas tornam necessária uma política única para troca de idioma e exclusão de perfil. A implementação não deve apagar histórico de chat, preferências ou evidência adicional por inferência. Até essa decisão ser autorizada e coberta por testes transacionais, a ampliação destrutiva fica fora do escopo publicado.
+
 ## 2026-05-05 - Usar mock como provider padrão do Chat Coach no stack base
 
 Status: aceito

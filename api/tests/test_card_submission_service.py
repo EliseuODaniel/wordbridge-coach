@@ -12,6 +12,7 @@ from app.services import card_submission_service
 def test_submit_card_answer_orchestrates_dependencies(monkeypatch):
     calls = []
     fake_card = SimpleNamespace(
+        id="card-1",
         sentence=SimpleNamespace(
             word=SimpleNamespace(text="book"),
             word_id="word-1",
@@ -72,6 +73,21 @@ def test_submit_card_answer_orchestrates_dependencies(monkeypatch):
     )
     monkeypatch.setattr(
         card_submission_service,
+        "apply_fsrs_shadow",
+        lambda *args, **kwargs: calls.append(("apply_fsrs_shadow", kwargs["quality"])) or {"version": "test"},
+    )
+    monkeypatch.setattr(
+        card_submission_service,
+        "record_card_observation",
+        lambda db, **kwargs: calls.append(("record_card_observation", kwargs["was_correct"])),
+    )
+    monkeypatch.setattr(
+        card_submission_service,
+        "build_card_competency_context",
+        lambda db, **kwargs: calls.append(("build_card_competency_context",)) or {"code": "test"},
+    )
+    monkeypatch.setattr(
+        card_submission_service,
         "apply_post_answer_updates",
         lambda db, **kwargs: calls.append(("apply_post_answer_updates", kwargs["word_id"])),
     )
@@ -101,14 +117,18 @@ def test_submit_card_answer_orchestrates_dependencies(monkeypatch):
     assert response is fake_response
     assert calls == [
         ("add", fake_review_event),
+        ("apply_fsrs_shadow", 4),
+        ("record_card_observation", True),
         ("apply_sm2_result", True),
         ("apply_post_answer_updates", "word-1"),
         ("commit",),
+        ("build_card_competency_context",),
     ]
 
 
 def test_submit_card_answer_rolls_back_commit_errors(monkeypatch):
     fake_card = SimpleNamespace(
+        id="card-1",
         sentence=SimpleNamespace(
             word=SimpleNamespace(text="book"),
             word_id="word-1",
@@ -145,6 +165,8 @@ def test_submit_card_answer_rolls_back_commit_errors(monkeypatch):
     monkeypatch.setattr(card_submission_service, "create_review_event", lambda **kwargs: object())
     monkeypatch.setattr(card_submission_service, "apply_sm2_result", lambda *args, **kwargs: None)
     monkeypatch.setattr(card_submission_service, "apply_post_answer_updates", lambda *args, **kwargs: None)
+    monkeypatch.setattr(card_submission_service, "apply_fsrs_shadow", lambda *args, **kwargs: {})
+    monkeypatch.setattr(card_submission_service, "record_card_observation", lambda *args, **kwargs: None)
 
     class FakeDb:
         def add(self, obj):

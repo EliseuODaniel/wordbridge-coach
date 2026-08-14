@@ -63,6 +63,19 @@ def create_review_event(
         new_easiness=sm2_result["easiness_factor"],
         previous_interval=previous_interval,
         new_interval=sm2_result["interval_days"],
+        session_id=answer_data.session_id,
+        mode=answer_data.mode,
+        task_type=answer_data.task_type,
+        modality="reading_writing",
+        scaffold_level=(
+            "independent"
+            if answer_data.hints_used == 0 and answer_data.attempts == 1
+            else "guided"
+            if answer_data.hints_used <= 2 and answer_data.attempts <= 2
+            else "high_support"
+        ),
+        was_independent=answer_data.hints_used == 0 and answer_data.attempts == 1,
+        policy_version="pedagogy-policy-v1",
     )
 
 
@@ -91,6 +104,8 @@ def build_answer_response(
     sentence_full: str,
     quality: int,
     next_review_at,
+    competency=None,
+    scheduler_shadow=None,
 ) -> AnswerResponse:
     """Serialize the stable answer payload returned by the endpoint."""
     return AnswerResponse(
@@ -99,4 +114,6 @@ def build_answer_response(
         sentence_full=sentence_full,
         quality=quality,
         next_review_at=next_review_at,
+        competency=competency,
+        scheduler_shadow=scheduler_shadow,
     )

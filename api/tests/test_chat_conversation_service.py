@@ -103,7 +103,7 @@ def test_create_chat_conversation_creates_conversation_and_system_message(monkey
     assert db.added[0].session_summary == "Longitudinal learner profile"
     assert db.added[1].lesson_frame_json["topic"] == "travel"
     assert db.added[2].role == "system"
-    assert "B1 level student" in db.added[2].content
+    assert "B1 instructional band" in db.added[2].content
     assert "Portuguese" in db.added[2].content
     assert db.commit_count == 2
     assert db.refreshed == [db.added[0]]

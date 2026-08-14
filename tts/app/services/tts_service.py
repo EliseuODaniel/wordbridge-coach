@@ -107,13 +107,9 @@ class TTSService:
             # Check if we have a voice model for this language
             if language not in self.voices:
                 logger.error(f"No voice model available for language: {language}")
-                # Fallback to English if available
-                if 'en' in self.voices:
-                    logger.info(f"Falling back to English voice for: {language}")
-                    language = 'en'
-                else:
-                    logger.error("No voice models available at all")
-                    return None
+                # A voice from another language produces pedagogically invalid
+                # pronunciation guidance, so fail explicitly.
+                return None
 
             # Generate audio if not in cache
             logger.info(f"Cache miss: Generating audio for '{text}' in {language}")

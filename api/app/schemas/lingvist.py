@@ -67,3 +67,11 @@ class LingvistCardResponse(BaseModel):
         None,
         description="Shared pedagogical context that explains the current Lingvist focus",
     )
+    competency: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Explicit skill and current learner evidence for this cloze",
+    )
+    content_context: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provenance, register, quality, and version metadata",
+    )

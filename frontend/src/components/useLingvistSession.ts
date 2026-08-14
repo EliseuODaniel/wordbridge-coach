@@ -175,6 +175,10 @@ export const useLingvistSession = (userId?: string): UseLingvistSessionResult =>
         {
           answer,
           response_time_ms: responseTime,
+          attempts: attempts + 1,
+          hints_used: hintLevel,
+          mode: 'lingvist',
+          task_type: 'cloze_completion',
         },
         userId
       );
@@ -213,7 +217,7 @@ export const useLingvistSession = (userId?: string): UseLingvistSessionResult =>
         setIsPlayingAudio(false);
       }
     }
-  }, [attempts, currentCard, isInputLocked, isSubmitting, loadNextCard, startTime, userId]);
+  }, [attempts, currentCard, hintLevel, isInputLocked, isSubmitting, loadNextCard, startTime, userId]);
 
   useEffect(() => {
     loadNextCard();

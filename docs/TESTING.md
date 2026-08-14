@@ -1,5 +1,42 @@
 # Testing
 
+## Núcleo pedagógico e scheduler sombra
+
+Suíte focal:
+
+```bash
+cd api
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q \
+  tests/test_card_schema.py \
+  tests/test_competency_service.py \
+  tests/test_content_quality_service.py \
+  tests/test_fsrs_shadow_service.py \
+  tests/test_card_submission_service.py \
+  tests/test_card_spec4_service.py \
+  tests/test_lingvist_payload_service.py \
+  tests/test_vocabulary_progression.py
+```
+
+Validação de migrations em banco descartável:
+
+```bash
+cd api
+DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test \
+  .venv/bin/alembic upgrade head
+```
+
+O downgrade da migration `20260814000100` é reversível. Um downgrade completo até a base continua bloqueado por uma migration histórica anterior, que tenta remover uma `UniqueConstraint` sem nome; essa dívida não foi introduzida pelo núcleo novo.
+
+## Baseline final de 2026-08-14
+
+- backend completo: `268 passed, 1 skipped`
+- migration do schema vazio até `20260814000100 (head)`: OK
+- frontend: lint, typecheck e build com Vite `8.2.1`: OK
+- supply chain frontend: `npm ci` e `npm audit` com `0 vulnerabilities`
+- smoke com migration, seed idempotente e primeiro card: OK
+- `seed_data.py --reset` sobre banco descartável já populado: OK; dependências foram removidas na ordem das chaves estrangeiras e o currículo foi recriado com 112 cards
+- E2E Chromium sobre a imagem final: `40 passed`
+
 ## Objetivo
 
 Este arquivo registra o baseline de validação do projeto após a limpeza de governança.

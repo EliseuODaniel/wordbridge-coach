@@ -1,5 +1,7 @@
 """Tests for the Spec4 selection response service."""
 
+from types import SimpleNamespace
+
 from fastapi import HTTPException
 import pytest
 
@@ -7,6 +9,20 @@ from app.services import card_spec4_service
 
 
 def test_build_spec4_card_response_keeps_contract(monkeypatch):
+    sentence = SimpleNamespace(word=SimpleNamespace(), quality_status="approved")
+    card = SimpleNamespace(sentence=sentence)
+
+    class FakeQuery:
+        def filter(self, *args):
+            return self
+
+        def first(self):
+            return card
+
+    class FakeDb:
+        def query(self, *args):
+            return FakeQuery()
+
     monkeypatch.setattr(card_spec4_service, "get_card_memory_stage", lambda db, user_id, card_id: "LEARNING")
     monkeypatch.setattr(
         card_spec4_service,
@@ -21,6 +37,21 @@ def test_build_spec4_card_response_keeps_contract(monkeypatch):
             "feedback_language": "Portuguese",
             "why_this_now": "Recognition practice to reinforce the current focus before freer production.",
         },
+    )
+    monkeypatch.setattr(
+        card_spec4_service,
+        "build_card_competency_context",
+        lambda db, user_id, card: {"code": "en.lexical.high_frequency"},
+    )
+    monkeypatch.setattr(
+        card_spec4_service,
+        "validate_cloze_content",
+        lambda sentence, word: SimpleNamespace(valid=True, issues=()),
+    )
+    monkeypatch.setattr(
+        card_spec4_service,
+        "content_context",
+        lambda sentence: {"quality_status": "approved"},
     )
     card_context = {
         "card_id": "card-1",
@@ -37,13 +68,15 @@ def test_build_spec4_card_response_keeps_contract(monkeypatch):
         "sentence_source": "Corpus",
     }
 
-    response = card_spec4_service.build_spec4_card_response(object(), "user-1", card_context)
+    response = card_spec4_service.build_spec4_card_response(FakeDb(), "user-1", card_context)
 
     assert response.card_id == "card-1"
     assert response.memory_stage == "LEARNING"
     assert response.is_new is False
     assert response.sentence_source == "Corpus"
     assert response.learning_context.current_focus == "Use past simple after yesterday"
+    assert response.competency["code"] == "en.lexical.high_frequency"
+    assert response.content_context["validation_status"] == "valid"
 
 
 def test_get_next_spec4_card_response_raises_when_selection_is_empty(monkeypatch):

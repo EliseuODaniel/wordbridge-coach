@@ -1,8 +1,12 @@
 # Project Status
 
-Data de referência: 2026-05-05
+Data de referência: 2026-08-14
 
 ## Resumo executivo
+
+Em 2026-08-14, a aplicação recebeu um núcleo de aprendizagem baseado em evidência sem remover os módulos existentes. Spec4 e Lingvist agora compartilham competência explícita, contexto de conteúdo e observações normalizadas; Chat Coach mantém a memória longitudinal e deixou de apresentar uma estimativa de nível derivada apenas de rank como certificação. SM-2 segue produtivo e FSRS 6 opera em sombra até existir calibração longitudinal real.
+
+Também foram adicionados conteúdo contemporâneo autoral/versionado, validação determinística de cloze, prática de fala privada no navegador e limites estritos nos payloads de resposta. Frases placeholder não revisadas deixaram de ser geradas automaticamente.
 
 WordBridge Coach já funciona como uma aplicação local multi-serviço para estudo de vocabulário. O projeto foi além do MVP original e hoje mistura:
 
@@ -39,9 +43,9 @@ Direção recomendada:
 
 - workspace atual: `/home/edann/projects/wordbridge-coach`
 - repositório GitHub: `EliseuODaniel/wordbridge-coach`
-- branch local ativa: `codex/runtime-pedagogy-operability-closeout`
-- `HEAD` local antes da rodada final de documentação/E2E: `93e35f5`
-- a branch consolida runtime padrão, avaliação pedagógica, operabilidade local e preparação de release; revisar `git status` antes de publicar novas mudanças
+- branch de trabalho desta evolução: `recovery/wsl-reorganization-20260813`
+- destino solicitado para publicação: `origin/main`
+- a rodada inclui a migration `20260814000100`, serviços de competência/conteúdo/FSRS, integração frontend e testes focais
 
 Arquivos mais importantes para a próxima leitura:
 
@@ -68,6 +72,12 @@ Arquivos mais importantes para a próxima leitura:
 
 ### Baseline tecnico validado nesta fase
 
+- validação final de 2026-08-14: backend completo com `268 passed, 1 skipped`; banco PostgreSQL de teste executado em série
+- cadeia Alembic reaplicada em schema descartável realmente vazio, da primeira revision até `20260814000100 (head)`; compatibilidade ORM pós-migration confirmada por `3 passed`
+- frontend sincronizado com `npm ci`, validado com Vite `8.2.1` e `@vitejs/plugin-react` `6.0.5`; lint, typecheck e build de produção passaram e `npm audit` reportou `0 vulnerabilities`
+- `seed_data.py --reset` validado em PostgreSQL descartável já populado: o reset respeitou a ordem das chaves estrangeiras, preservou identidades não demonstrativas e recriou 73 palavras, 112 sentenças/cards e 112 estados iniciais
+- `./scripts/smoke_local.sh --keep-running`: OK com build limpo, migration completa, 112 sentenças/cards totais, seed contemporâneo idempotente e primeiro payload Spec4 restrito a conteúdo `approved`/`literary`, com competência e validação de conteúdo
+- suíte Chromium completa sobre a imagem final: `40 passed`; stack e volumes descartáveis removidos depois da validação
 - `docker compose config --quiet`: OK depois da remocao do campo `version` obsoleto e da consolidacao do bloco compartilhado dos servicos LLM
 - `./scripts/frontend_tooling.sh check`: OK no fluxo Dockerizado suportado para ambiente híbrido Windows/WSL
 - `./scripts/frontend_tooling.sh check`: OK em 2026-04-24 depois da criação do smoke e ajustes de runtime; npm audit ainda reporta `13 vulnerabilities (5 moderate, 8 high)`
@@ -280,7 +290,7 @@ Nesta fase, os hotspots estruturais principais de backend e frontend foram fecha
 - continuar usando `api/scripts/export_pedagogy_calibration.py` depois de sessões reais para comparar sinais exportados com a percepção do aluno antes de alterar limiares
 - manter Chat Coach e troca de modo cobertos por E2E focal, sem transformar o smoke curto em suíte longa
 - validar `audio` e `ai` como perfis opcionais em máquinas limpas, registrando portas ocupadas, modelos exigidos, VRAM e tempo de build
-- acompanhar vulnerabilidades reportadas por `npm audit` no frontend sem confundir esse debt com falhas do runtime local padrão
+- manter `npm audit` limpo e o lockfile sincronizado em toda atualização do toolchain frontend
 
 ## Componentes ativos
 

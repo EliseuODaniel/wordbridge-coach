@@ -1,6 +1,6 @@
 """Sentence model for fill-in-the-gap cards"""
 
-from sqlalchemy import Column, String, Integer, ForeignKey, Enum
+from sqlalchemy import Boolean, Column, String, Integer, ForeignKey, Enum, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -35,6 +35,18 @@ class Sentence(BaseModel):
     source_title = Column(String(200), nullable=True)  # Book title, e.g., "Dracula"
     source_author = Column(String(200), nullable=True)  # Author, e.g., "Bram Stoker"
     source_ref = Column(String(50), nullable=True)  # Reference, e.g., "gutenberg:345"
+
+    # Pedagogical content contract. Existing literary rows remain usable but
+    # are no longer mistaken for contemporary, reviewed course material.
+    cefr_level = Column(String(16), nullable=True)
+    register = Column(String(32), nullable=False, default="neutral")
+    domain = Column(String(64), nullable=True)
+    competency_codes = Column(JSON, nullable=False, default=list)
+    grammar_tags = Column(JSON, nullable=False, default=list)
+    quality_status = Column(String(24), nullable=False, default="unreviewed")
+    license_name = Column(String(120), nullable=True)
+    content_version = Column(String(40), nullable=False, default="legacy-v1")
+    is_contemporary = Column(Boolean, nullable=False, default=False)
 
     # Relationships
     word = relationship("Word", back_populates="sentences")

@@ -1,6 +1,6 @@
 """Pydantic schemas for Card operations"""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 import uuid
@@ -95,6 +95,14 @@ class CardResponse(BaseModel):
         None,
         description="Shared pedagogical context that explains why this card is useful now",
     )
+    competency: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Explicit skill and current learner evidence for this item",
+    )
+    content_context: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provenance, register, quality, and version metadata",
+    )
     
 class AnswerRequest(BaseModel):
     """Request schema for POST /api/cards/{id}/answer"""
@@ -107,10 +115,27 @@ class AnswerRequest(BaseModel):
         }
     })
 
-    answer: str = Field(..., description="User's answer")
-    response_time_ms: int = Field(..., description="Response time in milliseconds")
-    attempts: int = Field(default=1, description="Number of attempts taken")
-    hints_used: int = Field(default=0, description="Number of hints used")
+    answer: str = Field(..., min_length=1, max_length=500, description="User's answer")
+    response_time_ms: int = Field(
+        ...,
+        ge=0,
+        le=3_600_000,
+        description="Response time in milliseconds, capped at one hour",
+    )
+    attempts: int = Field(default=1, ge=1, le=20, description="Number of attempts taken")
+    hints_used: int = Field(default=0, ge=0, le=20, description="Number of hints used")
+    mode: Literal["spec4", "lingvist"] = Field(
+        default="spec4",
+        description="Originating study mode for pedagogical evidence",
+    )
+    task_type: Literal["gap_recall", "cloze_completion"] = Field(
+        default="gap_recall",
+        description="Observable task contract",
+    )
+    session_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Optional client session identifier for longitudinal analysis",
+    )
 
 class AnswerResponse(BaseModel):
     """Response schema for POST /api/cards/{id}/answer - EXACT match to specification"""
@@ -129,6 +154,14 @@ class AnswerResponse(BaseModel):
     sentence_full: str = Field(..., description="Complete sentence with correct answer")
     quality: int = Field(..., description="SM-2 quality score (0-5)")
     next_review_at: datetime = Field(..., description="When to review this card next")
+    competency: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Competency evidence updated by this answer",
+    )
+    scheduler_shadow: Optional[Dict[str, Any]] = Field(
+        None,
+        description="FSRS comparison telemetry; SM-2 remains the production scheduler",
+    )
     
 class ErrorResponse(BaseModel):
     """Standard error response"""

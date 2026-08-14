@@ -1,6 +1,6 @@
 """User LLM Preferences model for Chat Coach model selection"""
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import BaseModel
@@ -17,7 +17,13 @@ class UserLLMPreferences(BaseModel):
     __tablename__ = "user_llm_preferences"
 
     # Foreign key to user
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True, unique=True)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("user.id"),
+        nullable=False,
+        index=True,
+        unique=True,
+    )
 
     # LLM profile IDs (referencing app/llm/profiles.py:LLM_PROFILES)
     # Chat model: used for conversational responses (streaming)

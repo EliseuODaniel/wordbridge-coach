@@ -14,12 +14,12 @@ export const NATIVE_LANGUAGES = [
 ];
 
 export const VOCABULARY_GOALS = [
-  { rank: 100, label: '100 words', description: 'Basic conversations' },
-  { rank: 500, label: '500 words', description: 'Elementary level' },
-  { rank: 1500, label: '1500 words', description: 'Intermediate level' },
-  { rank: 3000, label: '3000 words', description: 'Advanced level' },
-  { rank: 5000, label: '5000 words', description: 'Fluent conversations' },
-  { rank: 10000, label: '10000 words', description: 'Near-native vocabulary' },
+  { rank: 100, label: '100 words', description: 'First high-frequency vocabulary target' },
+  { rank: 500, label: '500 words', description: 'Broader high-frequency vocabulary target' },
+  { rank: 1500, label: '1500 words', description: 'Everyday vocabulary expansion' },
+  { rank: 3000, label: '3000 words', description: 'Wider vocabulary coverage' },
+  { rank: 5000, label: '5000 words', description: 'Extended vocabulary target' },
+  { rank: 10000, label: '10000 words', description: 'Long-term vocabulary target' },
 ];
 
 export function buildProfileStats(

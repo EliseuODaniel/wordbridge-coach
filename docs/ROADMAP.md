@@ -1,7 +1,24 @@
 # Roadmap
 
 Data de início desta nova fase: 2026-03-23
-Atualização mais recente: 2026-05-05
+Atualização mais recente: 2026-08-14
+
+## Fase 9: Núcleo adaptativo baseado em evidência
+
+Status: implementado; calibração longitudinal em andamento
+
+- [x] preservar e melhorar Spec4, Lingvist e Chat Coach
+- [x] criar catálogo versionado de competências e mapeamento item-competência
+- [x] persistir observações com suporte, tentativas, independência, tarefa e modo
+- [x] projetar domínio e confiança sem alegar certificação CEFR
+- [x] executar FSRS 6 em sombra sem substituir prematuramente o scheduler produtivo
+- [x] eliminar placeholders cloze inseguros e validar conteúdo na borda
+- [x] adicionar pacote contemporâneo autoral, versionado e idempotente
+- [x] oferecer prática de fala privada e local no navegador
+- [x] remover hardcodes que tratavam inglês/português como contrato universal do tutor e do TTS
+- [ ] promover FSRS somente após calibração com recordação atrasada real
+- [ ] adicionar ASR apenas depois de autenticação, consentimento explícito, limites e retenção definida
+- [ ] decidir explicitamente a política destrutiva de histórico ao trocar idioma ou excluir perfil
 
 ## Status de retomada em 2026-04-24
 

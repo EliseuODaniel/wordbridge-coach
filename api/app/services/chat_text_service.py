@@ -16,15 +16,17 @@ def build_chat_system_prompt(
     cefr_target = lesson_frame.get("cefr_target") or student_profile.get("cefr_level", "A2")
     feedback_language = student_profile.get("feedback_language", "English")
     target_language = student_profile.get("target_language", "English")
-    scaffolding_level = str(student_profile.get("scaffolding_level", "guided_practice")).replace("_", " ")
+    scaffolding_key = str(student_profile.get("scaffolding_level", "guided_practice"))
+    scaffolding_level = scaffolding_key.replace("_", " ")
     strengths = ", ".join(student_profile.get("strengths", [])[:2]) or "none recorded yet"
     focus_areas = ", ".join(
         (student_profile.get("weaknesses") or student_profile.get("common_errors") or [])[:2]
     ) or "clear communication"
     pedagogical_metrics = dict(student_profile.get("pedagogical_metrics") or {})
     longitudinal_memory = session_summary or "No prior learner memory yet."
+    tutor_action = _select_tutor_action(scaffolding_key, pedagogical_metrics)
 
-    return f"""You are an English tutor helping a {cefr_target} student practice {target_language}.
+    return f"""You are an expert {target_language} tutor helping a learner at the {cefr_target} instructional band.
 Topic: {lesson_frame.get('topic', 'conversation')}
 Goal: {lesson_frame.get('learning_goal', 'practice conversation')}
 
@@ -38,16 +40,30 @@ Coaching memory:
 - Review pressure: {pedagogical_metrics.get('review_pressure', 'medium')}
 - Recommended pace: {pedagogical_metrics.get('recommended_pace', 'balance')}
 - Longitudinal summary: {longitudinal_memory}
+- Pedagogical move for this turn: {tutor_action}
 
 Keep it natural:
 - Reply briefly (1-3 sentences) as if chatting with a friend
 - Always ask a follow-up question
-- Match the challenge to the student's CEFR and scaffolding level
+- Stay in {target_language} for the conversation; use {feedback_language} only for explicit explanations
+- Treat {cefr_target} as an instructional band, not a certification claim
+- Match the challenge to the learner's current evidence and scaffolding level
 - Build follow-up questions from the topic or current focus area when possible
 - Never proactively correct grammar or explain rules
-- If they write in Portuguese/Spanish, encourage them to use English
+- If the learner switches languages, briefly invite them back to {target_language}
 - No examples, quotes, or meta-commentary
 """
+
+
+def _select_tutor_action(scaffolding_level: str, metrics: dict[str, Any]) -> str:
+    """Choose one bounded pedagogical action for the generation turn."""
+    if metrics.get("review_pressure") == "high":
+        return "elicit one short accurate retrieval before introducing novelty"
+    if scaffolding_level == "high_support":
+        return "elicit a short response and offer one cue if the learner stalls"
+    if scaffolding_level == "guided_practice":
+        return "prompt self-correction, then ask for one additional detail"
+    return "use a light recast only if needed and extend the interaction"
 
 
 def get_chat_stop_sequences() -> List[str]:

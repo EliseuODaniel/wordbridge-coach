@@ -130,6 +130,9 @@ echo "Applying migrations"
 echo "Seeding data"
 "${COMPOSE_CMD[@]}" exec -T api python scripts/seed_data.py
 
+echo "Checking curated seed idempotency"
+"${COMPOSE_CMD[@]}" exec -T api python scripts/seed_curated_content.py
+
 wait_for_http "${FRONTEND_URL}" "Frontend"
 
 echo "Checking user list"
@@ -148,5 +151,18 @@ USER_ID="$(printf '%s' "$USER_RESPONSE" | json_get 'data["id"]')"
 echo "Loading first Spec4 card for smoke user"
 CARD_RESPONSE="$(curl -fsS "${API_URL}/api/v1/cards/next-spec4?user_id=${USER_ID}")"
 printf '%s' "$CARD_RESPONSE" | json_get 'data["card_id"]' >/dev/null
+printf '%s' "$CARD_RESPONSE" | json_get 'data["competency"]["code"]' >/dev/null
+VALIDATION_STATUS="$(printf '%s' "$CARD_RESPONSE" | json_get 'data["content_context"]["validation_status"]')"
+QUALITY_STATUS="$(printf '%s' "$CARD_RESPONSE" | json_get 'data["content_context"]["quality_status"]')"
+
+if [[ "$VALIDATION_STATUS" != "valid" ]]; then
+    echo "Smoke card failed content validation: ${VALIDATION_STATUS}"
+    exit 1
+fi
+
+if [[ "$QUALITY_STATUS" != "approved" && "$QUALITY_STATUS" != "literary" ]]; then
+    echo "Smoke card is not deliverable: ${QUALITY_STATUS}"
+    exit 1
+fi
 
 echo "Smoke passed."
