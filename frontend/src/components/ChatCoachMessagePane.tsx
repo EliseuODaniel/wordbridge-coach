@@ -21,7 +21,7 @@ const ChatCoachMessagePane: React.FC<ChatCoachMessagePaneProps> = ({
 }) => {
   return (
     <>
-      <div className="mx-auto min-h-0 w-full max-w-5xl flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6" ref={messageListRef as React.RefObject<HTMLDivElement>}>
+      <div className="mx-auto min-h-0 w-full max-w-[50rem] flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-5" ref={messageListRef as React.RefObject<HTMLDivElement>}>
         {messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center py-8 text-center">
             <span className="mb-4 inline-flex size-12 items-center justify-center rounded-2xl bg-violet-400/10 text-violet-200">

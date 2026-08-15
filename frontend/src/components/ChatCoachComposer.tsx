@@ -26,7 +26,7 @@ const ChatCoachComposer: React.FC<ChatCoachComposerProps> = ({
 }) => {
   return (
     <div className="flex-shrink-0 border-t border-white/[0.07] bg-gray-900/90 px-3 py-3 backdrop-blur-xl sm:px-4">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-[50rem]" data-testid="chat-coach-composer">
         <div className="mb-2">
           <ScoreBar score={barScore} size="md" />
         </div>

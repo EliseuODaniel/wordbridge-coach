@@ -79,40 +79,45 @@ const ChatCoachSession: React.FC<ChatCoachSessionProps> = ({ userId, onExit, onM
         onModeChange={onModeChange}
       />
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Chat area */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <ChatCoachMessagePane
-            messages={messages}
-            isStreaming={isStreaming}
-            currentAssistantResponse={currentAssistantResponse}
-            showJumpToLatest={showJumpToLatest}
-            messageListRef={messageListRef}
-            onJumpToLatest={handleJumpToLatest}
-          />
+      <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2 pt-1 sm:px-3 sm:pb-3">
+        <div
+          className="grid h-full min-h-0 w-full grid-cols-1 overflow-hidden rounded-2xl border border-white/[0.07] bg-gray-950/20 shadow-panel lg:grid-cols-[minmax(0,1fr)_clamp(22rem,28vw,28rem)]"
+          data-testid="chat-coach-layout"
+        >
+          <div className="relative flex min-h-0 min-w-0 flex-col" data-testid="chat-coach-conversation">
+            <ChatCoachMessagePane
+              messages={messages}
+              isStreaming={isStreaming}
+              currentAssistantResponse={currentAssistantResponse}
+              showJumpToLatest={showJumpToLatest}
+              messageListRef={messageListRef}
+              onJumpToLatest={handleJumpToLatest}
+            />
 
-          <details className="mx-3 mb-2 rounded-xl border border-white/[0.07] bg-white/[0.03] lg:hidden">
-            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-300">Feedback de escrita</summary>
-            <div className="max-h-56 overflow-y-auto border-t border-white/[0.07] p-3">{renderAnalysis()}</div>
-          </details>
+            <details className="mx-3 mb-2 rounded-xl border border-white/[0.07] bg-gray-800/80 lg:hidden">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-300">Feedback de escrita</summary>
+              <div className="max-h-[45vh] overflow-y-auto border-t border-white/[0.07] p-3">{renderAnalysis()}</div>
+            </details>
 
-          <ChatCoachComposer
-            barScore={barScore}
-            draftText={draftText}
-            ghostSuggestion={ghostSuggestion}
-            isStreaming={isStreaming}
-            textareaRef={textareaRef}
-            onDraftChange={handleDraftChange}
-            onKeyDown={handleKeyDown}
-            onSendMessage={handleSendMessage}
-          />
+            <ChatCoachComposer
+              barScore={barScore}
+              draftText={draftText}
+              ghostSuggestion={ghostSuggestion}
+              isStreaming={isStreaming}
+              textareaRef={textareaRef}
+              onDraftChange={handleDraftChange}
+              onKeyDown={handleKeyDown}
+              onSendMessage={handleSendMessage}
+            />
+          </div>
+
+          <aside
+            className="hidden min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-l border-white/[0.07] bg-gray-800/65 p-3 backdrop-blur-xl lg:block"
+            data-testid="chat-coach-feedback"
+          >
+            {renderAnalysis()}
+          </aside>
         </div>
-
-        {/* Analysis sidebar */}
-        <aside className="hidden min-h-0 w-[19rem] overflow-y-auto border-l border-white/[0.07] bg-gray-800/65 p-3 backdrop-blur-xl lg:block">
-          {renderAnalysis()}
-        </aside>
       </div>
 
       {/* LLM Settings Panel */}

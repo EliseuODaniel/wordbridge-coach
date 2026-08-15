@@ -4,7 +4,7 @@ Data de referência: 2026-08-14
 
 ## Resumo executivo
 
-Em 2026-08-14, o frontend também recebeu uma refatoração visual responsiva e compacta: shell único para os três modos, hierarquia tipográfica consistente, navegação por modo dentro da sessão, painéis de contexto condensados e explicações secundárias em tooltips acessíveis. A entrada agora usa perfis progressivamente carregados e organiza modo, perfil e criação sem bloquear a primeira pintura pelas estatísticas.
+Em 2026-08-14, o frontend também recebeu uma refatoração visual responsiva e compacta: shell único para os três modos, hierarquia tipográfica consistente, navegação por modo dentro da sessão, painéis de contexto condensados e explicações secundárias em tooltips acessíveis. No Chat Coach, a conversa passou a usar uma largura editorial controlada e o feedback mostra primeiro apenas a orientação acionável; correções completas, memória pedagógica, métricas e foco da aula ficam em seções recolhíveis. A entrada agora usa perfis progressivamente carregados e organiza modo, perfil e criação sem bloquear a primeira pintura pelas estatísticas.
 
 Na mesma rodada, o runtime de LLM foi auditado e comparado no hardware real. Qwen2.5 7B, Qwen3.5 4B, Qwen3.5 9B e Ministral 3 8B foram exercitados com os prompts e schemas da aplicação. O Qwen3.5 9B foi promovido por entregar a melhor qualidade pedagógica, manter todos os contratos estruturados válidos e caber com folga na RTX 4070 Laptop de 8 GB. O runtime usa raciocínio desativado para as interações curtas, e o benchmark ampliado permanece reproduzível em `docs/LOCAL_LLM_SETUP.md`.
 

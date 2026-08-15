@@ -2242,3 +2242,26 @@ Na execução real, uma única mensagem digitada produziu 20 chamadas ao servido
 - o primeiro evento de um envio passa a ser `assistant_stream_token`
 - correção gramatical ao vivo permanece disponível, mas avaliação semântica rica acontece após o turno
 - o Qwen3.5 9B permanece como modelo principal; a correção é de orquestração, não uma regressão para um modelo menor
+
+## 2026-08-14 - Aplicar divulgação progressiva ao feedback do Chat Coach
+
+Status: aceito
+
+### Contexto
+
+O Chat Coach distribuía a largura disponível quase inteira para a conversa e confinava todo o perfil pedagógico, métricas, enquadramento da aula e análise do professor em uma sidebar de 19 rem. Mesmo sem interação, o painel ultrapassava a altura da viewport e exigia rolagem para informações secundárias.
+
+### Decisão
+
+- ocupar toda a largura útil da viewport com conversa flexível e feedback responsivo entre 22 e 28 rem
+- limitar mensagens e compositor a uma coluna editorial de 50 rem
+- manter orientação, texto avaliado e versão sugerida no primeiro nível visual
+- preservar correções, análise completa, memória e foco da aula em disclosures nativos acessíveis
+- manter rolagem na sidebar apenas como proteção quando o usuário abrir detalhes extensos
+
+### Impacto
+
+- o estado inicial do feedback cabe integralmente na viewport de desktop validada
+- o canvas elimina margens ociosas, enquanto a coluna editorial impede que mensagens se espalhem demais em telas largas
+- a sidebar bloqueia overflow horizontal e reserva largura adicional para conteúdo pedagógico em viewports amplas
+- nenhum dado pedagógico é removido; a densidade é controlada por hierarquia e interação explícita
