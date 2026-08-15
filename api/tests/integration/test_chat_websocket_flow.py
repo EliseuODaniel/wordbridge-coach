@@ -148,26 +148,23 @@ def test_chat_websocket_user_message_flow(db_session, monkeypatch):
             })
 
             events = []
-            while len(events) < 5:
+            while len(events) < 4:
                 event = websocket.receive_json()
                 events.append(event)
                 if event["type"] == "teacher_analysis":
                     break
 
         assert [event["type"] for event in events] == [
-            "draft_feedback",
             "assistant_stream_token",
             "assistant_stream_token",
             "assistant_done",
             "teacher_analysis",
         ]
 
-        draft_feedback = events[0]
-        assistant_done = events[3]
-        teacher_analysis = events[4]
+        assistant_done = events[2]
+        teacher_analysis = events[3]
 
-        assert draft_feedback["draft"] == "I go to school yesterday"
-        assert draft_feedback["issues"][0]["suggestions"] == ["went"]
+        assert events[0]["token"] == "Nice! What happened next?"
         assert assistant_done["full_content"] == "Nice! What happened next?"
         assert teacher_analysis["analysis"]["rewrite"] == "I went to school yesterday."
         assert teacher_analysis["student_profile"]["feedback_language"] == "Portuguese"

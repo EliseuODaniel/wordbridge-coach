@@ -18,20 +18,30 @@ class FakeWebSocket:
         self.payloads.append(payload)
 
 
-def test_should_run_micro_eval_when_text_changes():
+def test_should_not_run_micro_eval_when_text_changes_inside_interval():
     assert should_run_micro_eval(
         last_draft_text="old",
         draft_text="new",
         now_ms=100,
         last_eval_ts=90,
         min_interval_ms=1000,
-    ) is True
+    ) is False
 
 
-def test_should_run_micro_eval_when_interval_passed():
+def test_should_not_run_micro_eval_when_interval_passed_but_text_is_unchanged():
     assert should_run_micro_eval(
         last_draft_text="same",
         draft_text="same",
+        now_ms=500,
+        last_eval_ts=0,
+        min_interval_ms=100,
+    ) is False
+
+
+def test_should_run_micro_eval_for_changed_text_after_interval():
+    assert should_run_micro_eval(
+        last_draft_text="old",
+        draft_text="new",
         now_ms=500,
         last_eval_ts=0,
         min_interval_ms=100,
@@ -146,6 +156,7 @@ def test_process_request_autocomplete_uses_ghost_suggestion():
 
     async def evaluate_draft_feedback(**kwargs):
         assert kwargs["ghost_suggestion"] == "to school"
+        assert kwargs["include_grammar_check"] is True
         return {"type": "draft_feedback", "ghost_suggestion": "to school"}
 
     helpers = ChatDraftFeedbackHelpers(

@@ -39,7 +39,7 @@ def should_run_micro_eval(
     """Decide whether a new micro-eval should run for the current draft."""
     text_changed = draft_text != last_draft_text
     time_passed_enough = (now_ms - last_eval_ts) >= min_interval_ms
-    return time_passed_enough or text_changed
+    return text_changed and time_passed_enough
 
 
 async def process_draft_update(
@@ -109,6 +109,7 @@ async def process_request_autocomplete(
         draft_text=draft_text,
         now_ms=data.get("now_ms"),
         ghost_suggestion=autocomplete_result.get("ghost_suggestion", ""),
+        include_grammar_check=True,
     )
 
     await websocket.send_json(feedback)

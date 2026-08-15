@@ -238,6 +238,28 @@ def build_draft_feedback(
     ).model_dump()
 
 
+def build_realtime_draft_evaluation(
+    grammar_issues: List[dict],
+    lesson_frame: dict,
+) -> dict:
+    """Build bounded live feedback without occupying the generative LLM."""
+    issues = grammar_issues[:3]
+    spelling_count = sum(issue.get("category") == "spelling" for issue in issues)
+    grammar_count = sum(issue.get("category") in {"grammar", "syntax"} for issue in issues)
+    style_count = sum(issue.get("category") == "style" for issue in issues)
+
+    return {
+        "spelling_score": max(0.0, 100.0 - spelling_count * 20.0),
+        "grammar_score": max(0.0, 100.0 - grammar_count * 20.0),
+        "lesson_alignment_score": 100.0,
+        "naturalness_score": max(0.0, 100.0 - style_count * 10.0),
+        "top_issues": issues,
+        "suggested_next_words": [],
+        "topic": lesson_frame.get("topic"),
+        "intent": lesson_frame.get("expected_intent"),
+    }
+
+
 async def evaluate_draft_feedback(
     conversation: ChatConversation,
     draft_text: str,
@@ -248,7 +270,9 @@ async def evaluate_draft_feedback(
     ghost_suggestion: Optional[str] = None,
     include_grammar_check: bool = False,
 ) -> dict:
-    """Run micro-eval and optional grammar-checking, then build the payload."""
+    """Build low-latency live feedback; rich LLM analysis runs after submission."""
+    del llm_provider
+
     lt_issues: List[dict] = []
     if include_grammar_check:
         lt_issues = await get_grammar_issues(
@@ -257,16 +281,10 @@ async def evaluate_draft_feedback(
             grammar_url=grammar_url,
         )
 
-    eval_result = await llm_provider.micro_eval(
-        context=conversation.session_summary,
+    eval_result = build_realtime_draft_evaluation(
+        grammar_issues=lt_issues,
         lesson_frame=conversation.lesson_frame_json,
-        draft=draft_text,
-        student_profile=conversation.student_profile_json,
     )
-
-    if lt_issues:
-        heuristic_issues = eval_result.get("top_issues", [])
-        eval_result["top_issues"] = merge_issues(lt_issues, heuristic_issues)
 
     return build_draft_feedback(
         conversation_id=str(conversation.id),

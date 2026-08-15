@@ -2218,3 +2218,27 @@ O benchmark anterior tinha poucos casos e não distinguia suficientemente valida
 - o modelo promovido usa aproximadamente 5,6 GB de VRAM e gera cerca de 35–36 tokens/s, preservando margem operacional no hardware local
 - após o hardening, 8/9 cenários passaram diretamente e o nono passou ao aplicar a normalização de borda que remove melhorias opcionais rotuladas pelo modelo como erro; o chat também passou três repetições isoladas
 - a troca privilegia qualidade pedagógica; análises JSON extensas têm latência maior que no 4B e devem permanecer limitadas a payloads curtos
+
+## 2026-08-14 - Retirar microavaliação generativa do caminho crítico do chat
+
+Status: aceito
+
+### Contexto
+
+Na execução real, uma única mensagem digitada produziu 20 chamadas ao servidor local: 18 análises estruturadas antes do chat, uma resposta conversacional e uma análise do professor. As análises geravam de 350 a 500 tokens e levavam em mediana 12,08 segundos. Como o WebSocket aguardava cada evento e o `llama.cpp` tinha um slot, as teclas formaram uma fila de aproximadamente 3 minutos e 45 segundos; a resposta conversacional isolada levou 0,84 segundo.
+
+### Decisão
+
+- agrupar atualizações de rascunho no frontend após 600 ms sem digitação
+- exigir texto alterado e intervalo mínimo para uma nova avaliação ao vivo
+- usar LanguageTool, com projeção de scores determinística e limitada, durante a digitação
+- manter autocomplete como geração curta, sem acoplar uma microavaliação generativa completa
+- iniciar o streaming imediatamente ao enviar, sem repetir feedback estruturado antes do primeiro token
+- preservar `teacher_analysis` rica depois da resposta para memória pedagógica e adaptação entre modos
+
+### Impacto
+
+- o volume de chamadas generativas deixa de crescer com a quantidade de teclas
+- o primeiro evento de um envio passa a ser `assistant_stream_token`
+- correção gramatical ao vivo permanece disponível, mas avaliação semântica rica acontece após o turno
+- o Qwen3.5 9B permanece como modelo principal; a correção é de orquestração, não uma regressão para um modelo menor

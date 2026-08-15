@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from app.services import chat_feedback_service
 from app.services.chat_feedback_service import (
+    build_realtime_draft_evaluation,
     build_draft_feedback,
     evaluate_draft_feedback,
     freeze_user_message_feedback,
@@ -68,7 +69,7 @@ def test_build_draft_feedback_generates_micro_tip_when_no_issues():
     assert payload["topic"] == "travel"
 
 
-def test_evaluate_draft_feedback_merges_language_tool_issues(monkeypatch):
+def test_evaluate_draft_feedback_uses_language_tool_without_calling_llm(monkeypatch):
     conversation = SimpleNamespace(
         id="conv-1",
         session_summary="summary",
@@ -78,25 +79,7 @@ def test_evaluate_draft_feedback_merges_language_tool_issues(monkeypatch):
 
     class FakeProvider:
         async def micro_eval(self, context, lesson_frame, draft, student_profile):
-            assert draft == "I go yesterday"
-            return {
-                "spelling_score": 95,
-                "grammar_score": 70,
-                "lesson_alignment_score": 80,
-                "naturalness_score": 75,
-                "top_issues": [
-                    {
-                        "category": "grammar",
-                        "title": "Verb tense",
-                        "explanation": "Use past simple.",
-                        "highlight_text": "go",
-                        "suggestions": ["went"],
-                    }
-                ],
-                "suggested_next_words": [],
-                "topic": "travel",
-                "intent": "past_experience",
-            }
+            raise AssertionError("live draft feedback must not call the generative LLM")
 
     async def fake_get_grammar_issues(draft_text, grammar_provider, grammar_url):
         assert grammar_provider == "languagetool"
@@ -137,6 +120,25 @@ def test_evaluate_draft_feedback_merges_language_tool_issues(monkeypatch):
     assert payload["issues"][0]["suggestions"] == ["went"]
     assert payload["issues"][0]["highlight_spans"] == [{"start": 2, "end": 4}]
     assert payload["issues"][1]["category"] == "style"
+    assert payload["bar_score_components"]["grammar"] == 80.0
+
+
+def test_build_realtime_draft_evaluation_is_bounded_and_deterministic():
+    issues = [
+        {"category": "grammar", "title": "g", "explanation": "", "suggestions": []},
+        {"category": "spelling", "title": "s", "explanation": "", "suggestions": []},
+        {"category": "style", "title": "t", "explanation": "", "suggestions": []},
+        {"category": "grammar", "title": "ignored", "explanation": "", "suggestions": []},
+    ]
+
+    result = build_realtime_draft_evaluation(issues, {"topic": "travel", "expected_intent": "share"})
+
+    assert len(result["top_issues"]) == 3
+    assert result["grammar_score"] == 80.0
+    assert result["spelling_score"] == 80.0
+    assert result["naturalness_score"] == 90.0
+    assert result["topic"] == "travel"
+    assert result["intent"] == "share"
 
 
 def test_freeze_user_message_feedback_sends_snapshot_payload():

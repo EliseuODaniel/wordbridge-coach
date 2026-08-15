@@ -37,6 +37,22 @@ O downgrade da migration `20260814000100` é reversível. Um downgrade completo 
 - `seed_data.py --reset` sobre banco descartável já populado: OK; dependências foram removidas na ordem das chaves estrangeiras e o currículo foi recriado com 112 cards
 - E2E Chromium sobre a imagem final: `40 passed`
 
+## Regressão de latência do Chat Coach
+
+O fluxo WebSocket deve emitir `assistant_stream_token` como primeiro evento de uma mensagem enviada. Atualizações do rascunho não podem chamar o LLM generativo: elas usam LanguageTool e são agrupadas no frontend após 600 ms de inatividade. A suíte focal é:
+
+```bash
+cd api
+PYTHONPATH=. TEST_DATABASE_URL=postgresql://ftw_user:ftw_password@localhost:5433/filltheword_test \
+  .venv/bin/python -m pytest -q \
+  tests/test_chat_draft_service.py \
+  tests/test_chat_feedback_service.py \
+  tests/test_chat_turn_service.py \
+  tests/integration/test_chat_websocket_flow.py
+```
+
+No smoke test real do build servido em `localhost:3007`, a primeira execução após o rebuild entregou o primeiro token em 3,82 s (limite de 5 s). Com os serviços aquecidos, uma mensagem digitada a 20 ms por tecla, seguida por 800 ms de pausa, produziu um único `draft_feedback`, primeiro token em 143 ms e `assistant_done` em 586 ms. O LanguageTool respondeu isoladamente em 39 ms. O cenário anterior à correção acumulava aproximadamente 3 min 45 s de fila.
+
 ## Objetivo
 
 Este arquivo registra o baseline de validação do projeto após a limpeza de governança.

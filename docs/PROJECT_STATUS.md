@@ -8,6 +8,8 @@ Em 2026-08-14, o frontend também recebeu uma refatoração visual responsiva e 
 
 Na mesma rodada, o runtime de LLM foi auditado e comparado no hardware real. Qwen2.5 7B, Qwen3.5 4B, Qwen3.5 9B e Ministral 3 8B foram exercitados com os prompts e schemas da aplicação. O Qwen3.5 9B foi promovido por entregar a melhor qualidade pedagógica, manter todos os contratos estruturados válidos e caber com folga na RTX 4070 Laptop de 8 GB. O runtime usa raciocínio desativado para as interações curtas, e o benchmark ampliado permanece reproduzível em `docs/LOCAL_LLM_SETUP.md`.
 
+O caminho crítico do Chat Coach também foi corrigido depois que telemetria real mostrou uma microavaliação de 10–14 segundos por tecla e uma segunda avaliação antes do chat. O feedback durante a digitação agora é debounced e usa LanguageTool; autocomplete continua curto, o primeiro evento de um envio é o streaming da resposta e a análise rica do Qwen permanece pós-turno.
+
 Em 2026-08-14, a aplicação recebeu um núcleo de aprendizagem baseado em evidência sem remover os módulos existentes. Spec4 e Lingvist agora compartilham competência explícita, contexto de conteúdo e observações normalizadas; Chat Coach mantém a memória longitudinal e deixou de apresentar uma estimativa de nível derivada apenas de rank como certificação. SM-2 segue produtivo e FSRS 6 opera em sombra até existir calibração longitudinal real.
 
 Também foram adicionados conteúdo contemporâneo autoral/versionado, validação determinística de cloze, prática de fala privada no navegador e limites estritos nos payloads de resposta. Frases placeholder não revisadas deixaram de ser geradas automaticamente.

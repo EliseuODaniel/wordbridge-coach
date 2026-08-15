@@ -95,6 +95,7 @@ export const useChatCoachSession = (
   const messageListRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const draftFeedbackTimeoutRef = useRef<number | null>(null);
   const autocompleteTimeoutRef = useRef<number | null>(null);
 
   const {
@@ -109,6 +110,13 @@ export const useChatCoachSession = (
     intent,
     rewrite,
   } = feedbackState;
+
+  const clearDraftFeedbackTimeout = useCallback(() => {
+    if (draftFeedbackTimeoutRef.current) {
+      window.clearTimeout(draftFeedbackTimeoutRef.current);
+      draftFeedbackTimeoutRef.current = null;
+    }
+  }, []);
 
   const clearAutocompleteTimeout = useCallback(() => {
     if (autocompleteTimeoutRef.current) {
@@ -256,10 +264,12 @@ export const useChatCoachSession = (
 
     return () => {
       disconnectChatWs();
+      clearDraftFeedbackTimeout();
       clearAutocompleteTimeout();
     };
   }, [
     clearAutocompleteTimeout,
+    clearDraftFeedbackTimeout,
     disconnectChatWs,
     handleAssistantDone,
     handleDraftFeedback,
@@ -277,9 +287,14 @@ export const useChatCoachSession = (
       clearLastFeedbackSnapshot();
     }
 
-    if (chatWsRef.current && conversation) {
-      chatWsRef.current.sendDraftUpdate(newText, event.target.selectionStart);
-    }
+    const cursorPosition = event.target.selectionStart;
+    clearDraftFeedbackTimeout();
+    draftFeedbackTimeoutRef.current = window.setTimeout(() => {
+      if (chatWsRef.current && conversation) {
+        chatWsRef.current.sendDraftUpdate(newText, cursorPosition);
+      }
+      draftFeedbackTimeoutRef.current = null;
+    }, 600);
 
     clearAutocompleteTimeout();
 
@@ -289,7 +304,13 @@ export const useChatCoachSession = (
       }
       autocompleteTimeoutRef.current = null;
     }, 1200);
-  }, [clearAutocompleteTimeout, clearLastFeedbackSnapshot, conversation, isShowingLastFeedback]);
+  }, [
+    clearAutocompleteTimeout,
+    clearDraftFeedbackTimeout,
+    clearLastFeedbackSnapshot,
+    conversation,
+    isShowingLastFeedback,
+  ]);
 
   const handleSendMessage = useCallback(() => {
     const trimmedText = draftText.trim();
@@ -300,6 +321,7 @@ export const useChatCoachSession = (
     appendMessage('user', trimmedText);
     lastFeedbackRef.current = buildChatFeedbackSnapshot(feedbackState);
     setIsShowingLastFeedback(true);
+    clearDraftFeedbackTimeout();
     chatWsRef.current.sendUserMessage(trimmedText);
     clearComposerState();
     clearAutocompleteTimeout();
@@ -307,6 +329,7 @@ export const useChatCoachSession = (
   }, [
     appendMessage,
     clearAutocompleteTimeout,
+    clearDraftFeedbackTimeout,
     clearComposerState,
     draftText,
     feedbackState,

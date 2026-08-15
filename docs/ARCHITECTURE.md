@@ -138,8 +138,8 @@ Topologia operacional padrão:
 
 1. frontend abre sessão de chat
 2. API combina contexto da conversa, perfil longitudinal do aluno, analytics recentes e provider de LLM
-3. quando o perfil `ai` está ativo, serviços locais de LLM e LanguageTool participam da resposta
-4. `micro_eval`, autocomplete e `teacher_analysis` agora preferem structured outputs com schema explícito, mantendo fallback seguro para o mock
+3. durante a digitação, o frontend agrupa mudanças após uma pausa curta e a API usa LanguageTool para feedback imediato sem ocupar o slot generativo
+4. ao enviar, o streaming do chat tem prioridade e não espera uma microavaliação; autocomplete usa um payload curto e `teacher_analysis` mantém o structured output rico depois da resposta
 5. `api/app/services/chat_profile_service.py` deriva o perfil pedagógico de `User` + histórico recente de `teacher_analysis`, agrega `pedagogical_metrics` reais de `UserCardState`, `ReviewEvent` e `UserSessionStats`, mantém um `pedagogical_state` explícito e recalcula `student_profile_json`, `lesson_frame_json` e `session_summary` a cada turno
 6. cada atualização de `teacher_analysis` persiste um snapshot do `lesson_frame` em `chat_lesson_history`
 7. frontend exibe feedback, análise, sugestões, o "coach memory" e o `lesson_frame` adaptativo atualizado, incluindo scaffolds cognitivos, metacognitivos e motivacionais

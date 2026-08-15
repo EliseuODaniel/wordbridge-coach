@@ -49,13 +49,6 @@ async def process_user_message_turn(
         len(content),
     )
 
-    await helpers.freeze_feedback(
-        websocket=websocket,
-        conversation=conversation,
-        content=content,
-        chat_provider=chat_provider,
-    )
-
     user_message = helpers.persist_user_message(db, conversation, content)
     messages, system_prompt, generation_config = helpers.build_generation_inputs(conversation, db)
 

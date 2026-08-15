@@ -75,7 +75,6 @@ def test_process_user_message_turn_orchestrates_steps_in_order():
     )
 
     assert calls == [
-        ("freeze_feedback", "hello"),
         ("persist_user_message", "hello"),
         ("build_generation_inputs", None),
         ("stream_assistant_response", "conv-1"),
